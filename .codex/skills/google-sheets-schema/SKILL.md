@@ -1,0 +1,75 @@
+---
+name: google-sheets-schema
+description: Use when designing or reviewing Google Sheets schemas for the Telegram goal tracker MVP, including participants, teams, goals, planned steps, weekly reports, insights, consent, report metadata, and role-safe reporting data.
+---
+
+# Google Sheets Schema
+
+Use this skill for the MVP business database in Google Sheets.
+
+## Required context
+
+Read:
+- `AGENTS.md`
+- `docs/01_requirements.md`
+- `docs/02_open_questions.md`
+- `.codex/agents/sheets-database-designer.md`
+
+## Storage boundary
+
+Google Sheets stores business facts:
+- participants
+- teams
+- captains
+- trackers
+- goals
+- planned steps
+- weekly reports
+- insights
+- consent
+- dropped/risk status
+- report metadata
+
+SQLite stores only technical bot state, drafts, scheduler state, and temporary selections.
+
+## Schema principles
+
+- Use separate sheets, not one giant sheet.
+- Use stable internal IDs.
+- Telegram ID is an identifier for lookup, not the primary business ID.
+- Use one row per entity.
+- Avoid merged cells and multi-row headers.
+- Store status codes as text, not only colors or emojis.
+- Keep sheets human-readable for admin.
+- Keep formulas out of critical source data where possible.
+
+## MVP sheets to consider
+
+- `Participants`
+- `Teams`
+- `Trackers`
+- `Goals`
+- `PlannedSteps`
+- `WeeklyReports`
+- `WeeklyReportSteps` if reports can link to multiple steps
+- `Insights`
+- `ReportRuns`
+- `Errors` if admin wants a sheet copy of critical errors
+
+## Review checklist
+
+Check:
+- stable IDs exist
+- required columns are present
+- roles and team access can be enforced
+- consent can be stored
+- dropped participants can remain visible but be excluded from stats
+- reports can be generated from sheet data alone
+- audio paths and transcriptions can be linked safely
+- open decisions are not guessed silently
+
+## Output
+
+Return sheet names, columns, allowed values, relationships, validation rules, and open questions.
+
+Do not add PostgreSQL to MVP and do not write application code.

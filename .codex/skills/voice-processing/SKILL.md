@@ -1,0 +1,62 @@
+---
+name: voice-processing
+description: Use when designing or reviewing voice message handling for the Telegram goal tracker MVP, including 10-minute limits, local audio storage, transcription, draft linking, retries, privacy, and error notifications.
+---
+
+# Voice Processing
+
+Use this skill for Telegram voice messages and transcription workflows.
+
+## Required context
+
+Read:
+- `AGENTS.md`
+- `docs/01_requirements.md`
+- `.codex/agents/telegram-bot-engineer.md`
+- `.codex/agents/security-reviewer.md`
+
+## Rules
+
+- Voice message limit is 10 minutes.
+- Accepted audio is stored locally on VPS.
+- Voice messages must be transcribed.
+- Store original audio file path, transcription text, participant ID, week number, date, and relation to report or insight.
+- Audio files are retained until one month after challenge end.
+- Exact deletion process is an open question.
+
+## Flow
+
+When voice is received:
+1. Check duration.
+2. Reject politely if over 10 minutes.
+3. Download from Telegram.
+4. Save locally in a structured non-public path.
+5. Transcribe.
+6. Attach audio path and transcription to the current draft.
+7. Preserve message order with text messages.
+8. On final save, write business facts to Google Sheets.
+9. Clear technical draft state after successful save.
+
+## Failure handling
+
+If transcription fails:
+- tell participant to repeat voice or send text
+- notify admin error chat
+- do not silently lose the draft
+
+If audio save fails:
+- notify admin
+- ask user to send text or retry
+
+## Security
+
+- Do not expose public audio links.
+- Do not commit audio files.
+- Do not log full sensitive transcriptions unless needed.
+- If using external transcription, send only required content and protect API keys.
+
+## Output
+
+Return workflow, storage fields, error handling, privacy notes, retention questions, and test cases.
+
+Do not write application code unless explicitly requested.

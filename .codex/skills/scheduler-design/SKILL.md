@@ -1,0 +1,67 @@
+---
+name: scheduler-design
+description: Use when designing or reviewing weekly scheduler behavior for the Telegram goal tracker MVP, including reminders, Yekaterinburg timezone, Sunday deadline, idempotent week closing, silent participants, and report sending.
+---
+
+# Scheduler Design
+
+Use this skill for reminders, deadlines, closing weeks, and scheduled report delivery.
+
+## Required context
+
+Read:
+- `AGENTS.md`
+- `docs/01_requirements.md`
+- `docs/02_open_questions.md`
+- `.codex/agents/system-architect.md`
+- `.codex/agents/qa-engineer.md`
+
+## Timezone
+
+All schedule rules use Yekaterinburg time.
+
+Do not rely on the VPS local timezone unless it is explicitly configured and verified.
+
+## MVP schedule
+
+- Monday morning: start of week reminder
+- Wednesday evening: soft check-in
+- Sunday 18:00: final check-in
+- Sunday 22:30: reminder if no weekly report
+- Sunday 23:00: last reminder if no weekly report
+- Sunday 23:59: deadline
+- Monday 00:00-00:20: close week and generate reports
+- Monday 00:20-01:00: send reports
+
+Exact Monday and Wednesday reminder times are open questions.
+
+## Deadline rules
+
+- After Sunday 23:59, missing reports become ⬜.
+- No late yellow status exists.
+- Participants cannot change past week status.
+- Captains cannot add status-changing reports after deadline.
+- If report already exists for current week, do not send more reminders that week.
+
+## Design principles
+
+- Make jobs idempotent.
+- Prevent duplicate reminders where possible.
+- Prevent duplicate gray reports.
+- Store job state or run history in SQLite.
+- Generate final reports from Google Sheets data.
+- Notify admin on scheduler errors.
+
+## Silent participants
+
+If a participant has no weekly report for one week:
+- mark or report risk zone according to approved data model
+- notify captain of the team
+- notify tracker of the team
+- do not automatically mark dropped
+
+## Output
+
+Return schedule table, state requirements, idempotency rules, failure handling, and open questions.
+
+Do not write scheduler code unless explicitly requested after approval.

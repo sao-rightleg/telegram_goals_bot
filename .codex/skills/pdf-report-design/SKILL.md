@@ -1,0 +1,71 @@
+---
+name: pdf-report-design
+description: Use when designing or reviewing PDF and Telegram report formats for the goal tracker MVP, including team reports, participant sections, progress bars, role-based recipients, privacy, and report generation edge cases.
+---
+
+# PDF Report Design
+
+Use this skill for report structure, wording, and data requirements.
+
+## Required context
+
+Read:
+- `AGENTS.md`
+- `docs/01_requirements.md`
+- `.codex/agents/report-designer.md`
+- `.codex/agents/security-reviewer.md`
+
+## MVP reports
+
+The MVP generates:
+- short Telegram report per team
+- PDF report per team
+- full summary for admin and Alexander Sitnikov
+- group comparison only for admin and Sitnikov
+
+## Recipients
+
+- Captain receives only own team PDF.
+- Ivan Larkin receives male team PDFs.
+- Maria receives female team PDFs.
+- Admin receives all PDFs.
+- Alexander Sitnikov receives all PDFs and group comparison.
+- Captains and trackers do not receive group comparison.
+
+## Report rules
+
+- Use approved statuses: 🟩 🟦 🟥 ⬜.
+- Do not use yellow late status.
+- Dropped participants remain visible but are excluded from victory percentage statistics.
+- Insights are separate from progress.
+- Reports are generated from Google Sheets business data, not SQLite drafts.
+- PDF files must be stored locally and sent only to authorized recipients.
+
+## PDF content
+
+First page:
+- week number
+- team name
+- captain name
+- active participants count
+- dropped participants count
+- weekly victory percentage
+- progress bars of all participants
+
+Participant sections:
+- full name and username if available
+- weekly status
+- progress bar and percent
+- goal
+- goal value
+- permission condition
+- planned and completed steps
+- weekly report text
+- transcription text if voice was used
+- insights
+
+## Output
+
+Provide report structure, sample blocks, required data fields, visibility rules, error cases, and open questions.
+
+Do not write report generation code unless explicitly requested.
