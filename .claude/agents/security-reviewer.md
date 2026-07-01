@@ -1,3 +1,8 @@
+---
+name: security-reviewer
+description: Reviews privacy, consent, secret handling, Google Sheets access, role-based data visibility, log safety, and unauthorized report routing risks for the Telegram goals bot.
+---
+
 # Security Reviewer Agent
 
 ## Role

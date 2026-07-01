@@ -137,7 +137,8 @@ Trigger:
 
 Bot shows:
 - progress percent
-- status history or progress bar according to approved report/progress-bar decision
+- main 6-cell planned-step progress bar
+- weekly status history separately if useful
 - current week status if available
 
 ## Weekly Report Flow
@@ -176,7 +177,9 @@ Bot asks:
 Что именно ты сделал?
 ```
 
-If step selection is approved, bot first asks which planned step was completed.
+Bot requires selecting one or more planned steps that were completed.
+
+If no step is selected, bot must not save `🟩` status.
 
 Then bot says:
 
@@ -191,7 +194,8 @@ On save:
 - save weekly report to Google Sheets
 - save status `green` / `🟩`
 - save score `1`
-- link or close step if approved by step-closing decision
+- save selected step relations as `closed`
+- close selected planned steps
 - clear SQLite draft
 
 Confirmation:
@@ -203,6 +207,10 @@ Confirmation:
 ### Blue Status
 
 If user selects `🟦 Частично`:
+
+Bot requires selecting one or more planned steps with partial progress.
+
+If no step is selected, bot must not save `🟦` status.
 
 Bot asks:
 
@@ -226,7 +234,7 @@ On save:
 - save weekly report to Google Sheets
 - save status `blue` / `🟦`
 - save score `0.5`
-- optionally link related step if approved
+- save selected step relations as `partial`
 - clear SQLite draft
 
 Confirmation:
@@ -272,6 +280,8 @@ If participant does not submit weekly report before Sunday 23:59 Yekaterinburg t
 - score is `0`
 - no yellow late status is created
 
+After Sunday 23:59, bot may save late report text if implemented, but it must not change the closed week's status.
+
 ## Multiple Messages
 
 While user is in report or insight flow:
@@ -291,7 +301,7 @@ If user presses `✅ Готово` without content:
 
 If voice is under or equal to 10 minutes:
 - download audio
-- store locally
+- store locally under `data/audio/{year}/week_{week_number}/{team_name}/{participant_id}/`
 - transcribe
 - attach transcription to draft
 
@@ -313,7 +323,7 @@ If transcription fails:
 Не удалось распознать голосовое. Надиктуй ещё раз или напиши текстом для верности.
 ```
 
-Also notify admin error chat.
+Also notify admin through error bot.
 
 ## Insight Flow
 
@@ -378,9 +388,12 @@ Flow:
    - `🟩 Победа есть`
    - `🟦 Частично`
    - `🟥 Победы нет`
-5. Captain sends text or voice report.
-6. Captain presses `✅ Готово`.
-7. Bot saves report if before deadline.
+5. For `🟩` or `🟦`, captain selects one or more related planned steps.
+6. Captain sends text or voice report.
+7. Captain presses `✅ Готово`.
+8. Bot saves report if before deadline.
+
+Captain cannot submit a report for a dropped participant.
 
 If after deadline:
 
@@ -394,6 +407,7 @@ Saved data:
 - team id
 - week number
 - status
+- selected step ids for `🟩` or `🟦`
 - report text
 - transcription if voice
 - audio file path if voice
@@ -402,7 +416,7 @@ Saved data:
 
 ## Reminders
 
-### Monday Morning
+### Monday 10:00
 
 ```text
 Новая неделя началась.
@@ -413,7 +427,7 @@ Saved data:
 На этой неделе важно закрыть хотя бы один шаг.
 ```
 
-### Wednesday Evening
+### Wednesday 10:00
 
 ```text
 Короткий чек-ап.
@@ -447,6 +461,21 @@ Saved data:
 
 If weekly report already exists, do not send more reminders that week.
 
+## All Steps Completed
+
+If all current planned steps are closed before challenge end:
+
+```text
+Все текущие шаги закрыты. Обратись к капитану или трекеру, чтобы определить следующий маршрут.
+```
+
+Rules:
+- bot does not automatically mark final goal as achieved
+- if goal is achieved, tracker or admin fixes goal achievement
+- if goal is not achieved, participant prepares additional steps with captain/tracker
+- admin adds new/additional steps in Google Sheets
+- until new steps are added, bot must not require closing a non-existent step
+
 ## Broken State Recovery
 
 If SQLite state is invalid:
@@ -461,13 +490,8 @@ User message:
 Состояние диалога сбилось. Вернул тебя в меню.
 ```
 
-## Open Questions / Decisions Needed
+## Product Decisions
 
-- Exact wording for final Russian terminology.
-- Whether participant must choose completed step for green status.
-- Whether participant may link a step for blue status.
-- Whether one weekly report can close multiple steps.
-- What bot shows when all steps are completed early.
-- Whether captain can submit report for dropped participant.
-- Exact Monday morning and Wednesday evening reminder times.
-- Whether tracker/admin/Sitnikov menus are needed in MVP or only passive report delivery.
+Resolved product decisions are recorded in `docs/02_open_questions.md`.
+
+Tracker/admin/Sitnikov interactive menus are not defined in MVP scenarios yet; current MVP covers participant and captain user scenarios plus passive report delivery.

@@ -183,9 +183,21 @@ A participant may close all steps earlier than the end of the challenge.
 MVP does not allow participant to add new steps.
 
 If all steps are completed early:
-- bot congratulates participant
-- bot suggests contacting captain for further route
-- system keeps participant in challenge unless manually changed
+- bot tells participant that all current steps are closed
+- bot suggests contacting captain/tracker for the next route
+- if final goal is achieved, participant defines a new goal and new steps with captain/tracker
+- if final goal is not achieved, participant defines additional steps for the current goal
+- captain may approve steps but does not add them to the system
+- admin adds new/additional steps in Google Sheets
+- reminders continue after new steps are added
+- bot must not require closing a non-existent step while new steps are not yet added
+
+Final goal achievement:
+- final goal is fixed by tracker
+- admin may also fix final goal achievement through Google Sheets
+- participant cannot mark final goal as achieved
+- captain cannot mark final goal as achieved
+- bot must not automatically mark final goal as achieved only because all planned steps are closed
 
 ## 9. Weekly report logic
 
@@ -203,9 +215,16 @@ Captain may manually submit report for participant in own team before deadline.
 
 Late reports after deadline do not change weekly status.
 
+Step selection rules:
+- 🟩 requires selecting one or more closed planned steps
+- 🟦 requires selecting one or more planned steps with partial progress
+- one weekly report may close several steps
+- already closed steps cannot be closed again
+- bot must not save 🟩 or 🟦 without selected step IDs
+
 ## 10. Deadline
 
-Timezone: Yekaterinburg time.
+Timezone: `Asia/Yekaterinburg`.
 
 Week closes Sunday 23:59.
 
@@ -214,13 +233,14 @@ After deadline:
 - no status change from participant
 - no late captain manual report
 - missing report becomes ⬜
+- late report text may be saved, but it must not change the closed week's status
 
 ## 11. Weekly schedule
 
-Schedule in Yekaterinburg time:
+Schedule in `Asia/Yekaterinburg`:
 
-- Monday morning: start of week reminder
-- Wednesday evening: soft check-in
+- Monday 10:00: start of week reminder
+- Wednesday 10:00: soft check-in
 - Sunday 18:00: final check-in
 - Sunday 22:30: reminder if no weekly report
 - Sunday 23:00: last reminder if no weekly report
@@ -234,6 +254,14 @@ If participant already submitted weekly report, no more reminders that week.
 
 Progress is calculated based on planned steps.
 
+Challenge route:
+- Week 1: goal formulation
+- Week 2: route / planned steps
+- Weeks 3-8: six working weeks for step execution
+- Main route contains 6 planned steps
+- Main progress bar has 6 cells
+- Weeks 1-2 are not included in the main progress bar
+
 Scoring:
 - 🟩 = 1
 - 🟦 = 0.5
@@ -246,8 +274,9 @@ completed score / total planned steps * 100
 
 Examples:
 - 5 of 6 = 83.3%
-- 6 of 8 = 75%
-- 8 of 8 = 100%
+- 6 of 6 = 100%
+
+Weekly status history is stored separately from main step progress. UI may show both main progress bar and weekly history, but main progress percent is based only on planned steps.
 
 ## 13. Insights
 
@@ -301,8 +330,9 @@ Flow:
    - 🟩 victory
    - 🟦 partial victory
    - 🟥 no victory
-7. Captain sends text or voice report.
-8. Bot saves report before deadline.
+7. For 🟩 or 🟦, captain selects one or more related planned steps.
+8. Captain sends text or voice report.
+9. Bot saves report before deadline.
 
 Manual captain report must store:
 - participant id
@@ -310,11 +340,14 @@ Manual captain report must store:
 - team id
 - week number
 - status
+- selected step ids for 🟩 or 🟦
 - report text
 - transcription if voice
 - audio file link if voice
 - submitted by captain
 - submitted at
+
+Captain cannot submit reports for dropped participants.
 
 ## 17. Silent participants
 
@@ -351,6 +384,16 @@ Store:
 - created at
 
 Audio files are stored until one month after the end of challenge.
+
+Audio path structure on VPS:
+- `data/audio/{year}/week_{week_number}/{team_name}/{participant_id}/{report_or_insight_id}.ogg`
+
+Audio retention:
+- original audio is stored locally on VPS
+- audio file path remains in Google Sheets after deletion
+- audio is deleted automatically one month after recording
+- transcription text remains in Google Sheets after original audio deletion
+- reports must show transcription text after audio deletion, not the audio file
 
 If transcription fails:
 - participant is asked to repeat voice or send text
@@ -413,6 +456,13 @@ PDF should include participant details:
 - transcription text
 - insights
 
+PDF retention and access:
+- PDF is simple and readable in MVP
+- no "Смерть иллюзий" brand styling is required in MVP
+- PDF is stored on VPS for 6 months after challenge end
+- PDF is not available by public link
+- PDF is sent only to authorized recipients by role
+
 ## 23. PDF recipients
 
 - captain receives PDF for own team
@@ -431,7 +481,12 @@ Do not send group comparison to captains or trackers unless explicitly requested
 
 ## 25. Error notifications
 
-Admin must receive Telegram error notifications for:
+The system uses three Telegram bots:
+- main bot for participant and captain scenarios
+- error bot for technical errors only, sent only to admin
+- notification bot for operational notifications, PDFs, and summaries
+
+Admin must receive technical error notifications through error bot for:
 - participant not found
 - unknown Telegram user
 - Google Sheets read error
@@ -444,6 +499,8 @@ Admin must receive Telegram error notifications for:
 - invalid dialog state
 - missing required data
 
+Technical errors must not be sent to participants, captains, trackers, or Alexander Sitnikov. Ordinary work notifications go through notification bot.
+
 ## 26. Security and privacy
 
 Rules:
@@ -453,8 +510,10 @@ Rules:
 - do not send personal data to unnecessary chats
 - do not include secrets in logs
 - restrict access to Google Sheets
-- only admin edits Google Sheets directly
-- captains and trackers interact through bot
+- only admin edits Google Sheets structure and primary data directly
+- trackers may have direct Google Sheets access but must not change structure, column names, technical IDs, or service fields
+- captains and participants do not get direct Google Sheets access
+- captain receives full report texts, transcriptions, and insights only for own team
 - participant data is only visible according to role
 
 ## 27. Out of MVP
@@ -471,9 +530,34 @@ Out of MVP:
 - mobile app
 - advanced analytics
 - automatic coaching recommendations
+- Docker
+- Redis
+- Celery
+- Kubernetes
 
-## 28. Open decisions
+## 28. Deployment and backups
 
-Any unclear requirement must be written to docs/02_open_questions.md.
+Production deployment:
+- production MVP runs as `systemd` service on VPS
+- bot runs 24/7
+- manual Python command is allowed for tests
+- `systemd` starts bot after reboot and restarts it after process crash
+- logs are available through `journalctl`
+- dependencies are installed in Python virtual environment `.venv`
+- configuration is stored in `.env`
+- production launch requires separate test Telegram bot and smoke test
+
+Backups:
+- SQLite is backed up daily, automatically, with 14-day retention
+- Google Sheets is exported periodically as `.xlsx` or `.csv`, with 14-day retention
+- fresh Google Sheets export is recommended before week close and mass report sending
+- no mandatory audio backup in MVP
+- no mandatory separate PDF backup in MVP
+- backup folder: `/root/telegram_goals_bot/backups/`
+- `backups/` must not be committed
+
+## 29. Decisions
+
+Product decisions are recorded in `docs/02_open_questions.md`.
 
 Do not guess silently.

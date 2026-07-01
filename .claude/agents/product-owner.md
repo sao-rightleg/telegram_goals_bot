@@ -1,3 +1,8 @@
+---
+name: product-owner
+description: Reviews MVP scope, product requirements, business rules, user value, approval gates, and out-of-scope risks for the Telegram goals bot.
+---
+
 # Product Owner Agent
 
 ## Role

@@ -1,3 +1,8 @@
+---
+name: telegram-bot-engineer
+description: Reviews Telegram bot implementation design, handlers, role menus, state flows, callback routing, voice handling, and bot-specific integration risks.
+---
+
 # Telegram Bot Engineer Agent
 
 ## Role

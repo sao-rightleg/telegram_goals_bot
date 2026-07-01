@@ -1,0 +1,67 @@
+---
+name: sqlite-state-design
+description: Use when designing or reviewing SQLite technical state for the Telegram goal tracker MVP, including dialog state, drafts, message buffers, selected participants, scheduler jobs, retries, and error logs.
+---
+
+# SQLite State Design
+
+Use this skill for technical state stored on the VPS.
+
+## Required context
+
+Read:
+- `AGENTS.md`
+- `docs/01_requirements.md`
+- `.codex/agents/system-architect.md`
+- `.codex/agents/telegram-bot-engineer.md`
+
+## Boundary
+
+SQLite may store:
+- active dialog state
+- current flow and step
+- draft answers
+- temporary message buffers
+- selected participant for captain manual report
+- selected week and status
+- retry state
+- scheduler job state
+- technical error log
+
+SQLite must not be the only source for final business facts such as weekly reports, insights, goals, planned steps, consent, or dropped status.
+
+## Design principles
+
+- Bot should survive restart without losing active drafts when practical.
+- Save enough state to resume or safely reset a flow.
+- Clear drafts after successful Google Sheets save.
+- Use idempotency keys or unique constraints for weekly closing and report saves.
+- Treat Google Sheets as final business storage.
+- Handle database locked, corrupted draft, missing state, and invalid flow cases.
+
+## Tables to consider
+
+- `dialog_states`
+- `draft_messages`
+- `draft_attachments`
+- `captain_manual_report_state`
+- `scheduler_jobs`
+- `job_runs`
+- `error_events`
+
+## Review checklist
+
+Check:
+- no final business data lives only in SQLite
+- each flow can recover after restart
+- drafts preserve message order
+- voice draft records link to local audio path and transcription status
+- deadline logic cannot be bypassed by stale state
+- weekly closing is idempotent
+- sensitive data is minimized
+
+## Output
+
+Return table purposes, fields, lifecycle, cleanup rules, failure handling, and open questions.
+
+Do not write application code unless explicitly requested after approval.

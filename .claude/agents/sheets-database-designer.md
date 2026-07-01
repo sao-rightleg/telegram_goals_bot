@@ -1,3 +1,8 @@
+---
+name: sheets-database-designer
+description: Reviews Google Sheets schema, stable IDs, allowed values, sheet boundaries, manual admin operations, and migration safety for the Telegram goals bot.
+---
+
 # Google Sheets Database Designer Agent
 
 ## Role

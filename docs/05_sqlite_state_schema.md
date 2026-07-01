@@ -15,6 +15,7 @@ SQLite may store:
 - temporary message buffers
 - selected participant for captain manual report
 - selected week and selected status
+- selected planned step IDs for green and blue reports
 - voice processing draft state
 - scheduler jobs and job runs
 - retry state
@@ -55,7 +56,7 @@ Columns:
 - `week_number`
 - `selected_status`
 - `selected_participant_id`
-- `selected_step_id`
+- `selected_step_ids`
 - `draft_id`
 - `started_at`
 - `updated_at`
@@ -74,7 +75,8 @@ Suggested `flow` values:
 
 Notes:
 - `selected_participant_id` is used for captain manual report.
-- `selected_step_id` is optional until step-linking decisions are finalized.
+- `selected_step_ids` is required before saving `green` or `blue` reports.
+- `selected_step_ids` may contain multiple step IDs because one weekly report can close or partially progress several steps.
 
 ## draft_messages
 
@@ -151,7 +153,10 @@ Allowed `flow_source` values:
 - `captain_manual`
 
 Notes:
-- `selected_step_ids` can be empty until step-linking is decided.
+- `selected_step_ids` is required for `green` and `blue`.
+- `green` means selected steps will be saved as `closed` relations in Google Sheets.
+- `blue` means selected steps will be saved as `partial` relations in Google Sheets.
+- `selected_step_ids` may be empty only for `red` or non-status-changing late text.
 - Final weekly report must be stored in Google Sheets.
 
 ## draft_insights
@@ -198,6 +203,9 @@ Suggested `job_type` values:
 - `report_generate`
 - `report_send`
 - `audio_cleanup`
+- `sqlite_backup`
+- `google_sheets_export`
+- `pdf_retention_check`
 
 Allowed `status` values:
 - `pending`
@@ -283,17 +291,61 @@ If Google Sheets write fails, keep draft state and tell user that save did not c
 ## Deadline Protection
 
 Before final save:
-- calculate current time in Yekaterinburg time
+- calculate current time in `Asia/Yekaterinburg`
 - verify current week is still open
 - reject status-changing participant report after Sunday 23:59
 - reject captain manual report after Sunday 23:59
 - never create yellow late status
+- allow late report text only as non-status-changing text if this flow is implemented
+- require selected step IDs before saving `green` or `blue`
+- reject attempts to close already closed planned steps
 
-## Open Questions / Decisions Needed
+## Scheduler Decisions
+
+Scheduler uses `Asia/Yekaterinburg`.
+
+Fixed reminder schedule:
+- Monday 10:00 start-of-week reminder
+- Wednesday 10:00 soft check-in
+- Sunday 18:00 final check-in
+- Sunday 22:30 reminder for participants without weekly report
+- Sunday 23:00 last reminder for participants without weekly report
+- Sunday 23:59 hard deadline
+
+Challenge calendar:
+- all teams use one shared calendar
+- challenge end date is `2026-07-31`
+- weeks 1-2 are goal/route setup
+- weeks 3-8 are six working execution weeks
+- after week 8 there are four days for final summary
+
+## Cleanup and Backup Jobs
+
+Audio cleanup:
+- delete original audio automatically one month after recording
+- keep audio path and transcription in Google Sheets
+- system must not try to open or send deleted audio files
+
+SQLite backup:
+- daily automatic backup
+- 14-day retention
+
+Google Sheets export:
+- periodic `.xlsx` or `.csv` export
+- 14-day retention
+- fresh export recommended before week close and mass report sending
+
+Backup location: `/root/telegram_goals_bot/backups/`.
+
+## Bot Separation
+
+SQLite state belongs to main bot user flows. Error bot and notification bot should not mutate dialogue state unless explicitly required by a future tech spec.
+
+Technical errors are routed to error bot. Operational reminders, PDFs, and summaries are routed to notification bot.
+
+## Open Implementation Questions
 
 - Exact draft expiration time.
 - Whether stale drafts should be auto-cleared or resumed first.
-- Whether selected step IDs should be stored as text in SQLite or normalized in a separate draft relation table.
 - Exact scheduler implementation and persistence strategy.
 - Whether `error_events` is enough or critical errors should also be mirrored to Google Sheets.
-- Exact audio cleanup job behavior after challenge end.

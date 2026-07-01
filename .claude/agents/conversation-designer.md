@@ -1,3 +1,8 @@
+---
+name: conversation-designer
+description: Reviews and designs Telegram dialogue flows, Russian UX copy, consent, menus, weekly report flows, insight flows, and role-specific conversation states for the Telegram goals bot.
+---
+
 # Conversation Designer Agent
 
 ## Role

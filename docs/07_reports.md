@@ -60,6 +60,9 @@ Receives:
 - short Telegram report for own team
 - PDF report for own team
 - notifications about silent participants in own team
+- full report texts for own team participants
+- full voice transcriptions for own team participants
+- insights for own team participants
 
 Does not receive:
 - reports for other teams
@@ -197,17 +200,25 @@ Unless this rule is explicitly changed later.
 
 ## Progress Bar
 
-Current recommendation:
-- step progress bar reflects planned step progress
-- weekly history may be shown separately
+Main progress bar:
+- shows completion of 6 planned steps
+- has 6 cells
+- does not include weeks 1-2
+- is the source for main progress percent
+
+Scoring:
+- `🟩` = 1 closed step
+- `🟦` = 0.5 step
+- `🟥` = 0
+- `⬜` = 0
+
+Weekly status history is stored separately from the main progress bar. UI and reports may show both, but the main progress percent is calculated only from planned steps.
 
 Example:
 
 ```text
 Иванов Иван — 🟩🟦⬜⬜⬜⬜ 25%
 ```
-
-This still requires final decision because current requirements mention progress is based on planned steps while report examples look like weekly history.
 
 ## Data Sources
 
@@ -236,9 +247,13 @@ PDF files:
 - sent only to authorized recipients
 - not exposed as public links
 - not committed to repository
+- stored for 6 months after challenge end
+- not deleted immediately after sending
 
 Recommended folder:
 - `reports/pdf/`
+
+If original audio has already been deleted by retention cleanup, reports must show `transcription_text` and must not try to attach or open the deleted audio file.
 
 ## Error Handling
 
@@ -264,12 +279,11 @@ Use clean readable MVP PDF:
 - obvious status meanings
 - no unnecessary decoration
 - suitable for phone and desktop reading
+- no special "Смерть иллюзий" brand styling
+- no print-specific preparation requirement
 
-## Open Questions / Decisions Needed
+## Product Decisions
 
-- Final progress bar meaning: planned steps, weekly statuses, or both.
-- Whether captain PDF may include full report texts and transcriptions of own team members.
-- How to handle very long voice transcriptions in PDF: full text in participant section or appendix.
-- Exact visual quality level for MVP PDF.
-- Exact Russian report terminology.
-- Retention policy for generated PDF files.
+Resolved product decisions are recorded in `docs/02_open_questions.md`.
+
+Long voice transcriptions may be shown in participant sections or appendix; choose the readable option during PDF implementation without changing access rules.

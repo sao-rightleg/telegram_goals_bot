@@ -222,16 +222,22 @@ Exit criteria:
 Deliverables:
 - production config checklist
 - VPS folder structure
-- systemd service plan if approved
+- systemd service plan
 - backup plan
 - audio/PDF retention plan
 - admin smoke test checklist
+- separate test bot setup
+- test Google Sheets table or test sheets
 
 Exit criteria:
-- deployment method approved
-- backups and retention decisions documented
-- admin error chat tested
+- production runs through `systemd` on VPS
+- Docker, Redis, Celery, and Kubernetes are not introduced
+- `.venv` and `.env` based runtime documented
+- `journalctl` log access documented
+- backups and retention implementation documented
+- three-bot routing tested: main bot, error bot, notification bot
 - basic restart behavior tested
+- smoke test passes before production bot launch
 
 ## MVP Success Criteria
 
@@ -249,29 +255,25 @@ MVP is ready when:
 
 ## Key Risks
 
-- Unresolved challenge dates can break week numbering and audio retention.
-- Ambiguous step-closing rules can break progress calculation.
-- Progress bar meaning must be clarified before final report implementation.
-- Manual Google Sheets edits can break IDs or role permissions.
+- Three-bot decision can add MVP implementation complexity; do not simplify without user confirmation.
+- Scheduler must calculate dates from the shared challenge calendar and `2026-07-31` end date correctly.
+- Manual Google Sheets edits by trackers can break IDs or role permissions if they change structure or service fields.
 - Voice transcription failures must not lose participant answers.
 - Wrong report routing can leak personal data.
 - Duplicate scheduler runs can create duplicate reminders or gray reports unless idempotent.
+- Step selection must prevent duplicate closure of already closed steps.
+- Audio cleanup must not break reports after original audio files are deleted.
 
-## Open Questions / Decisions Needed
+## Resolved Product Decisions
 
-- Exact challenge start and end dates.
-- Exact number of weeks.
-- Exact Monday and Wednesday reminder times.
-- Who marks final goal achievement.
-- What happens after all planned steps are completed early.
-- Step selection rules for participant reports.
-- Step selection rules for captain manual reports.
-- Final progress bar meaning.
-- Final Russian terminology.
-- Captain access to full report text and transcriptions.
-- Audio storage path and deletion process.
-- Google Sheets direct edit permissions confirmation.
-- Error chat implementation.
-- PDF design quality.
-- Production deployment method.
-- Backup policy.
+Resolved product decisions are recorded in `docs/02_open_questions.md`.
+
+Implementation must respect:
+- shared challenge calendar ending `2026-07-31`
+- 6 planned steps and 6-cell main progress bar
+- mandatory step selection for `green` and `blue`
+- tracker/admin-only final goal achievement
+- three Telegram bots
+- systemd production runtime on VPS
+- SQLite and Google Sheets backup policy
+- audio and PDF retention policy

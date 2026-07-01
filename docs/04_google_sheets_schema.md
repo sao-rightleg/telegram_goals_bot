@@ -129,6 +129,8 @@ Columns:
 - `permission_metric_amount`
 - `permission_metric_unit`
 - `goal_status`
+- `goal_achieved_by_id`
+- `goal_achieved_by_role`
 - `achieved_at`
 - `created_at`
 - `updated_at`
@@ -142,7 +144,11 @@ Allowed `goal_status` values:
 Notes:
 - Goal is a concrete desired object or result.
 - Goal is not simply money.
-- Who marks a goal achieved is not decided yet.
+- Final goal achievement is fixed by tracker.
+- Admin may also fix final goal achievement through Google Sheets.
+- Participant and captain cannot mark final goal as achieved.
+- Bot must not automatically mark final goal as achieved only because all planned steps are closed.
+- Allowed `goal_achieved_by_role` values: `tracker`, `admin`.
 
 ## PlannedSteps
 
@@ -172,7 +178,10 @@ Allowed `step_status` values:
 Notes:
 - Steps are not tied to specific weeks.
 - Participants cannot add new steps in MVP.
-- Whether one weekly report can close multiple steps is still a decision needed.
+- Main route contains 6 planned steps.
+- One weekly report may close several steps.
+- Already closed steps cannot be closed again.
+- New/additional steps are formulated by participant with captain/tracker and added by admin in Google Sheets.
 
 ## WeeklyReports
 
@@ -192,6 +201,7 @@ Columns:
 - `report_text`
 - `transcription_text`
 - `audio_file_path`
+- `audio_deleted_at`
 - `submitted_by_id`
 - `submitted_by_role`
 - `submitted_source`
@@ -232,10 +242,13 @@ Rules:
 - No yellow late status.
 - Late reports after Sunday 23:59 Yekaterinburg time do not change weekly status.
 - Missing report after deadline becomes `gray` / `⬜` from `system_deadline`.
+- `green` and `blue` weekly reports must have one or more related rows in `WeeklyReportSteps`.
+- Late report text may be stored, but `status_code`, `status_symbol`, and `status_score` for the closed week must not change.
+- Audio file path remains in Google Sheets after audio deletion; use `audio_deleted_at` to indicate retention cleanup.
 
 ## WeeklyReportSteps
 
-Stores relation between weekly reports and planned steps if step selection is approved.
+Stores relation between weekly reports and planned steps.
 
 Columns:
 - `id`
@@ -251,8 +264,11 @@ Allowed `relation_type` values:
 - `mentioned`
 
 Notes:
-- This sheet is needed if one report can relate to one or more planned steps.
-- Exact step-linking rules are still open.
+- This sheet is mandatory for `green` and `blue` reports.
+- `green` requires one or more `closed` relations.
+- `blue` requires one or more `partial` relations.
+- Multiple rows allow one weekly report to close or partially progress several steps.
+- Bot must reject duplicate closure of already closed steps.
 
 ## Insights
 
@@ -267,6 +283,7 @@ Columns:
 - `insight_text`
 - `transcription_text`
 - `audio_file_path`
+- `audio_deleted_at`
 - `created_by_id`
 - `created_by_role`
 - `created_at`
@@ -285,6 +302,7 @@ Rules:
 - Insight does not count as victory.
 - Insight does not change weekly status.
 - Insight does not replace action.
+- Audio file path remains after audio deletion; transcription text remains permanently.
 
 ## ReportRuns
 
@@ -296,6 +314,7 @@ Columns:
 - `team_id`
 - `report_type`
 - `pdf_file_path`
+- `pdf_expires_at`
 - `generated_at`
 - `sent_to_captain`
 - `sent_to_tracker`
@@ -315,6 +334,11 @@ Allowed `status` values:
 - `generated`
 - `sent`
 - `failed`
+
+Rules:
+- PDF is stored locally for 6 months after challenge end.
+- PDF must not be publicly accessible.
+- PDF can be regenerated from Google Sheets if source data remains.
 
 ## Errors
 
@@ -371,13 +395,17 @@ Before bot uses the sheet data, validate:
 - each team has captain and tracker
 - report status code, symbol, and score match
 - no captain is assigned outside own team unless explicitly configured
+- trackers must not change sheet structure, column names, technical IDs, or service fields
+- `WeeklyReportSteps` exists for every `green` and `blue` weekly report
+- no closed planned step is closed again by a later report
 
-## Open Questions / Decisions Needed
+## Access Rules
 
-- Should consent have a separate history sheet or remain only in `Participants`?
-- Should `WeeklyReportSteps` be mandatory in MVP or only added after step-linking is decided?
-- If green status is selected, must a planned step be selected?
-- If blue status is selected, can a planned step be linked as partial?
-- Can one weekly report close multiple steps?
-- Should deleted audio file paths remain in Google Sheets after retention cleanup?
-- Should critical errors be duplicated in the `Errors` sheet or only sent to admin chat/logs?
+- Admin directly edits Google Sheets and owns structure/data correctness.
+- Trackers may have direct access, but must not change structure, column names, technical IDs, or service fields.
+- Captains and participants do not get direct Google Sheets access.
+- All participant and captain writes go through Telegram bot.
+
+## Product Decisions
+
+Resolved product decisions are recorded in `docs/02_open_questions.md`.

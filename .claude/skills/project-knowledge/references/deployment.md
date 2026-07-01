@@ -1,0 +1,68 @@
+# Deployment
+
+## Current State
+
+Production deployment is approved as a `systemd` service on VPS for MVP.
+
+Do not deploy or push to production without explicit user approval.
+
+All deployments must go through GitHub CI/CD unless emergency debugging of broken production requires direct server access.
+
+Docker, Redis, Celery, Kubernetes, and complex DevOps are out of MVP.
+
+## Environment Variables and Credentials
+
+Use `.env` or protected credential files locally. Use GitHub Actions secrets in CI/CD.
+
+Required configuration is expected to include:
+
+- `MAIN_TELEGRAM_BOT_TOKEN`
+- `ERROR_TELEGRAM_BOT_TOKEN`
+- `NOTIFICATION_TELEGRAM_BOT_TOKEN`
+- `GOOGLE_SHEETS_ID`
+- `GOOGLE_APPLICATION_CREDENTIALS`
+- `ADMIN_TELEGRAM_ID`
+- `ADMIN_ERROR_CHAT_ID`
+- `SITNIKOV_TELEGRAM_ID`
+- `IVAN_LARKIN_TELEGRAM_ID`
+- `MARIA_TELEGRAM_ID`
+- `TRANSCRIPTION_PROVIDER`
+- `TRANSCRIPTION_API_KEY`
+- `APP_TIMEZONE`
+- `SQLITE_DB_PATH`
+- `AUDIO_STORAGE_DIR`
+- `PDF_STORAGE_DIR`
+- `LOG_LEVEL`
+
+Never ask the user to paste secret values in chat.
+
+## Local Runtime Paths
+
+Recommended local folders:
+
+- `data/audio/`
+- `data/sqlite/`
+- `reports/pdf/`
+- `logs/`
+- `backups/sqlite/`
+- `backups/google_sheets_exports/`
+- `backups/pdf/`
+
+Generated files, credentials, logs, SQLite databases, audio files, PDFs, and backups must not be committed.
+
+## Operations
+
+Manual service commands:
+
+- `systemctl status telegram-goals-bot`
+- `systemctl restart telegram-goals-bot`
+- `journalctl -u telegram-goals-bot -f`
+
+Production launch requires a separate test Telegram bot and smoke test.
+
+## Retention and Backups
+
+- SQLite: daily automatic backup, 14-day retention.
+- Google Sheets: periodic `.xlsx` or `.csv` export, 14-day retention.
+- Audio: no mandatory backup; original audio is deleted one month after recording.
+- PDF: no mandatory separate backup; PDF is stored locally for 6 months after challenge end.

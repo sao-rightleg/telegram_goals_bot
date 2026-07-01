@@ -19,13 +19,21 @@ Each participant has:
 - a concrete goal
 - a goal value
 - a permission condition
-- predefined planned steps
+- predefined planned steps: 6 main route steps for working weeks
 - weekly progress
 - insights
 
 The steps are not rigidly tied to specific weeks.
 
 Each week the participant should complete at least one remaining planned step or make meaningful progress toward the goal.
+
+Challenge calendar:
+- all teams start simultaneously
+- week 1: goal formulation
+- week 2: route / planned steps
+- weeks 3-8: six working execution weeks
+- challenge end date: `2026-07-31`
+- all times use `Asia/Yekaterinburg`
 
 ## MVP goal
 
@@ -90,6 +98,11 @@ Audio files are stored locally on VPS.
 
 PDF reports are generated and stored locally on VPS before sending.
 
+The MVP uses three Telegram bots:
+- main bot for participant/captain scenarios
+- error bot for technical errors sent only to admin
+- notification bot for operational notifications, PDFs, and summaries
+
 ## Reporting
 
 The system generates:
@@ -121,6 +134,8 @@ Participants cannot add new planned steps in MVP.
 Late reports after Sunday 23:59 Yekaterinburg time do not change weekly status.
 
 Insights are stored separately and do not replace weekly progress.
+
+Main progress is calculated from the 6 planned steps. Weekly status history is stored separately.
 
 ## Development principle
 

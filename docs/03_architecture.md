@@ -125,8 +125,8 @@ Voice limit: 10 minutes.
 ### Scheduler Layer
 
 Responsibilities:
-- Monday morning start-of-week reminder
-- Wednesday evening soft check-in
+- Monday 10:00 start-of-week reminder
+- Wednesday 10:00 soft check-in
 - Sunday 18:00 final check-in
 - Sunday 22:30 reminder for participants without weekly report
 - Sunday 23:00 last reminder for participants without weekly report
@@ -135,6 +135,16 @@ Responsibilities:
 - Monday 00:20-01:00 send reports
 
 All schedule logic uses Yekaterinburg time.
+Timezone identifier: `Asia/Yekaterinburg`.
+
+Challenge calendar:
+- all teams share one calendar
+- challenge end date is `2026-07-31`
+- week 1 is goal formulation
+- week 2 is route / planned steps
+- weeks 3-8 are six working execution weeks
+- after week 8 there are four days for final summary
+- if scheduler needs exact start date, calculate it from `2026-07-31` using 8 weeks plus 4 final-summary days
 
 Jobs must be idempotent where possible:
 - no duplicate reminders for the same participant, week, and reminder type
@@ -155,12 +165,21 @@ Reports must be generated from Google Sheets business data, not SQLite drafts.
 ### Notification Routing Layer
 
 Responsibilities:
-- send participant messages
+- route participant and captain messages through main bot
+- route technical errors through error bot to admin only
+- route operational notifications, PDFs, and summaries through notification bot
 - send captain notifications for own team
 - send tracker reports for assigned teams
-- send all reports and errors to admin
+- send all reports to admin
 - send all reports and group comparison to Sitnikov
 - prevent data from being sent to unauthorized roles
+
+The MVP uses three Telegram bots:
+- main bot for participant and captain scenarios
+- error bot for technical errors only
+- notification bot for operational notifications and report delivery
+
+If three bots increase implementation complexity, document it as implementation risk. Do not collapse the design to one bot without user confirmation.
 
 ### File Storage Layer
 
@@ -176,7 +195,18 @@ Recommended local folders:
 - `data/sqlite/`
 - `reports/pdf/`
 - `logs/`
-- `backups/` if backups are enabled
+- `backups/sqlite/`
+- `backups/google_sheets_exports/`
+- `backups/pdf/`
+
+Audio path structure:
+- `data/audio/{year}/week_{week_number}/{team_name}/{participant_id}/{report_or_insight_id}.ogg`
+
+Retention:
+- original audio is deleted automatically one month after recording
+- transcription remains in Google Sheets after audio deletion
+- PDFs are stored locally for 6 months after challenge end
+- generated PDFs must not be publicly accessible
 
 Generated files and secrets must not be committed.
 
@@ -234,6 +264,7 @@ Can access:
 - manual report flow for own team
 - notifications about silent participants in own team
 - PDF report for own team
+- full report texts, voice transcriptions, and insights for own team
 
 Cannot access:
 - other teams
@@ -245,6 +276,8 @@ Cannot access:
 Can receive reports and notifications for assigned teams:
 - Ivan Larkin: male teams
 - Maria: female teams
+
+Trackers may have direct Google Sheets access, but must not change sheet structure, column names, technical IDs, or service fields.
 
 ### Admin
 
@@ -264,7 +297,9 @@ Can receive:
 ## Configuration
 
 Use environment variables or protected credential files for:
-- Telegram bot token
+- main Telegram bot token
+- error Telegram bot token
+- notification Telegram bot token
 - Google Sheets ID
 - Google credentials path
 - admin Telegram ID
@@ -279,6 +314,48 @@ Use environment variables or protected credential files for:
 - log level
 
 Do not hardcode production IDs, tokens, chat IDs, or credentials in source code.
+
+## Production Runtime
+
+Production MVP runs as a `systemd` service on VPS.
+
+Runtime rules:
+- bot runs 24/7
+- manual Python command is allowed for tests
+- `systemd` starts the bot after VPS reboot
+- `systemd` restarts the bot after process crash
+- logs are read through `journalctl`
+- dependencies are installed in `.venv`
+- configuration is stored in `.env`
+- Docker, Redis, Celery, Kubernetes, and complex DevOps are out of MVP
+
+Manual operations to document:
+- `systemctl status telegram-goals-bot`
+- `systemctl restart telegram-goals-bot`
+- `journalctl -u telegram-goals-bot -f`
+
+Production requires a separate test Telegram bot and smoke test before launch.
+
+## Backup Architecture
+
+SQLite:
+- daily automatic backup
+- 14-day retention
+
+Google Sheets:
+- periodic `.xlsx` or `.csv` export
+- 14-day retention
+- fresh export recommended before week close and mass report sending
+
+Audio:
+- no mandatory backup in MVP
+- transcription text is the long-term source
+
+PDF:
+- no mandatory separate backup in MVP
+- PDF can be regenerated from Google Sheets if source data remains
+
+Backup location: `/root/telegram_goals_bot/backups/`.
 
 ## Error Handling
 
@@ -308,14 +385,6 @@ However, architecture should avoid blocking a future channel or storage migratio
 - keep report generation separate from transport
 - keep notification routing role-aware
 
-## Open Questions / Decisions Needed
+## Product Decisions
 
-- Exact challenge start date, end date, number of weeks, and whether all teams start together.
-- Exact Monday morning and Wednesday evening reminder times.
-- Who marks final goal achievement and what bot behavior follows.
-- What happens after all planned steps are completed early.
-- Whether green and blue weekly reports must link to one or more planned steps.
-- Exact progress bar meaning: planned steps, weekly history, or both.
-- Audio folder structure and deletion process.
-- Backup policy for Google Sheets, SQLite, audio, and PDFs.
-- Final production deployment method; current recommendation is systemd on VPS.
+Resolved product decisions are recorded in `docs/02_open_questions.md`.

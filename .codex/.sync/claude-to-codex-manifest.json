@@ -1,0 +1,437 @@
+{
+  "entries": [
+    {
+      "adapter": "project-instructions",
+      "adapter_version": "1",
+      "input_set_hash": "d25009bc72797fa27d5184f3447f87ab5337dd507f95247d9641b7363fa22c2f",
+      "outputs": [
+        {
+          "output_sha256": "37d0e9a795c8bf2efff593f59ee648ede9291e443328c6918e540250f647108a",
+          "source_sha256": "d25009bc72797fa27d5184f3447f87ab5337dd507f95247d9641b7363fa22c2f",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/AGENTS.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/CLAUDE.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:13:49Z"
+    },
+    {
+      "adapter": "project-skill",
+      "adapter_version": "1",
+      "input_set_hash": "c996e0392a54d0edf1d0f5acd2d399a0f5e4f8c5e70c4ac789b6b7b6cc7864d6",
+      "outputs": [
+        {
+          "output_sha256": "8186b8b7f084495c233abd48eb8d8fb09a05c2c5b03a3527a89e528b1f0928d8",
+          "source_sha256": "c996e0392a54d0edf1d0f5acd2d399a0f5e4f8c5e70c4ac789b6b7b6cc7864d6",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/skills/google-sheets-schema/SKILL.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/skills/google-sheets-schema/SKILL.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-skill",
+      "adapter_version": "1",
+      "input_set_hash": "129913180800c5b40a6eb7bcb37e31382ae9d00cd855f980b3f0d4db6d4c227e",
+      "outputs": [
+        {
+          "output_sha256": "4d6ab77c065736e8c3b9c158a802f44d64e45d9778ce73174c69a939eeb6954b",
+          "source_sha256": "129913180800c5b40a6eb7bcb37e31382ae9d00cd855f980b3f0d4db6d4c227e",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/skills/mvp-planning/SKILL.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/skills/mvp-planning/SKILL.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-skill",
+      "adapter_version": "1",
+      "input_set_hash": "874ef0d29e502ac8274d115da5438815c2d45fd55c6aab117800f19dfc9cd372",
+      "outputs": [
+        {
+          "output_sha256": "12588803770f6e0a72e16758f9ae272d17bef9d57c9938a2a66d4402dbd88c62",
+          "source_sha256": "874ef0d29e502ac8274d115da5438815c2d45fd55c6aab117800f19dfc9cd372",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/skills/pdf-report-design/SKILL.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/skills/pdf-report-design/SKILL.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-skill",
+      "adapter_version": "1",
+      "input_set_hash": "073284572f9ed9a05011539d0fe4ee4263cd0f3c15ca4b65477797f61cfbe46c",
+      "outputs": [
+        {
+          "output_sha256": "308caccc714f4926429aca7842538cac317c4fa4a18edd6f7cb5a0d3ca2bdeb2",
+          "source_sha256": "073284572f9ed9a05011539d0fe4ee4263cd0f3c15ca4b65477797f61cfbe46c",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/SKILL.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/SKILL.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:13:49Z"
+    },
+    {
+      "adapter": "project-skill",
+      "adapter_version": "1",
+      "input_set_hash": "f9b59ba347f4605393b5ca127e7faddc64db289a377c907801af2fa8c876a4ee",
+      "outputs": [
+        {
+          "output_sha256": "587508fecd6623f80bb605c279d5f045dbca9e7e654b866f42c5eed947eaef32",
+          "source_sha256": "f9b59ba347f4605393b5ca127e7faddc64db289a377c907801af2fa8c876a4ee",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/references/architecture.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/references/architecture.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T20:36:07Z"
+    },
+    {
+      "adapter": "project-skill",
+      "adapter_version": "1",
+      "input_set_hash": "6969bf5e45cc1e76d1a5f81355ebc5bb451c47c8dc45443dc6f316a38e714d3c",
+      "outputs": [
+        {
+          "output_sha256": "41a96293242c5193ff9c1180b075669cb14ec79931aa8d1f16087b09fd5ca4fb",
+          "source_sha256": "6969bf5e45cc1e76d1a5f81355ebc5bb451c47c8dc45443dc6f316a38e714d3c",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/references/deployment.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/references/deployment.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T20:36:07Z"
+    },
+    {
+      "adapter": "project-skill",
+      "adapter_version": "1",
+      "input_set_hash": "b5ce13933b34f385b585b555772828c35bb1507ccd19d07289f561888695257d",
+      "outputs": [
+        {
+          "output_sha256": "62751cdd7111d5be4b785d29208b304900497e5c8f70e2edf0a271afaeca9242",
+          "source_sha256": "b5ce13933b34f385b585b555772828c35bb1507ccd19d07289f561888695257d",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/references/patterns.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/references/patterns.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:13:49Z"
+    },
+    {
+      "adapter": "project-skill",
+      "adapter_version": "1",
+      "input_set_hash": "e5f1352eae2c4d86aa60665b33718a8d326cc198945eeaba7fbee2075cbb4ad9",
+      "outputs": [
+        {
+          "output_sha256": "4869b5561de8d1e1472e68eadf4bf787e9e4e7f9fe6804cf2f389fd2533efd5e",
+          "source_sha256": "e5f1352eae2c4d86aa60665b33718a8d326cc198945eeaba7fbee2075cbb4ad9",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/references/project.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/references/project.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T20:36:07Z"
+    },
+    {
+      "adapter": "project-skill",
+      "adapter_version": "1",
+      "input_set_hash": "fe2b9865f7af3cdf31b2252b4dfe5bcdda76302fc3fae710e74fd46359e211f7",
+      "outputs": [
+        {
+          "output_sha256": "7258261b4bd6049a985e02c0b948c5513736f3fb419ba8c68a3fe645b3e5804d",
+          "source_sha256": "fe2b9865f7af3cdf31b2252b4dfe5bcdda76302fc3fae710e74fd46359e211f7",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/references/requirements.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/references/requirements.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T20:36:07Z"
+    },
+    {
+      "adapter": "project-skill",
+      "adapter_version": "1",
+      "input_set_hash": "b976d3a8f8ad09a718b726a18693e8767a8cbead18b88df10d8908e7403efde5",
+      "outputs": [
+        {
+          "output_sha256": "308f67fa5ccb6eb7edc7d0c191f59893d7625ffbc2a3667584c68870c0a9a9c4",
+          "source_sha256": "b976d3a8f8ad09a718b726a18693e8767a8cbead18b88df10d8908e7403efde5",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/references/ux-guidelines.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/references/ux-guidelines.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T20:36:07Z"
+    },
+    {
+      "adapter": "project-skill",
+      "adapter_version": "1",
+      "input_set_hash": "ce31443c8b68d54a9ae2dcff60c905f944bf64be99f6d67f3d41385fabeab740",
+      "outputs": [
+        {
+          "output_sha256": "ba21be4af6ea4c3e9ff12fb04f3f3937b88db1fc910bfe5dd0adc24c5d140373",
+          "source_sha256": "ce31443c8b68d54a9ae2dcff60c905f944bf64be99f6d67f3d41385fabeab740",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/skills/qa-edge-cases/SKILL.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/skills/qa-edge-cases/SKILL.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-skill",
+      "adapter_version": "1",
+      "input_set_hash": "9a5f24af22277982223f0b4390a71364bce98ae2d3cf89778b5e1f757b0fc2b7",
+      "outputs": [
+        {
+          "output_sha256": "7e3a6f67cb82725bf250eea318639c6a3967a23dc58b66b5714541e792176969",
+          "source_sha256": "9a5f24af22277982223f0b4390a71364bce98ae2d3cf89778b5e1f757b0fc2b7",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/skills/requirements-review/SKILL.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/skills/requirements-review/SKILL.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-skill",
+      "adapter_version": "1",
+      "input_set_hash": "f95a055033b1a0b486cde4aca12dbe89b5127f4a3c11687d3a92994231957b5b",
+      "outputs": [
+        {
+          "output_sha256": "f19200df007ba9ab5ad2fa949988838a7a2921cd2bb4c0548b850696afe01791",
+          "source_sha256": "f95a055033b1a0b486cde4aca12dbe89b5127f4a3c11687d3a92994231957b5b",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/skills/scheduler-design/SKILL.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/skills/scheduler-design/SKILL.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-skill",
+      "adapter_version": "1",
+      "input_set_hash": "c81e5c9d3fc6f51318d0f6669ae54d9cf2efa9e32e46928f6246f4cd6055edde",
+      "outputs": [
+        {
+          "output_sha256": "39e83b376d2643ccfc59629b384a3625fe64ad7723391c2cbe5bfe0c79c105da",
+          "source_sha256": "c81e5c9d3fc6f51318d0f6669ae54d9cf2efa9e32e46928f6246f4cd6055edde",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/skills/security-review/SKILL.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/skills/security-review/SKILL.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-skill",
+      "adapter_version": "1",
+      "input_set_hash": "9eb8972dff93d91bb0f62192258b94414c06d0da03a6dedd4261a16f10a0f327",
+      "outputs": [
+        {
+          "output_sha256": "0bde5f4911c573fc722f2f9942eaeee2005fdf1222318a31d9119959f16a7e73",
+          "source_sha256": "9eb8972dff93d91bb0f62192258b94414c06d0da03a6dedd4261a16f10a0f327",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/skills/sqlite-state-design/SKILL.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/skills/sqlite-state-design/SKILL.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-skill",
+      "adapter_version": "1",
+      "input_set_hash": "f27e2281e9bcca27afd98e274d3caca21fe6b4ab8bc88b49b55faf77a33b4d27",
+      "outputs": [
+        {
+          "output_sha256": "24cc983001d65621454207ff3f1603813f7b3d5ef80fa95dddf24612b9dc4c62",
+          "source_sha256": "f27e2281e9bcca27afd98e274d3caca21fe6b4ab8bc88b49b55faf77a33b4d27",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/skills/telegram-dialog-design/SKILL.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/skills/telegram-dialog-design/SKILL.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-skill",
+      "adapter_version": "1",
+      "input_set_hash": "bc815e18c7accabd58b28993d3c098beb8878886a63961a6d25d3a67432f9437",
+      "outputs": [
+        {
+          "output_sha256": "05d88545fc30a50e1e40057fc74c69b8fa8249d899bf40d97079f987cae2b238",
+          "source_sha256": "bc815e18c7accabd58b28993d3c098beb8878886a63961a6d25d3a67432f9437",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/skills/voice-processing/SKILL.md"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/skills/voice-processing/SKILL.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-agent",
+      "adapter_version": "1",
+      "input_set_hash": "033ebe1448e898a15aefa52a033c12b45eeb92b535ee414b1e743d8f5e53b9d5",
+      "outputs": [
+        {
+          "output_sha256": "8056c5e6c9676c10a73a97383e18006557ae56a6cb7d08a3072a1b444b8398d8",
+          "source_sha256": "033ebe1448e898a15aefa52a033c12b45eeb92b535ee414b1e743d8f5e53b9d5",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/agents/conversation-designer.toml"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/agents/conversation-designer.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-agent",
+      "adapter_version": "1",
+      "input_set_hash": "86546c3eba103903f54de12de3e52813dd92a12bd1bfc0a0394602f4a156ddae",
+      "outputs": [
+        {
+          "output_sha256": "511608aa9c3879388dae5a371ae121625d2da7ea3bedb68b9a563d63ffb2e88b",
+          "source_sha256": "86546c3eba103903f54de12de3e52813dd92a12bd1bfc0a0394602f4a156ddae",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/agents/devops-engineer.toml"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/agents/devops-engineer.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-agent",
+      "adapter_version": "1",
+      "input_set_hash": "a993d4dfee9f509bce498a87aea45843f8ba4b14ba9007c1f5f68b667d03a92a",
+      "outputs": [
+        {
+          "output_sha256": "4729170fd89cade1b11c85615542059a217d7ebddf1ba0f282fb5765c47f915f",
+          "source_sha256": "a993d4dfee9f509bce498a87aea45843f8ba4b14ba9007c1f5f68b667d03a92a",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/agents/product-owner.toml"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/agents/product-owner.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-agent",
+      "adapter_version": "1",
+      "input_set_hash": "84822dcacace5070a637e5c87d6922cbe835506c4b8cc3b4ee3ecd786ee2d7d7",
+      "outputs": [
+        {
+          "output_sha256": "ffa01b350d47f511bde0bcbe08a910baba73f80d476e3e0d7379bba40d20632d",
+          "source_sha256": "84822dcacace5070a637e5c87d6922cbe835506c4b8cc3b4ee3ecd786ee2d7d7",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/agents/qa-engineer.toml"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/agents/qa-engineer.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-agent",
+      "adapter_version": "1",
+      "input_set_hash": "273c5d6bd22b5a3b5a45723fc67e86d7afa4ec3fb5b312965997c970bd66e105",
+      "outputs": [
+        {
+          "output_sha256": "60396a1595e9fc878b012a1318d3537ae275ce36269e30275fe44b635894c53d",
+          "source_sha256": "273c5d6bd22b5a3b5a45723fc67e86d7afa4ec3fb5b312965997c970bd66e105",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/agents/report-designer.toml"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/agents/report-designer.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-agent",
+      "adapter_version": "1",
+      "input_set_hash": "2ed5786b2a05d77c918e58b1ebeee14f2f1d8cf5d8768b63c927e36378a195ff",
+      "outputs": [
+        {
+          "output_sha256": "9a6e93d1d402b2b9aed75b41c0b731452f3a48ffd4968829dca5c2f684cfed28",
+          "source_sha256": "2ed5786b2a05d77c918e58b1ebeee14f2f1d8cf5d8768b63c927e36378a195ff",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/agents/security-reviewer.toml"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/agents/security-reviewer.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-agent",
+      "adapter_version": "1",
+      "input_set_hash": "a6c0f3525a78ead48103c9b38995e0d0e396f901ebdd97596481294ca6f37d83",
+      "outputs": [
+        {
+          "output_sha256": "fbb3cc00dba9887e9b8705e52988f221d1fcfa69a8e74f6ea27df149533cd995",
+          "source_sha256": "a6c0f3525a78ead48103c9b38995e0d0e396f901ebdd97596481294ca6f37d83",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/agents/sheets-database-designer.toml"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/agents/sheets-database-designer.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-agent",
+      "adapter_version": "1",
+      "input_set_hash": "555db1dd4a42caae71d51edbb1da757b263b1a116799ee6cc99595dd9e360410",
+      "outputs": [
+        {
+          "output_sha256": "cae1db2ff7783b9aed3b689dcc37f70e9c3c5745b8bb478b9ade905819ef33e4",
+          "source_sha256": "555db1dd4a42caae71d51edbb1da757b263b1a116799ee6cc99595dd9e360410",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/agents/system-architect.toml"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/agents/system-architect.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    },
+    {
+      "adapter": "project-agent",
+      "adapter_version": "1",
+      "input_set_hash": "33ee2ab88352ed816501a3a9ea4153cfbc630d32a025e52f9147d4dfc9a47938",
+      "outputs": [
+        {
+          "output_sha256": "4a13a5f2785789dca0571747f07b6b0b112e383dd5f9c924466b3e6c5d1bce5a",
+          "source_sha256": "33ee2ab88352ed816501a3a9ea4153cfbc630d32a025e52f9147d4dfc9a47938",
+          "sync_owned": true,
+          "target": "/root/telegram_goals_bot/.codex/agents/telegram-bot-engineer.toml"
+        }
+      ],
+      "source": "/root/telegram_goals_bot/.claude/agents/telegram-bot-engineer.md",
+      "transformer_version": "1",
+      "updated_at": "2026-07-01T17:16:54Z"
+    }
+  ],
+  "version": "1"
+}

@@ -1,3 +1,8 @@
+---
+name: system-architect
+description: Reviews MVP architecture, component boundaries, storage responsibilities, future compatibility, and implementation sequencing for the Telegram goals bot.
+---
+
 # System Architect Agent
 
 ## Role

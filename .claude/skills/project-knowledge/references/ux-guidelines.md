@@ -1,0 +1,86 @@
+# UX Guidelines
+
+## Interface Language
+
+User-facing Telegram messages are in Russian.
+
+## Tone of Voice
+
+Tone:
+
+- Short.
+- Clear.
+- Calm.
+- Practical.
+- Respectful.
+
+Avoid:
+
+- Long lectures.
+- Moralizing.
+- Therapy language.
+- Excessive emojis.
+- Fake enthusiasm.
+- Unsolicited advice.
+
+## Approved Key Copy
+
+Consent:
+
+```text
+Я понимаю, что мои ответы будут сохранены и доступны трекеру, администратору и Александру Ситникову в рамках челленджа.
+```
+
+Unknown user:
+
+```text
+Извините, вас нет в базе участников. Свяжитесь со своим капитаном.
+```
+
+Weekly report done:
+
+```text
+Принято. Победа недели сохранена.
+```
+
+## Menus
+
+Participant menu:
+
+- `🎯 Моя цель`
+- `📍 Мои шаги`
+- `📊 Мой прогресс`
+- `💡 Мои инсайты`
+
+Captain menu adds:
+
+- `👥 Моя команда`
+- `➕ Внести отчёт за участника`
+- `📄 Отчёт команды`
+
+## Terminology
+
+Use these Russian terms:
+
+- участник
+- капитан
+- трекер
+- команда
+- Александр Ситников
+- цель
+- шаг
+- победа недели
+- частичная победа
+- нет победы
+- нет ответа
+- зона риска
+- выбывший
+- инсайт
+
+MVP does not need more branded wording for "Смерть иллюзий".
+
+## Progress Display
+
+Main progress bar shows 6 planned steps. Weekly status history is separate.
+
+Use the main progress bar for main progress percentage. Show weekly history only as secondary context when needed.

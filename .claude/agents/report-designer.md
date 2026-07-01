@@ -1,3 +1,8 @@
+---
+name: report-designer
+description: Reviews short Telegram reports, PDF reports, progress bars, group comparisons, recipient routing, and report readability for the Telegram goals bot.
+---
+
 # Report Designer Agent
 
 ## Role
