@@ -1,0 +1,70 @@
+{
+  "validator": "manual-strengthened-task-validation",
+  "feature": "mvp-foundation",
+  "iteration": 1,
+  "status": "approved_after_fixes",
+  "scope": [
+    "work/mvp-foundation/tasks/1.md",
+    "work/mvp-foundation/tasks/2.md",
+    "work/mvp-foundation/tasks/3.md",
+    "work/mvp-foundation/tasks/4.md",
+    "work/mvp-foundation/tasks/5.md",
+    "work/mvp-foundation/tasks/6.md",
+    "work/mvp-foundation/tasks/7.md",
+    "work/mvp-foundation/tasks/8.md",
+    "work/mvp-foundation/tasks/9.md",
+    "work/mvp-foundation/tasks/10.md"
+  ],
+  "checks": {
+    "template_placeholders": "passed",
+    "markdown_links": "passed",
+    "dependency_waves": "passed",
+    "context_files": "passed",
+    "acceptance_criteria_carry_forward": "passed",
+    "cross_task_resource_ownership": "passed"
+  },
+  "findings_fixed": [
+    {
+      "severity": "major",
+      "category": "context-files",
+      "tasks": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      "issue": "Task context was missing project-level source documents such as decisions and project overview.",
+      "fix": "Added decisions.md and project overview or architecture context where relevant."
+    },
+    {
+      "severity": "critical",
+      "category": "missing-file",
+      "tasks": [2, 8],
+      "issue": "Tasks referenced a non-existent project-knowledge deployment document.",
+      "fix": "Replaced the missing reference with existing AGENTS.md and MVP plan documents."
+    },
+    {
+      "severity": "major",
+      "category": "carry-forward",
+      "tasks": [4, 5, 10],
+      "issue": "Several product constraints were present in the specs but weakly represented in task-level checks.",
+      "fix": "Added explicit checks for the final-summary window, forbidden live SDK imports, audit evidence, and no deploy in QA."
+    },
+    {
+      "severity": "major",
+      "category": "cross-task-integration",
+      "tasks": [5],
+      "issue": "Report and speech boundaries could accidentally duplicate file path ownership from the scheduler/storage task.",
+      "fix": "Added Task 4 as a dependency and stated that Task 5 must reuse the file path policy instead of creating another one."
+    },
+    {
+      "severity": "minor",
+      "category": "audit-task-quality",
+      "tasks": [7, 8, 9],
+      "issue": "Audit tasks did not require concrete report-existence smoke checks or edge-case focus.",
+      "fix": "Added smoke checks, concrete file scopes, edge cases, and implementation hints for report-only audits."
+    }
+  ],
+  "residual_risks": [
+    {
+      "severity": "minor",
+      "issue": "This was a local orchestrator validation pass, not an agent-based task-validator/reality-checker run.",
+      "next_step": "Run task-validator and reality-checker agents if formal multi-agent validation is required."
+    }
+  ]
+}
