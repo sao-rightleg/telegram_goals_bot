@@ -40,8 +40,64 @@ SQLite must not be the only source for:
 - Deadline rules must be checked against Yekaterinburg time.
 - Stale or invalid state should return user safely to menu and notify admin if needed.
 - Sensitive data should be minimized.
+- Schema implementation must add concrete primary keys, unique constraints, indexes, and `CHECK` constraints where SQLite can enforce allowed technical values.
+- IDs that reference Google Sheets business objects are stored as external IDs only. SQLite must not define business-owner tables for participants, teams, goals, planned steps, reports, or insights.
+- Multi-value technical selections such as selected planned steps are stored as JSON text in SQLite and validated in application code.
+
+## Physical Schema Decisions
+
+Use SQLite standard types and constraints:
+
+- `INTEGER PRIMARY KEY AUTOINCREMENT` for local technical event/message IDs.
+- `TEXT PRIMARY KEY` for externally generated technical IDs such as `draft_id` and scheduler `job_id`.
+- ISO-8601 timezone-aware text timestamps for `created_at`, `updated_at`, `expires_at`, `scheduled_for`, `started_at`, `finished_at`, and `sent_at`.
+- `CHECK` constraints for known enum-like values where practical.
+- `UNIQUE` constraints for idempotency:
+  - one active `dialog_states` row per `telegram_id`;
+  - one draft message order per `draft_id`;
+  - one scheduler job per `job_type`, `week_number`, and `scheduled_for`;
+  - one job run per `idempotency_key`;
+  - one reminder per `participant_id`, `week_number`, and `reminder_type`.
+- Indexes for lookup paths used by bot and scheduler:
+  - dialog by `telegram_id`;
+  - drafts by `draft_id`, `participant_id`, `telegram_id`, and `expires_at`;
+  - scheduler jobs by `status` and `scheduled_for`;
+  - reminders by `participant_id`, `week_number`, and `status`;
+  - errors by `created_at`, `severity`, and `admin_notified`.
 
 ## Tables
+
+## draft_sessions
+
+Stores the shared technical draft identity used by report, insight, message, and attachment draft tables.
+
+Columns:
+- `draft_id`
+- `draft_type`
+- `participant_id`
+- `telegram_id`
+- `flow_source`
+- `status`
+- `created_at`
+- `updated_at`
+- `expires_at`
+
+Allowed `draft_type` values:
+- `weekly_report`
+- `insight`
+- `captain_manual_report`
+
+Allowed `status` values:
+- `active`
+- `saving`
+- `saved`
+- `failed`
+- `expired`
+
+Rules:
+- `draft_id` is the technical join key for draft-related tables.
+- Draft session state is technical and temporary.
+- Final report or insight facts still belong to Google Sheets.
 
 ## dialog_states
 

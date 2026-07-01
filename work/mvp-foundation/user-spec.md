@@ -25,13 +25,13 @@ size: L
 Эта фича создаёт устойчивую основу, чтобы следующие фичи реализовывались по согласованной архитектуре и не нарушали ключевые решения MVP: Google Sheets как бизнес-база, SQLite только для технического состояния, `systemd` runtime, три Telegram-бота, role-aware notification routing и отсутствие Docker/PostgreSQL/Redis/Celery в MVP.
 
 ## How it should work
-1. Разработчик создаёт `.env` по `.env.example` и указывает токены main/error/notification bot, Google Sheets параметры, пути SQLite/audio/PDF и timezone.
-2. Приложение может загрузить конфигурацию и проверить обязательные настройки без запуска production-бота.
+1. Разработчик создаёт `.env` по `.env.example` и указывает токены main/error/notification bot, Google Sheets параметры и пути SQLite/audio/PDF. Timezone не настраивается через `.env`: для MVP он фиксирован как `Asia/Yekaterinburg`.
+2. Приложение может загрузить конфигурацию и проверить обязательные настройки без запуска production-бота. В strict/runtime режиме обязательны сразу все три токена: main, error и notification bot.
 3. Приложение создаёт или валидирует SQLite schema для технического состояния: dialog drafts, scheduler state, reminder log, technical errors.
 4. Приложение имеет отдельные модули/границы для Telegram bot layer, business services, Google Sheets integration, SQLite state, voice processing, report generation, scheduler, notification routing.
 5. Main bot, error bot и notification bot представлены как разные runtime clients/config sections, даже если в foundation они ещё не отправляют реальные production-сообщения.
 6. Google Sheets integration boundary существует как отдельный слой с безопасными интерфейсами и тестовыми/fake реализациями для разработки.
-7. Scheduler foundation знает `Asia/Yekaterinburg`, расписание напоминаний и календарь челленджа, но не обязан сразу выполнять все бизнес-джобы.
+7. Scheduler foundation знает фиксированный timezone `Asia/Yekaterinburg`, расписание напоминаний и календарь челленджа, но не обязан сразу выполнять все бизнес-джобы.
 8. Report/file storage foundation знает пути `data/audio/`, `data/sqlite/`, `reports/pdf/`, `backups/` и правила retention, но не обязан сразу генерировать финальные PDF.
 9. Автоматические тесты проверяют конфигурацию, модульные границы, SQLite schema, basic scheduler calculations и запреты на out-of-MVP инфраструктуру.
 10. Agent может локально проверить foundation командами без production deploy.
@@ -39,9 +39,11 @@ size: L
 ## Acceptance Criteria
 - [ ] Есть понятная Python project structure внутри `app/`, соответствующая архитектуре из `docs/03_architecture.md`.
 - [ ] Конфигурация загружается из environment / `.env` и поддерживает отдельные переменные для `MAIN_TELEGRAM_BOT_TOKEN`, `ERROR_TELEGRAM_BOT_TOKEN`, `NOTIFICATION_TELEGRAM_BOT_TOKEN`.
+- [ ] В strict/runtime режиме отсутствие любого из трёх bot token считается ошибкой конфигурации.
 - [ ] Секреты не захардкожены и не выводятся в логи.
 - [ ] SQLite technical schema создаётся или валидируется локальной командой.
 - [ ] SQLite используется только для technical state, drafts, scheduler state, reminder log, technical errors; бизнес-факты не моделируются как primary storage.
+- [ ] SQLite schema продумана как физическая technical-state БД: есть draft owner, ключи, индексы и ограничения для idempotency.
 - [ ] Google Sheets integration оформлен как отдельный boundary; production credentials не нужны для unit tests.
 - [ ] Notification routing boundary различает main bot, error bot и notification bot.
 - [ ] Scheduler foundation использует `Asia/Yekaterinburg`, дату окончания `2026-07-31`, 8 недель + 4 дня итогов и расписание из product decisions.
@@ -64,7 +66,7 @@ size: L
 - **Risk 1:** Foundation может незаметно начать реализовывать весь MVP сразу. **Mitigation:** ограничить scope инфраструктурой, boundaries, config, SQLite schema и тестовой основой; пользовательские flows вынести в следующие фичи.
 - **Risk 2:** SQLite schema может начать дублировать Google Sheets бизнес-данные. **Mitigation:** тестами и архитектурой закрепить SQLite только как technical state.
 - **Risk 3:** Три Telegram-бота усложнят foundation. **Mitigation:** на этом этапе сделать явное разделение конфигурации и routing interfaces, а реальные отправки реализовывать постепенно.
-- **Risk 4:** Scheduler date calculation может быть неправильно интерпретирован. **Mitigation:** покрыть календарь и `Asia/Yekaterinburg` unit/integration tests.
+- **Risk 4:** Scheduler date calculation может быть неправильно интерпретирован или случайно стать runtime-настройкой. **Mitigation:** покрыть календарь и фиксированный `Asia/Yekaterinburg` unit/integration tests.
 - **Risk 5:** Секреты могут попасть в логи или репозиторий. **Mitigation:** централизованная config loading, redaction в логировании, `.gitignore`, tests/static checks.
 
 ## Technical Decisions

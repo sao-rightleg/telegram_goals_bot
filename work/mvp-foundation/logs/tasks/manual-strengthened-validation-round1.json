@@ -23,6 +23,35 @@
     "acceptance_criteria_carry_forward": "passed",
     "cross_task_resource_ownership": "passed"
   },
+  "product_decisions_applied_after_review": [
+    {
+      "decision": "Challenge timezone is fixed to Asia/Yekaterinburg for MVP foundation and must not be runtime-configurable through APP_TIMEZONE.",
+      "applied_to": [
+        ".env.example",
+        "work/mvp-foundation/user-spec.md",
+        "work/mvp-foundation/tech-spec.md",
+        "work/mvp-foundation/tasks/2.md",
+        "work/mvp-foundation/tasks/4.md"
+      ]
+    },
+    {
+      "decision": "Strict/runtime config requires all three Telegram bot tokens from the start: main, error, and notification.",
+      "applied_to": [
+        "work/mvp-foundation/user-spec.md",
+        "work/mvp-foundation/tech-spec.md",
+        "work/mvp-foundation/tasks/2.md"
+      ]
+    },
+    {
+      "decision": "SQLite schema must be designed as a physical technical-state schema, not copied mechanically from the logical document. Add draft_sessions, constraints, indexes, and idempotency rules while keeping business facts in Google Sheets.",
+      "applied_to": [
+        "docs/05_sqlite_state_schema.md",
+        "work/mvp-foundation/user-spec.md",
+        "work/mvp-foundation/tech-spec.md",
+        "work/mvp-foundation/tasks/3.md"
+      ]
+    }
+  ],
   "findings_fixed": [
     {
       "severity": "major",

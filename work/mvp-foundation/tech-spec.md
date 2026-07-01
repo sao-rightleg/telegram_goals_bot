@@ -15,7 +15,7 @@ This feature intentionally does not implement full participant/captain flows, vo
 
 The implementation should make local verification possible without production secrets:
 
-- configuration can be loaded and validated from environment variables or `.env`;
+- configuration can be loaded and validated from environment variables or `.env`, while challenge timezone remains a fixed scheduler constant;
 - secrets are redacted in logs and diagnostic output;
 - SQLite schema can be initialized in a temporary database;
 - scheduler calendar constants can be tested deterministically;
@@ -27,7 +27,7 @@ The implementation should make local verification possible without production se
 ### What we're building/modifying
 
 - **Python package and test tooling** — create project metadata, test command, package import structure, and minimal developer commands.
-- **Configuration layer** — typed settings loader for env variables, `.env` support, validation, and secret redaction.
+- **Configuration layer** — typed settings loader for env variables, `.env` support, validation, and secret redaction. Challenge timezone is not an env setting in MVP.
 - **Logging layer** — shared logger setup that avoids leaking tokens and credential paths.
 - **SQLite technical-state layer** — schema and initializer for dialog state, drafts, scheduler state, reminders, and technical errors.
 - **Google Sheets boundary** — interfaces and fake implementation for future business-data reads/writes.
@@ -42,7 +42,7 @@ The implementation should make local verification possible without production se
 Startup-level flow:
 
 1. Config loader reads environment variables and optional `.env`.
-2. Config validation fails clearly if required settings are missing for a selected runtime mode.
+2. Config validation fails clearly if required settings are missing for a selected runtime mode. Strict/runtime mode requires all three Telegram bot tokens.
 3. Logging setup receives redacted config metadata only.
 4. SQLite initializer creates technical-state tables in `SQLITE_DB_PATH`.
 5. Boundary modules expose protocols/fakes for Sheets, Telegram bots, notifications, reports, speech, scheduler, and storage.
@@ -77,7 +77,7 @@ Layering rules:
 **Alternatives considered:** Keep loose scripts only. Rejected because the MVP needs multiple long-lived modules and testable boundaries.
 
 ### Decision 2: Typed settings with `.env` support
-**Decision:** Use typed settings loading with explicit required variables and secret redaction.  
+**Decision:** Use typed settings loading with explicit required variables and secret redaction. Strict/runtime mode requires main, error, and notification bot tokens from the start.  
 **Rationale:** Supports user-spec AC for env-based config, three Telegram bot tokens, and no secrets in logs.  
 **Alternatives considered:** Read `os.environ` ad hoc in each module. Rejected because it spreads validation and makes secret handling inconsistent.
 
@@ -97,7 +97,7 @@ Layering rules:
 **Alternatives considered:** One bot with message types. Rejected because user explicitly approved three separate bots.
 
 ### Decision 6: Scheduler calendar constants are executable, not only documented
-**Decision:** Encode `Asia/Yekaterinburg`, `2026-07-31`, 8 weeks + 4 final-summary days, and reminder times as tested constants/helpers.  
+**Decision:** Encode fixed `Asia/Yekaterinburg`, `2026-07-31`, 8 weeks + 4 final-summary days, and reminder times as tested constants/helpers. Do not allow runtime timezone override in MVP foundation.  
 **Rationale:** Supports user-spec AC for scheduler foundation and prevents later date drift.  
 **Alternatives considered:** Leave calendar only in docs until scheduler feature. Rejected because downstream features need stable shared constants.
 
@@ -110,8 +110,9 @@ Layering rules:
 
 ### SQLite technical-state tables
 
-Foundation creates the schema from `docs/05_sqlite_state_schema.md`:
+Foundation creates the physical schema from `docs/05_sqlite_state_schema.md`. The document is the logical source of truth, but implementation must turn it into an explicit SQLite schema with primary keys, unique constraints, indexes, `CHECK` constraints for known technical values, and idempotency constraints.
 
+- `draft_sessions`
 - `dialog_states`
 - `draft_messages`
 - `draft_attachments`
@@ -124,15 +125,25 @@ Foundation creates the schema from `docs/05_sqlite_state_schema.md`:
 
 The schema must not include business-primary tables for participants, teams, goals, planned steps, weekly reports, insights, or final report facts.
 
+Key physical decisions:
+
+- `draft_sessions` owns `draft_id` and draft lifecycle state.
+- `dialog_states.telegram_id` is unique.
+- `draft_messages` enforces unique message order per `draft_id`.
+- `scheduler_jobs` prevents duplicate jobs for the same `job_type`, `week_number`, and `scheduled_for`.
+- `job_runs.idempotency_key` is unique.
+- `reminder_log` prevents duplicate reminders for the same `participant_id`, `week_number`, and `reminder_type`.
+- Multi-step selections are stored as JSON text and validated in application code.
+
 ### Settings model
 
 Settings groups:
 
-- `TelegramSettings`: `MAIN_TELEGRAM_BOT_TOKEN`, `ERROR_TELEGRAM_BOT_TOKEN`, `NOTIFICATION_TELEGRAM_BOT_TOKEN`.
+- `TelegramSettings`: `MAIN_TELEGRAM_BOT_TOKEN`, `ERROR_TELEGRAM_BOT_TOKEN`, `NOTIFICATION_TELEGRAM_BOT_TOKEN`. All three are required in strict/runtime mode.
 - `GoogleSheetsSettings`: `GOOGLE_SHEETS_ID`, `GOOGLE_APPLICATION_CREDENTIALS`.
 - `AdminSettings`: admin, error chat, Sitnikov, tracker IDs.
 - `StorageSettings`: `SQLITE_DB_PATH`, `AUDIO_STORAGE_DIR`, `PDF_STORAGE_DIR`, backup paths.
-- `RuntimeSettings`: `APP_TIMEZONE`, `LOG_LEVEL`, environment mode.
+- `RuntimeSettings`: `LOG_LEVEL`, environment mode. Timezone is owned by scheduler constants, not runtime settings.
 
 ### Boundary interfaces
 
@@ -172,14 +183,16 @@ Do not add Telegram SDK, Google API SDK, PDF library, speech/transcription SDK, 
 ### Unit tests
 - Settings validation succeeds with complete fake env.
 - Settings validation fails clearly with missing required env for runtime mode.
+- Settings validation fails if any one of the three Telegram bot tokens is missing in strict/runtime mode.
 - Secret redaction hides bot tokens and credential-like values.
-- Scheduler constants expose expected timezone, challenge end date, and reminder times.
+- Scheduler constants expose fixed timezone, challenge end date, and reminder times.
 - File path policy builds expected audio/PDF/backup paths without public URLs.
 - Notification categories map technical errors only to error bot boundary.
 
 ### Integration tests
 - SQLite schema initializes in a temporary database.
 - SQLite schema contains required technical-state tables.
+- SQLite schema exposes required primary keys, unique constraints, and indexes for draft/session/scheduler idempotency.
 - SQLite schema does not create business-primary tables.
 - Config + logging setup can run with fake settings without leaking tokens.
 - Package imports across `app.*` layers work in a clean test process.
@@ -222,8 +235,10 @@ None
 - [ ] Python project metadata and package imports work.
 - [ ] `pytest` test suite exists and passes.
 - [ ] Settings loader supports `.env` and required MVP env vars.
+- [ ] Strict/runtime settings validation requires all three Telegram bot tokens.
 - [ ] Settings/logging redacts secret values.
 - [ ] SQLite schema initializer creates only technical-state tables.
+- [ ] SQLite schema includes physical constraints for draft identity, scheduler idempotency, and reminder deduplication.
 - [ ] Google Sheets gateway boundary exists with fake implementation for tests.
 - [ ] Main/error/notification bot boundaries exist as separate concepts.
 - [ ] Notification routing prevents technical errors from using participant/captain/tracker/Sitnikov routes.
