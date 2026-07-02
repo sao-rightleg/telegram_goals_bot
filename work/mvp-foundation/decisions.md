@@ -134,7 +134,7 @@ Review details — in JSON files via links. QA report — in logs/working/.
 ## Task 6: Foundation documentation and smoke commands
 
 **Status:** Done
-**Commit:** pending
+**Commit:** 2d8226a
 **Agent:** main agent
 **Summary:** Updated README with the current foundation status, local setup/test commands, smoke checks, and explicit scope boundaries: no production deploy, full Telegram flows, live API integrations, voice transcription, or PDF generation are included in the foundation feature.
 **Deviations:** Formal documentation-reviewer sub-agent was not spawned because the user did not explicitly request multi-agent execution in this turn; local verification was completed.
