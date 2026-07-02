@@ -1,0 +1,25 @@
+{
+  "task": 8,
+  "audit": "security",
+  "mode": "local-fallback",
+  "status": "pass",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "app/services/participant_flows.py",
+    "app/sheets/gateway.py",
+    "app/storage/dialog_state.py",
+    "app/services/notifications.py",
+    "tests/test_participant_boundaries.py"
+  ],
+  "test_result": ".venv/bin/python -m pytest -q -> 73 passed",
+  "findings": [],
+  "checks": [
+    "Unknown users receive only approved user-facing copy and technical context goes to error bot.",
+    "Consent gate blocks goal, steps, and progress views before consent.",
+    "Protected view actions re-resolve Telegram ID through Sheets and scope reads by participant_id.",
+    "Missing-data notifications go through TECHNICAL_ERROR and error bot only.",
+    "SQLite repository uses parameterized SQL and does not create business tables.",
+    "No live Telegram SDK, live Google SDK, secrets, deploy actions, or network calls were introduced."
+  ]
+}

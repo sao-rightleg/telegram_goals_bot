@@ -1,0 +1,22 @@
+{
+  "task": 9,
+  "audit": "tests",
+  "mode": "local-fallback",
+  "status": "pass",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "test_result": ".venv/bin/python -m pytest -q -> 73 passed",
+  "findings": [],
+  "coverage_summary": [
+    "Task 1 tests cover approved copy, role menus, view formatting, and safe missing-data copy.",
+    "Task 2 tests cover Sheets fake participant lookup, consent update, active goal, planned steps, weekly history, and defensive copies.",
+    "Task 3 tests cover dialog state upsert/read/clear, uniqueness, invalid flow, and no business tables.",
+    "Task 4 tests cover unknown user, consent gate, consent acceptance, role menu, and error-bot routing.",
+    "Task 5 tests cover scoped goal/steps/progress, secondary weekly history, missing goal, and inert actions.",
+    "Task 6 tests cover cross-flow safety boundaries and out-of-scope exclusions."
+  ],
+  "notes": [
+    "No E2E tests are required by approved tech-spec because live Telegram and Google Sheets adapters are out of scope.",
+    "Tests run without production secrets or network access."
+  ]
+}

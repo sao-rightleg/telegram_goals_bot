@@ -89,3 +89,39 @@ Reviews:
 - Test review: `work/participant-core-flows/logs/working/task-6/test-reviewer-1.json`
 
 Deviations: None.
+
+## Task 7: Code Audit
+
+Summary: Completed full-feature code quality audit for participant core flows. No blocking code-quality findings were found.
+
+Verification:
+- `.venv/bin/python -m pytest -q` -> 73 passed.
+
+Reviews:
+- Code audit: `work/participant-core-flows/logs/working/task-7/code-audit.json`
+
+Deviations: None.
+
+## Task 8: Security Audit
+
+Summary: Completed security audit for consent enforcement, participant scoping, error routing, secret handling, and storage boundaries. No blocking security findings were found.
+
+Verification:
+- `.venv/bin/python -m pytest -q` -> 73 passed.
+
+Reviews:
+- Security audit: `work/participant-core-flows/logs/working/task-8/security-audit.json`
+
+Deviations: None.
+
+## Task 9: Test Audit
+
+Summary: Completed test quality audit for participant core flows. Test coverage matches the approved user-spec and tech-spec scope.
+
+Verification:
+- `.venv/bin/python -m pytest -q` -> 73 passed.
+
+Reviews:
+- Test audit: `work/participant-core-flows/logs/working/task-9/test-audit.json`
+
+Deviations: None.
