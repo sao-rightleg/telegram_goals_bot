@@ -6,9 +6,40 @@ MVP Telegram-бот для челленджа «Смерть иллюзий».
 
 ## Статус
 
-Проект находится на стадии утверждённой продуктовой документации перед написанием кода приложения.
+Проект находится на стадии технического фундамента MVP.
 
-Код пока не пишется: сначала должны быть утверждены требования, архитектура, схемы данных, Telegram-сценарии, отчёты и MVP-план.
+Утверждённые требования, архитектура, схемы данных, Telegram-сценарии, отчёты и MVP-план уже лежат в `docs/`.
+
+Сейчас реализована foundation-часть: структура Python-пакета, конфигурация, redaction секретов, SQLite technical-state schema, scheduler/file path constants и boundary/fake слои для внешних интеграций.
+
+Полные Telegram-сценарии, live Google Sheets/Telegram API интеграции, voice transcription, PDF generation и production deploy в эту foundation-фичу не входят.
+
+## Локальная Проверка Foundation
+
+Один раз подготовить окружение:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[dev]'
+```
+
+Запустить весь foundation test suite:
+
+```bash
+source .venv/bin/activate
+python -m pytest -v
+```
+
+Быстрые smoke-проверки:
+
+```bash
+source .venv/bin/activate
+python -c "import app; print('ok')"
+python -m pytest
+```
+
+Тесты используют fake values и временные SQLite базы. Production-секреты, Telegram tokens и Google credentials для этих проверок не нужны.
 
 ## Основные решения
 
@@ -26,4 +57,3 @@ MVP Telegram-бот для челленджа «Смерть иллюзий».
 Основные документы находятся в `docs/`.
 
 Project Knowledge для агентов находится в `.claude/skills/project-knowledge/` и синхронизируется в `.codex/skills/project-knowledge/`.
-

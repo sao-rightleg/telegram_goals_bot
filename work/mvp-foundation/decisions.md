@@ -130,3 +130,22 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `source .venv/bin/activate && python -m pytest tests/test_boundaries.py -v` → 6 passed
 - `source .venv/bin/activate && python -m pytest -v` → 35 passed
 - `git diff --check` → OK
+
+## Task 6: Foundation documentation and smoke commands
+
+**Status:** Done
+**Commit:** pending
+**Agent:** main agent
+**Summary:** Updated README with the current foundation status, local setup/test commands, smoke checks, and explicit scope boundaries: no production deploy, full Telegram flows, live API integrations, voice transcription, or PDF generation are included in the foundation feature.
+**Deviations:** Formal documentation-reviewer sub-agent was not spawned because the user did not explicitly request multi-agent execution in this turn; local verification was completed.
+
+**Reviews:**
+
+*Round 1:*
+- documentation-reviewer: Not run → multi-agent review not started in current execution mode.
+
+**Verification:**
+- `source .venv/bin/activate && python -m pytest -v` → 35 passed
+- `source .venv/bin/activate && python -m pytest` → 35 passed
+- `source .venv/bin/activate && python -c "import app; print('ok')"` → ok
+- `git diff --check` → OK
