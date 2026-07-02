@@ -32,3 +32,22 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - Manual check → OK
 
 -->
+
+## Task 1: Python package and test tooling
+
+**Status:** Done
+**Commit:** b13eda7
+**Agent:** main agent
+**Summary:** Added minimal Python project metadata, pytest discovery configuration, importable `app` package modules, and smoke tests for package imports, pytest wiring, and forbidden infrastructure dependencies. Kept runtime dependencies empty and added generated Python package metadata to `.gitignore`.
+**Deviations:** Formal reviewer sub-agents were not spawned because the user did not explicitly request multi-agent execution in this turn; local verification was completed.
+
+**Reviews:**
+
+*Round 1:*
+- infrastructure-reviewer: Not run → multi-agent review not started in current execution mode.
+- test-reviewer: Not run → multi-agent review not started in current execution mode.
+
+**Verification:**
+- `source .venv/bin/activate && python -m pytest -v` → 3 passed
+- `source .venv/bin/activate && python -c "import app; print('ok')"` → ok
+- `git diff --check` → OK
