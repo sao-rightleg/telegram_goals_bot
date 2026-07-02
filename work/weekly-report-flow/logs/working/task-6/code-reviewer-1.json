@@ -1,0 +1,19 @@
+{
+  "reviewer": "code-reviewer",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "app/services/weekly_reports.py",
+    "tests/test_weekly_report_finalize.py"
+  ],
+  "findings": [],
+  "notes": [
+    "Finalization writes WeeklyReport and optional WeeklyReportSteps through SheetsGateway only.",
+    "Draft cleanup happens after required fake Sheets writes complete.",
+    "Green closes selected planned steps; blue and red leave planned steps unchanged.",
+    "Voice handling is a copy-only rejection and creates no audio/transcription state."
+  ]
+}

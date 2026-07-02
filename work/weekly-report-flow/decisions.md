@@ -15,6 +15,21 @@ Reviews:
 
 Deviations: None.
 
+## Task 6: Text draft collection and final save
+
+Summary: Completed text draft collection and final weekly report save flow, including green/blue/red final facts, WeeklyReportSteps relations, green planned-step closure, empty-text guard, voice rejection, duplicate/late guards, and SQLite draft cleanup.
+
+Verification:
+- `.venv/bin/python -m pytest tests/test_weekly_report_start_flow.py tests/test_weekly_report_step_selection.py tests/test_weekly_report_finalize.py -q` -> 21 passed.
+- `.venv/bin/python -m pytest -q` -> 115 passed.
+
+Reviews:
+- Code review: `work/weekly-report-flow/logs/working/task-6/code-reviewer-1.json`
+- Security review: `work/weekly-report-flow/logs/working/task-6/security-auditor-1.json`
+- Test review: `work/weekly-report-flow/logs/working/task-6/test-reviewer-1.json`
+
+Deviations: None.
+
 ## Task 5: Start, status selection, and step selection service flow
 
 Summary: Added service-level weekly report start, status selection, and step selection flow with Telegram ID identity lookup, consent/deadline/duplicate gates, missing-data notifications, and SQLite draft state updates.

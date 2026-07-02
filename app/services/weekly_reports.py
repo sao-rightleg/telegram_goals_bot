@@ -13,9 +13,12 @@ from app.bot.messages import (
     UNKNOWN_USER_TEXT,
     WEEKLY_REPORT_BLUE_STEP_REQUIRED_TEXT,
     WEEKLY_REPORT_DUPLICATE_TEXT,
+    WEEKLY_REPORT_EMPTY_TEXT,
     WEEKLY_REPORT_GREEN_STEP_REQUIRED_TEXT,
     WEEKLY_REPORT_LATE_TEXT,
+    WEEKLY_REPORT_VOICE_NOT_AVAILABLE_TEXT,
     build_weekly_report_status_buttons,
+    get_weekly_report_success_text,
 )
 from app.scheduler.calendar import current_challenge_week_number, is_weekly_report_open
 from app.services.notifications import NotificationCategory, NotificationRouter
@@ -121,6 +124,98 @@ class WeeklyReportService:
             occurred_at=_occurred_at(now),
         )
         return self._send(user, text=_text_prompt(status))
+
+    def add_text_message(
+        self,
+        user: TelegramUserContext,
+        text: str,
+        *,
+        now: datetime,
+        telegram_message_id: int | None = None,
+    ) -> FlowResponse:
+        context = self._resolve_context(user, now=now)
+        if isinstance(context, FlowResponse):
+            return context
+
+        if self.drafts.get_active_draft(user.telegram_id) is None:
+            raise KeyError(f"Active weekly report draft not found for telegram_id={user.telegram_id}")
+
+        self.drafts.append_text_message(
+            user.telegram_id,
+            text,
+            occurred_at=_occurred_at(now),
+            telegram_message_id=telegram_message_id,
+        )
+        return self._send(user, text="Текст добавлен. Можно отправить ещё или нажать «✅ Готово».")
+
+    def reject_voice_message(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
+        return self._send(user, text=WEEKLY_REPORT_VOICE_NOT_AVAILABLE_TEXT)
+
+    def finalize_report(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
+        context = self._resolve_context(user, now=now)
+        if isinstance(context, FlowResponse):
+            return context
+
+        _participant, participant_id, team_id, goal, week_number = context
+        draft = self.drafts.get_active_draft(user.telegram_id)
+        if draft is None:
+            raise KeyError(f"Active weekly report draft not found for telegram_id={user.telegram_id}")
+
+        status = _status_from_code(draft.status_code)
+        if status is None:
+            return self._send(user, text=WEEKLY_REPORT_GREEN_STEP_REQUIRED_TEXT)
+        if status in {WeeklyReportStatus.GREEN, WeeklyReportStatus.BLUE} and not draft.selected_step_ids:
+            return self._send(user, text=_step_required_text(status))
+        if not draft.report_text.strip():
+            return self._send(user, text=WEEKLY_REPORT_EMPTY_TEXT)
+
+        goal_id = _string_value(goal.get("goal_id"))
+        submitted_at = _occurred_at(now)
+        weekly_report_id = _weekly_report_id(participant_id, week_number)
+        self.sheets.append_weekly_report(
+            {
+                "weekly_report_id": weekly_report_id,
+                "participant_id": participant_id,
+                "team_id": team_id,
+                "goal_id": goal_id,
+                "week_number": week_number,
+                "status_code": status.code,
+                "status_symbol": status.symbol,
+                "score": status.score,
+                "report_text": draft.report_text,
+                "submitted_at": submitted_at,
+                "submitted_by_id": participant_id,
+                "submitted_by_role": "participant",
+                "flow_source": "participant_bot",
+            }
+        )
+        if status in {WeeklyReportStatus.GREEN, WeeklyReportStatus.BLUE}:
+            relation_status = "closed" if status is WeeklyReportStatus.GREEN else "partial"
+            for step_id in draft.selected_step_ids:
+                self.sheets.append_weekly_report_step(
+                    {
+                        "weekly_report_step_id": _weekly_report_step_id(weekly_report_id, step_id),
+                        "weekly_report_id": weekly_report_id,
+                        "participant_id": participant_id,
+                        "goal_id": goal_id,
+                        "step_id": step_id,
+                        "week_number": week_number,
+                        "relation_status": relation_status,
+                        "created_at": submitted_at,
+                    }
+                )
+        if status is WeeklyReportStatus.GREEN:
+            self.sheets.close_planned_steps(
+                participant_id,
+                goal_id,
+                draft.selected_step_ids,
+                closed_week_number=week_number,
+                closed_report_id=weekly_report_id,
+                closed_at=submitted_at,
+            )
+
+        self.drafts.clear_draft(user.telegram_id)
+        return self._send(user, text=get_weekly_report_success_text(status))
 
     def _resolve_context(
         self,
@@ -242,6 +337,14 @@ def _text_prompt(status: WeeklyReportStatus) -> str:
 
 def _draft_id(participant_id: str, week_number: int) -> str:
     return f"weekly-report:{participant_id}:week-{week_number:02d}"
+
+
+def _weekly_report_id(participant_id: str, week_number: int) -> str:
+    return f"WR:{participant_id}:week-{week_number:02d}"
+
+
+def _weekly_report_step_id(weekly_report_id: str, step_id: str) -> str:
+    return f"WRS:{weekly_report_id}:{step_id}"
 
 
 def _occurred_at(now: datetime) -> str:

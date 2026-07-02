@@ -1,0 +1,28 @@
+{
+  "reviewer": "test-reviewer",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "tests/test_weekly_report_finalize.py",
+    "tests/test_weekly_report_start_flow.py",
+    "tests/test_weekly_report_step_selection.py"
+  ],
+  "findings": [],
+  "test_results": [
+    {
+      "command": ".venv/bin/python -m pytest tests/test_weekly_report_start_flow.py tests/test_weekly_report_step_selection.py tests/test_weekly_report_finalize.py -q",
+      "result": "21 passed"
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q",
+      "result": "115 passed"
+    }
+  ],
+  "notes": [
+    "Tests cover green/blue/red finalization, empty text, ordered text assembly, late and duplicate guards, voice rejection, draft cleanup, planned-step closure behavior, and no auto goal achievement.",
+    "Tests use fake Sheets, fake bots, notification router, and temp SQLite only."
+  ]
+}
