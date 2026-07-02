@@ -36,7 +36,7 @@ Review details — in JSON files via links. QA report — in logs/working/.
 ## Task 1: Python package and test tooling
 
 **Status:** Done
-**Commit:** b13eda7
+**Commit:** bd89b30
 **Agent:** main agent
 **Summary:** Added minimal Python project metadata, pytest discovery configuration, importable `app` package modules, and smoke tests for package imports, pytest wiring, and forbidden infrastructure dependencies. Kept runtime dependencies empty and added generated Python package metadata to `.gitignore`.
 **Deviations:** Formal reviewer sub-agents were not spawned because the user did not explicitly request multi-agent execution in this turn; local verification was completed.
