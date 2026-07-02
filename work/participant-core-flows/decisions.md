@@ -29,3 +29,18 @@ Reviews:
 - Test review: `work/participant-core-flows/logs/working/task-2/test-reviewer-1.json`
 
 Deviations: None.
+
+## Task 3: SQLite dialog state repository
+
+Summary: Added a small SQLite repository for technical dialog state upsert/read/clear using the existing `dialog_states` table only.
+
+Verification:
+- `.venv/bin/python -m pytest tests/test_dialog_state_repository.py tests/test_sqlite_schema.py -v` -> 11 passed.
+- `.venv/bin/python -m pytest -q` -> 55 passed.
+
+Reviews:
+- Code review: `work/participant-core-flows/logs/working/task-3/code-reviewer-1.json`
+- Security review: `work/participant-core-flows/logs/working/task-3/security-auditor-1.json`
+- Test review: `work/participant-core-flows/logs/working/task-3/test-reviewer-1.json`
+
+Deviations: None.
