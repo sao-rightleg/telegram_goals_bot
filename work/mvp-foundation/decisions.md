@@ -75,7 +75,7 @@ Review details — in JSON files via links. QA report — in logs/working/.
 ## Task 3: SQLite technical-state schema
 
 **Status:** Done
-**Commit:** pending
+**Commit:** bec97a1
 **Agent:** main agent
 **Summary:** Added SQLite technical-state schema initialization and inspection helpers using the standard library. The schema creates draft, dialog, scheduler, reminder, and error technical tables with primary keys, unique/idempotency constraints, lookup indexes, practical checks, and draft-owner triggers while excluding business-primary tables.
 **Deviations:** Formal reviewer sub-agents were not spawned because the user did not explicitly request multi-agent execution in this turn; local verification was completed.
