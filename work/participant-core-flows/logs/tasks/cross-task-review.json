@@ -1,0 +1,16 @@
+{
+  "validator": "cross-task-integration",
+  "mode": "local-fallback",
+  "iteration": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "test_command": ".venv/bin/python -m pytest -q",
+  "test_result": "35 passed in 0.46s",
+  "findings": [],
+  "checks": [
+    "No two tasks in the same wave modify the same new service file after wave correction.",
+    "Task dependencies point only to earlier waves.",
+    "Shared resources are owned by composition/tests and consumed through injected boundaries.",
+    "No task introduces deploy, live Telegram SDK, live Google API SDK, PDF generation, voice processing, or scheduler implementation."
+  ]
+}

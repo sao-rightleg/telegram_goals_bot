@@ -1,0 +1,18 @@
+{
+  "validator": "task-validator",
+  "mode": "local-fallback",
+  "batch": 1,
+  "iteration": 1,
+  "task_numbers": [1, 2, 3, 4, 5],
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "skipped: previous multi-agent spawn failed with service tier validation error",
+  "findings": [],
+  "checks": [
+    "Frontmatter present for tasks 1-5.",
+    "Required template sections present for tasks 1-5.",
+    "Code tasks include TDD anchors.",
+    "Skills and reviewers match tech-spec and skills catalog.",
+    "Task 5 was moved to wave 3 because it depends on Task 4 and writes the same service file."
+  ]
+}

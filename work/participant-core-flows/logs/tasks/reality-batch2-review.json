@@ -1,0 +1,23 @@
+{
+  "validator": "reality-checker",
+  "mode": "local-fallback",
+  "batch": 2,
+  "iteration": 1,
+  "task_numbers": [4, 5, 6],
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "skipped: previous multi-agent spawn failed with service tier validation error",
+  "findings": [
+    {
+      "severity": "medium",
+      "task": 5,
+      "issue": "Task 5 originally shared wave 2 with Task 4 while depending on Task 4 and modifying app/services/participant_flows.py.",
+      "resolution": "Moved Task 5 to wave 3, Task 6 to wave 4, audit tasks to wave 5, and QA to wave 6."
+    }
+  ],
+  "checks": [
+    "Task 4 depends on Wave 1 outputs and creates app/services/participant_flows.py.",
+    "Task 5 now depends on Task 4 in a later wave.",
+    "Task 6 runs after Task 5 and uses smoke command from tech-spec."
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "validator": "task-validator",
+  "mode": "local-fallback",
+  "batch": 2,
+  "iteration": 1,
+  "task_numbers": [6, 7, 8, 9, 10],
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "skipped: previous multi-agent spawn failed with service tier validation error",
+  "findings": [],
+  "checks": [
+    "Frontmatter present for tasks 6-10.",
+    "Required template sections present for tasks 6-10.",
+    "Audit tasks have empty reviewers.",
+    "Final QA task depends on all three audit tasks.",
+    "No deploy task is present because production deploy is out of scope."
+  ]
+}
