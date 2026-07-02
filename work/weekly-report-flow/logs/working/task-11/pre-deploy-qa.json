@@ -1,0 +1,61 @@
+{
+  "task": 11,
+  "qa": "pre-deploy",
+  "status": "passed",
+  "checked_at": "2026-07-02",
+  "deploy": "not_applicable",
+  "post_deploy": "not_applicable",
+  "test_results": [
+    {
+      "command": ".venv/bin/python -m pytest -q",
+      "result": "121 passed"
+    }
+  ],
+  "audit_reports": {
+    "code": "work/weekly-report-flow/logs/working/task-8/code-audit.json",
+    "security": "work/weekly-report-flow/logs/working/task-9/security-audit.json",
+    "tests": "work/weekly-report-flow/logs/working/task-10/test-audit.json"
+  },
+  "acceptance_criteria": {
+    "participant_identified_by_telegram_id": "passed",
+    "unknown_or_non_consenting_user_blocked": "passed",
+    "yekaterinburg_deadline_guard": "passed",
+    "duplicate_weekly_report_guard": "passed",
+    "start_flow_shows_open_steps_and_status_buttons": "passed",
+    "green_requires_open_steps": "passed",
+    "green_saves_status_symbol_score": "passed",
+    "green_saves_closed_relations_and_closes_steps": "passed",
+    "blue_requires_steps": "passed",
+    "blue_saves_status_symbol_score": "passed",
+    "blue_saves_partial_relations_without_closing_steps": "passed",
+    "red_does_not_require_steps": "passed",
+    "red_saves_status_symbol_score": "passed",
+    "red_does_not_close_steps": "passed",
+    "empty_done_does_not_create_weekly_report": "passed",
+    "ordered_text_messages_assembled": "passed",
+    "final_facts_written_through_sheets_boundary": "passed",
+    "sqlite_stores_only_technical_draft_state": "passed",
+    "missing_goal_or_steps_safe_notification": "passed",
+    "goal_not_auto_achieved": "passed",
+    "out_of_scope_features_not_implemented": "passed",
+    "tests_without_production_secrets": "passed"
+  },
+  "scope_boundaries": {
+    "live_telegram_sdk": "not_added",
+    "live_google_api_adapter": "not_added",
+    "scheduler_reminders": "not_added",
+    "automatic_gray_no_answer": "not_added",
+    "voice_processing": "not_added",
+    "captain_manual_report": "not_added",
+    "insights": "not_added",
+    "pdf": "not_added",
+    "deploy": "not_performed",
+    "push": "not_performed",
+    "production_actions": "not_performed",
+    "real_secrets": "not_used"
+  },
+  "notes": [
+    "Weekly-report-flow is complete through pre-deploy QA in local fake-boundary mode.",
+    "No production deployment, push, live Telegram message, live Google API call, or real secret was used."
+  ]
+}

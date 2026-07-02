@@ -15,6 +15,16 @@ Reviews:
 
 Deviations: None.
 
+## Task 11: Pre-deploy QA
+
+Summary: Pre-deploy QA passed for weekly-report-flow. Full suite is green and all user-spec plus tech-spec acceptance criteria are verified locally without production secrets.
+
+Verification:
+- `.venv/bin/python -m pytest -q` -> 121 passed.
+- Full QA report: `work/weekly-report-flow/logs/working/task-11/pre-deploy-qa.json`
+
+Deviations: None.
+
 ## Task 8: Code Audit
 
 Summary: Completed weekly-report-flow code audit. No blocking code-quality findings were found.
