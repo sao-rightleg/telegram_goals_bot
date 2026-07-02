@@ -1,0 +1,20 @@
+{
+  "reviewer": "security-auditor",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "app/services/participant_models.py",
+    "app/bot/menus.py",
+    "app/bot/messages.py",
+    "tests/test_participant_messages.py"
+  ],
+  "findings": [],
+  "notes": [
+    "No secrets, credentials, network calls, filesystem writes, or production actions were introduced.",
+    "Missing-data user copy intentionally hides internal field names.",
+    "No business facts are persisted in this task."
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "reviewer": "test-reviewer",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "tests/test_participant_messages.py"
+  ],
+  "findings": [],
+  "test_results": [
+    {
+      "command": ".venv/bin/python -m pytest tests/test_participant_messages.py -v",
+      "result": "8 passed"
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q",
+      "result": "43 passed"
+    }
+  ],
+  "notes": [
+    "Tests cover exact approved copy, role menus, unknown-role fallback, goal formatting, progress formatting, and safe missing-data copy.",
+    "Tests are pure unit tests and require no production secrets or network access."
+  ]
+}
