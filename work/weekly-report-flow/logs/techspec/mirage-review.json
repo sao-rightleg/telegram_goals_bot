@@ -1,0 +1,22 @@
+{
+  "feature": "weekly-report-flow",
+  "validator": "mirage-detector",
+  "round": 1,
+  "status": "passed",
+  "mode": "local-fallback",
+  "checked": [
+    "work/weekly-report-flow/tech-spec.md",
+    "work/weekly-report-flow/user-spec.md",
+    "app/scheduler/calendar.py",
+    "app/sheets/gateway.py",
+    "app/storage/sqlite.py",
+    "app/storage/dialog_state.py",
+    "app/services/participant_flows.py"
+  ],
+  "findings": [],
+  "notes": [
+    "Referenced existing files were verified locally.",
+    "New planned files are explicitly listed as implementation outputs, not existing APIs.",
+    "No live Telegram SDK, live Google adapter, scheduler runtime, PDF, voice, or deploy dependency is required by the spec."
+  ]
+}

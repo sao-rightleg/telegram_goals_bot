@@ -1,0 +1,32 @@
+{
+  "feature": "weekly-report-flow",
+  "validator": "completeness-validator",
+  "round": 1,
+  "status": "passed",
+  "mode": "local-fallback",
+  "findings": [],
+  "traceability": {
+    "US-1": "WeeklyReportService is adapter-independent and no live Telegram wiring is planned.",
+    "US-2": "Service resolves participant by Telegram ID through SheetsGateway.",
+    "US-3": "Unknown and non-consenting users are blocked before draft continuation.",
+    "US-4": "Calendar helper and service guards enforce Asia/Yekaterinburg deadline.",
+    "US-5": "Sheets duplicate lookup is required before final save.",
+    "US-6": "Missing data error handling and admin notification are specified.",
+    "US-7": "Start/status message contracts and service flow are specified.",
+    "US-8": "Green relation and planned-step closure behavior is specified.",
+    "US-9": "Blue partial relation behavior and no closure are specified.",
+    "US-10": "Red no-step-required behavior is specified.",
+    "US-11": "SQLite ordered text draft storage and final assembly are specified.",
+    "US-12": "Voice rejection without audio state is specified.",
+    "US-13": "Empty finalize guard is specified.",
+    "US-14": "Invalid/stale draft recovery is specified.",
+    "US-15": "Sheets final facts and SQLite technical-state boundary is specified.",
+    "US-16": "Test strategy uses fakes and local SQLite only."
+  },
+  "scope_assessment": {
+    "scope_creep": "none",
+    "underengineering": "none",
+    "overengineering": "none",
+    "user_spec_deviations": "none"
+  }
+}

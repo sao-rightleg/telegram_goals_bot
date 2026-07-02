@@ -1,0 +1,22 @@
+{
+  "feature": "weekly-report-flow",
+  "validator": "tech-spec-validator",
+  "round": 1,
+  "status": "passed",
+  "mode": "local-fallback",
+  "findings": [],
+  "checks": {
+    "frontmatter_present": true,
+    "status_draft": true,
+    "size_present": true,
+    "architecture_present": true,
+    "decisions_reference_user_spec": true,
+    "user_spec_deviations_present": true,
+    "implementation_tasks_present": true,
+    "task_count_lte_15": true,
+    "audit_wave_present": true,
+    "final_qa_wave_present": true,
+    "deploy_excluded": true
+  },
+  "task_count": 11
+}

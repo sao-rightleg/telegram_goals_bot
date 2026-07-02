@@ -1,0 +1,24 @@
+{
+  "feature": "weekly-report-flow",
+  "validator": "test-reviewer",
+  "round": 1,
+  "status": "passed",
+  "mode": "local-fallback",
+  "findings": [],
+  "assessment": {
+    "feature_size": "M",
+    "unit_tests": "adequate",
+    "integration_tests": "adequate",
+    "e2e_tests": "not required because live Telegram, live Google, scheduler, and deploy are out of scope",
+    "acceptance_traceability": "covered by Agent Verification Plan and regression tests"
+  },
+  "required_test_focus": [
+    "green/blue/red final save paths",
+    "deadline and duplicate guards",
+    "empty text finalize guard",
+    "ordered message assembly",
+    "draft cleanup and invalid draft recovery",
+    "cross-participant step selection rejection",
+    "storage and scope boundaries"
+  ]
+}
