@@ -125,3 +125,13 @@ Reviews:
 - Test audit: `work/participant-core-flows/logs/working/task-9/test-audit.json`
 
 Deviations: None.
+
+## Task 10: Pre-deploy QA
+
+Summary: Pre-deploy QA passed for participant core flows. Full suite is green and all user-spec plus tech-spec acceptance criteria are verified locally without production secrets.
+
+Verification:
+- `.venv/bin/python -m pytest -v` -> 73 passed.
+- Full QA report: `work/participant-core-flows/logs/working/task-10/pre-deploy-qa.json`
+
+Deviations: None.

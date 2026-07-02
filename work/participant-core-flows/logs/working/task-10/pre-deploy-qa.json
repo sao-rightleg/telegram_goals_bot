@@ -1,0 +1,199 @@
+{
+  "status": "passed",
+  "checked_at": "2026-07-02",
+  "summary": {
+    "totalChecks": 34,
+    "passed": 34,
+    "failed": 0,
+    "notVerifiable": 0,
+    "criticals": 0,
+    "majors": 0,
+    "minors": 0
+  },
+  "testSuite": {
+    "status": "passed",
+    "command": ".venv/bin/python -m pytest -v",
+    "details": "73 passed in 2.21s"
+  },
+  "auditReports": {
+    "code": "work/participant-core-flows/logs/working/task-7/code-audit.json",
+    "security": "work/participant-core-flows/logs/working/task-8/security-audit.json",
+    "tests": "work/participant-core-flows/logs/working/task-9/test-audit.json"
+  },
+  "userSpecAcceptanceCriteria": [
+    {
+      "criterion": "/start identifies user by Telegram ID through Google Sheets boundary, not SQLite.",
+      "status": "passed",
+      "evidence": "tests/test_participant_start_flow.py::test_start_known_user_with_consent_shows_role_menu and app/services/participant_flows.py use SheetsGateway.find_participant_by_telegram_id."
+    },
+    {
+      "criterion": "Unknown Telegram ID receives approved not-in-base message.",
+      "status": "passed",
+      "evidence": "tests/test_participant_start_flow.py::test_start_unknown_user_sends_approved_message_and_error_notification."
+    },
+    {
+      "criterion": "Unknown-user event is sent only to admin error chat through error bot boundary.",
+      "status": "passed",
+      "evidence": "tests/test_participant_start_flow.py::test_unknown_user_error_uses_error_bot_only."
+    },
+    {
+      "criterion": "Known user without consent sees approved consent text and button.",
+      "status": "passed",
+      "evidence": "tests/test_participant_start_flow.py::test_start_known_user_without_consent_shows_consent_only."
+    },
+    {
+      "criterion": "Before consent the bot does not show menu or goal/steps/progress.",
+      "status": "passed",
+      "evidence": "tests/test_participant_boundaries.py::test_no_business_data_before_consent_across_actions."
+    },
+    {
+      "criterion": "After consent the bot writes consent_given and consent_given_at through Sheets boundary.",
+      "status": "passed",
+      "evidence": "tests/test_participant_start_flow.py::test_accept_consent_updates_sheets_and_shows_menu."
+    },
+    {
+      "criterion": "Known user with stored consent receives role-aware menu immediately.",
+      "status": "passed",
+      "evidence": "tests/test_participant_start_flow.py::test_start_known_user_with_consent_shows_role_menu."
+    },
+    {
+      "criterion": "Participant menu contains only approved participant buttons.",
+      "status": "passed",
+      "evidence": "tests/test_participant_messages.py::test_participant_menu_contains_approved_buttons_only."
+    },
+    {
+      "criterion": "Captain menu contains participant buttons plus approved captain buttons.",
+      "status": "passed",
+      "evidence": "tests/test_participant_messages.py::test_captain_menu_extends_participant_menu."
+    },
+    {
+      "criterion": "Participant does not see data of other participants.",
+      "status": "passed",
+      "evidence": "tests/test_participant_boundaries.py::test_participant_cannot_view_another_participants_goal_or_steps."
+    },
+    {
+      "criterion": "View Goal shows only current participant goal.",
+      "status": "passed",
+      "evidence": "tests/test_participant_views.py::test_goal_view_shows_current_participant_goal_only."
+    },
+    {
+      "criterion": "View Planned Steps shows current participant steps and does not create new steps.",
+      "status": "passed",
+      "evidence": "tests/test_participant_views.py::test_steps_view_shows_current_participant_steps_only."
+    },
+    {
+      "criterion": "View Progress shows 6-cell progress bar and percent by planned steps.",
+      "status": "passed",
+      "evidence": "tests/test_participant_views.py::test_progress_view_uses_planned_steps_as_primary_progress."
+    },
+    {
+      "criterion": "Missing required participant/goal/step data does not crash and sends admin error notification without secrets.",
+      "status": "passed",
+      "evidence": "tests/test_participant_boundaries.py::test_missing_required_data_routes_error_bot_only and tests/test_participant_messages.py::test_missing_data_message_hides_internal_fields."
+    },
+    {
+      "criterion": "SQLite is used only for technical dialog/menu/consent state.",
+      "status": "passed",
+      "evidence": "tests/test_dialog_state_repository.py::test_repository_uses_existing_schema_only."
+    },
+    {
+      "criterion": "Final business facts remain in Google Sheets; SQLite does not become business storage.",
+      "status": "passed",
+      "evidence": "tests/test_participant_boundaries.py::test_sqlite_contains_no_participant_business_tables_after_flows."
+    },
+    {
+      "criterion": "Unit/integration tests pass without production Telegram token and Google credentials.",
+      "status": "passed",
+      "evidence": ".venv/bin/python -m pytest -v -> 73 passed; fake Sheets and fake bot clients used."
+    },
+    {
+      "criterion": "Feature does not implement weekly reports, insights, voice, captain manual report, scheduler, PDF, or production deploy.",
+      "status": "passed",
+      "evidence": "tests/test_participant_boundaries.py::test_feature_does_not_introduce_out_of_scope_dependencies_or_artifacts."
+    }
+  ],
+  "techSpecAcceptanceCriteria": [
+    {
+      "criterion": "/start resolves Telegram ID through SheetsGateway, not SQLite.",
+      "status": "passed",
+      "evidence": "tests/test_participant_start_flow.py and app/services/participant_flows.py."
+    },
+    {
+      "criterion": "Unknown Telegram ID receives approved Russian not-in-base message.",
+      "status": "passed",
+      "evidence": "tests/test_participant_start_flow.py::test_start_unknown_user_sends_approved_message_and_error_notification."
+    },
+    {
+      "criterion": "Unknown-user technical notification is routed only through error bot.",
+      "status": "passed",
+      "evidence": "tests/test_participant_start_flow.py::test_unknown_user_error_uses_error_bot_only."
+    },
+    {
+      "criterion": "Known user without consent receives approved consent text and button.",
+      "status": "passed",
+      "evidence": "tests/test_participant_start_flow.py::test_start_known_user_without_consent_shows_consent_only."
+    },
+    {
+      "criterion": "No menu or participant business data is shown before consent.",
+      "status": "passed",
+      "evidence": "tests/test_participant_boundaries.py::test_no_business_data_before_consent_across_actions."
+    },
+    {
+      "criterion": "Consent acceptance writes consent_given and consent_given_at through Sheets gateway.",
+      "status": "passed",
+      "evidence": "tests/test_participant_start_flow.py::test_accept_consent_updates_sheets_and_shows_menu."
+    },
+    {
+      "criterion": "Known user with stored consent receives role-aware menu immediately.",
+      "status": "passed",
+      "evidence": "tests/test_participant_start_flow.py::test_start_known_user_with_consent_shows_role_menu."
+    },
+    {
+      "criterion": "Participant and captain menus match approved Telegram scenarios.",
+      "status": "passed",
+      "evidence": "tests/test_participant_messages.py menu tests."
+    },
+    {
+      "criterion": "Protected actions re-resolve current Telegram ID and scope reads to current participant.",
+      "status": "passed",
+      "evidence": "tests/test_participant_boundaries.py::test_participant_cannot_view_another_participants_goal_or_steps."
+    },
+    {
+      "criterion": "Goal view shows current participant active goal fields.",
+      "status": "passed",
+      "evidence": "tests/test_participant_views.py::test_goal_view_shows_current_participant_goal_only and test_goal_formatter_renders_goal_fields."
+    },
+    {
+      "criterion": "Planned-steps view is read-only and shows current participant steps.",
+      "status": "passed",
+      "evidence": "tests/test_participant_views.py::test_steps_view_shows_current_participant_steps_only."
+    },
+    {
+      "criterion": "Progress view shows 6-cell planned-step progress bar, percent, and optional secondary weekly history.",
+      "status": "passed",
+      "evidence": "tests/test_participant_views.py::test_progress_view_uses_planned_steps_as_primary_progress and test_weekly_history_is_secondary_when_available."
+    },
+    {
+      "criterion": "Missing required data never crashes flow and sends safe admin error notification.",
+      "status": "passed",
+      "evidence": "tests/test_participant_views.py::test_missing_goal_sends_safe_message_and_admin_error and participant boundary tests."
+    },
+    {
+      "criterion": "SQLite stores only technical dialog state for this feature.",
+      "status": "passed",
+      "evidence": "tests/test_participant_boundaries.py::test_sqlite_contains_no_participant_business_tables_after_flows."
+    },
+    {
+      "criterion": "No live SDKs, deploy, PDF, voice, scheduler, weekly-report submission, or insight submission is added.",
+      "status": "passed",
+      "evidence": "tests/test_participant_boundaries.py::test_feature_does_not_introduce_out_of_scope_dependencies_or_artifacts."
+    },
+    {
+      "criterion": "Full pytest suite passes without production Telegram token or Google credentials.",
+      "status": "passed",
+      "evidence": ".venv/bin/python -m pytest -v -> 73 passed."
+    }
+  ],
+  "findings": [],
+  "deferredToPostDeploy": []
+}
