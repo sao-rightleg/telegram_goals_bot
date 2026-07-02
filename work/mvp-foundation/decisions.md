@@ -55,7 +55,7 @@ Review details — in JSON files via links. QA report — in logs/working/.
 ## Task 2: Settings and secret redaction
 
 **Status:** Done
-**Commit:** pending
+**Commit:** f499d8e
 **Agent:** main agent
 **Summary:** Added typed settings loading from process environment or optional `.env`, strict validation for the three Telegram bot tokens and core MVP settings, secret redaction helpers, and logging setup that accepts redacted settings metadata. Kept timezone out of runtime configuration.
 **Deviations:** Formal reviewer sub-agents were not spawned because the user did not explicitly request multi-agent execution in this turn; local verification was completed.
