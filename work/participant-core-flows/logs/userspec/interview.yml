@@ -1,0 +1,95 @@
+metadata:
+  status: completed
+  mode: autonomous_from_approved_docs
+  feature_name: participant-core-flows
+  work_type: feature
+  size: M
+  source_documents:
+    - docs/01_requirements.md
+    - docs/02_open_questions.md
+    - docs/03_architecture.md
+    - docs/04_google_sheets_schema.md
+    - docs/05_sqlite_state_schema.md
+    - docs/06_telegram_scenarios.md
+    - docs/08_mvp_plan.md
+    - work/mvp-foundation/user-spec.md
+    - work/mvp-foundation/tech-spec.md
+  note: >
+    User requested autonomous continuation. No new business decisions were introduced.
+    Requirements were derived from already approved project documentation.
+phase1_feature_overview:
+  feature_name:
+    value: participant-core-flows
+    status: covered
+    score: 95
+  work_type:
+    value: feature
+    status: covered
+    score: 95
+  problem:
+    value: >
+      Foundation exists, but users still cannot start the bot, be identified, give consent,
+      see a role menu, or view their goal/steps/progress.
+    status: covered
+    score: 95
+  scope:
+    value: >
+      Implement the first participant-facing flow layer: /start, Telegram ID identification,
+      unknown-user handling, consent, role-aware menu, and read-only participant views for goal,
+      planned steps, and progress.
+    status: covered
+    score: 95
+  out_of_scope:
+    value: >
+      Weekly report submission, insight submission, voice processing, captain manual report,
+      scheduler reminders, PDF reports, production deploy, and direct production actions.
+    status: covered
+    score: 95
+phase2_user_experience:
+  known_user_with_consent:
+    value: Bot identifies user by Telegram ID and shows role-aware menu.
+    status: covered
+    score: 95
+  known_user_without_consent:
+    value: Bot shows approved consent text and continues only after consent is saved.
+    status: covered
+    score: 95
+  unknown_user:
+    value: Bot shows approved not-in-base message and routes an admin technical error.
+    status: covered
+    score: 95
+  participant_views:
+    value: Participant can view goal, planned steps, and progress from Google Sheets business data.
+    status: covered
+    score: 90
+phase3_integration:
+  google_sheets:
+    value: Google Sheets remains business source for participants, consent, goals, steps, and progress facts.
+    status: covered
+    score: 95
+  sqlite:
+    value: SQLite stores only current dialog/menu/consent technical state if needed.
+    status: covered
+    score: 95
+  notifications:
+    value: Unknown-user and technical errors route through error bot/admin error chat only.
+    status: covered
+    score: 95
+  deploy_approach:
+    value: No production deploy in this feature; local tests and smoke checks only.
+    status: covered
+    score: 95
+testing_strategy:
+  unit_tests:
+    value: Required for menu building, service decisions, formatting, and validation.
+    status: covered
+    score: 95
+  integration_tests:
+    value: Required for service orchestration with fake Sheets, fake bot clients, and temporary SQLite state.
+    status: covered
+    score: 90
+  e2e_tests:
+    value: Not required unless tech-spec introduces a real Telegram SDK adapter in this feature.
+    status: covered
+    score: 85
+conversation_history: []

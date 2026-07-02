@@ -1,0 +1,33 @@
+{
+  "validator": "local-userspec-quality-validation",
+  "status": "passed",
+  "note": "Multi-agent userspec-quality-validator could not be started in this session because the child model could not be resolved. Local validation was performed against the user-spec template and project docs.",
+  "checks": [
+    {
+      "name": "frontmatter",
+      "status": "passed",
+      "evidence": "created/status/type/size are present; status is draft."
+    },
+    {
+      "name": "required_sections",
+      "status": "passed",
+      "evidence": "All template sections are present: What we're building, Why, How it should work, Acceptance Criteria, Constraints, Risks, Technical Decisions, Testing, How to Verify."
+    },
+    {
+      "name": "acceptance_criteria_quality",
+      "status": "passed",
+      "evidence": "18 criteria are concrete and testable; they cover start, identity, unknown user, consent, menus, goal/steps/progress views, storage boundaries, tests, and out-of-scope exclusions."
+    },
+    {
+      "name": "placeholder_check",
+      "status": "passed",
+      "evidence": "No template placeholders or TODO/TBD markers were found."
+    },
+    {
+      "name": "language_and_tone",
+      "status": "passed",
+      "evidence": "User-facing content is in Russian and uses approved project terminology."
+    }
+  ],
+  "findings": []
+}
