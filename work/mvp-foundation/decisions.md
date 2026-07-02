@@ -95,7 +95,7 @@ Review details — in JSON files via links. QA report — in logs/working/.
 ## Task 4: Scheduler and file-storage foundations
 
 **Status:** Done
-**Commit:** pending
+**Commit:** cfd7607
 **Agent:** main agent
 **Summary:** Added executable scheduler calendar constants for the approved Yekaterinburg timezone, challenge dates, reminder schedule, and idempotency keys. Added local storage path policies for audio, SQLite, PDFs, and backups with retention constants and safeguards against URL/path traversal fragments.
 **Deviations:** Formal reviewer sub-agents were not spawned because the user did not explicitly request multi-agent execution in this turn; local verification was completed.
