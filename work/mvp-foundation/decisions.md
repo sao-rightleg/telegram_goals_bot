@@ -200,3 +200,22 @@ Review details — in JSON files via links. QA report — in logs/working/.
 **Verification:**
 - `test -f work/mvp-foundation/logs/working/task-9/test-audit.json` → OK
 - `python3 -m json.tool work/mvp-foundation/logs/working/task-9/test-audit.json` → OK
+
+## Task 10: Pre-deploy QA
+
+**Status:** Done
+**Commit:** pending
+**Agent:** main agent
+**Summary:** Pre-deploy QA passed for the foundation feature. Full local test suite is green, user-spec and tech-spec acceptance criteria were checked with evidence, audit reports from Tasks 7-9 are included, and no production deploy/post-deploy work was performed or required for this foundation scope.
+**Deviations:** None.
+
+**Reviews:**
+
+*Round 1:*
+- pre-deploy-qa: passed → `work/mvp-foundation/logs/working/task-10/pre-deploy-qa.json`
+
+**Verification:**
+- `source .venv/bin/activate && python -m pytest -v` → 35 passed
+- `source .venv/bin/activate && python -m pytest` → 35 passed
+- `test -f work/mvp-foundation/logs/working/task-10/pre-deploy-qa.json` → OK
+- `python3 -m json.tool work/mvp-foundation/logs/working/task-10/pre-deploy-qa.json` → OK

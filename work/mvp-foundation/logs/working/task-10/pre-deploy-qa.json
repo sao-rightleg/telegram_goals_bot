@@ -1,0 +1,270 @@
+{
+  "task": 10,
+  "type": "pre-deploy-qa",
+  "status": "passed",
+  "summary": {
+    "totalChecks": 35,
+    "passed": 35,
+    "failed": 0,
+    "notVerifiable": 0,
+    "criticals": 0,
+    "majors": 0,
+    "minors": 3
+  },
+  "testSuite": {
+    "status": "passed",
+    "details": "35 tests passed with `source .venv/bin/activate && python -m pytest -v`; smoke `python -m pytest` also passed with 35 tests."
+  },
+  "userSpecAcceptanceCriteria": [
+    {
+      "criterion": "Есть понятная Python project structure внутри app/, соответствующая архитектуре из docs/03_architecture.md.",
+      "status": "passed",
+      "evidence": "app/ contains separate bot, services, sheets, storage, scheduler, reports, and speech packages; Task 7 code audit passed module-boundary review."
+    },
+    {
+      "criterion": "Конфигурация загружается из environment / .env и поддерживает отдельные переменные для MAIN/ERROR/NOTIFICATION bot tokens.",
+      "status": "passed",
+      "evidence": "app/config.py load_settings plus tests/test_config.py::test_settings_load_from_fake_env and ::test_env_file_loading_does_not_require_real_secrets."
+    },
+    {
+      "criterion": "В strict/runtime режиме отсутствие любого из трёх bot token считается ошибкой конфигурации.",
+      "status": "passed",
+      "evidence": "tests/test_config.py::test_strict_mode_requires_all_three_bot_tokens parametrizes all three token env vars."
+    },
+    {
+      "criterion": "Секреты не захардкожены и не выводятся в логи.",
+      "status": "passed",
+      "evidence": "No production secrets in .env.example; .gitignore excludes .env and credential files; tests/test_config.py::test_secret_values_are_redacted and ::test_logging_setup_uses_redacted_metadata pass; security audit passed."
+    },
+    {
+      "criterion": "SQLite technical schema создаётся или валидируется локальной командой.",
+      "status": "passed",
+      "evidence": "app/storage/sqlite.py initialize_schema; tests/test_sqlite_schema.py all pass against temporary DBs."
+    },
+    {
+      "criterion": "SQLite используется только для technical state, drafts, scheduler state, reminder log, technical errors; бизнес-факты не моделируются как primary storage.",
+      "status": "passed",
+      "evidence": "tests/test_sqlite_schema.py::test_init_does_not_create_business_primary_tables; security audit confirms SQLite boundary."
+    },
+    {
+      "criterion": "SQLite schema продумана как физическая technical-state БД: есть draft owner, ключи, индексы и ограничения для idempotency.",
+      "status": "passed",
+      "evidence": "draft_sessions owner table, constraints/indexes in app/storage/sqlite.py; tests cover draft owner, scheduler/reminder idempotency, indexes."
+    },
+    {
+      "criterion": "Google Sheets integration оформлен как отдельный boundary; production credentials не нужны для unit tests.",
+      "status": "passed",
+      "evidence": "app/sheets/gateway.py SheetsGateway and FakeSheetsGateway; tests/test_boundaries.py::test_sheets_fake_requires_no_credentials."
+    },
+    {
+      "criterion": "Notification routing boundary различает main bot, error bot и notification bot.",
+      "status": "passed",
+      "evidence": "app/bot/clients.py BotPurpose; app/services/notifications.py NotificationRouter; boundary tests cover distinct bots and technical error routing."
+    },
+    {
+      "criterion": "Scheduler foundation использует Asia/Yekaterinburg, дату окончания 2026-07-31, 8 недель + 4 дня итогов и расписание из product decisions.",
+      "status": "passed",
+      "evidence": "app/scheduler/calendar.py constants; tests/test_scheduler_foundation.py covers timezone, end date, final summary window, reminder times."
+    },
+    {
+      "criterion": "File storage paths и retention constants отражают решения по audio/PDF/backups.",
+      "status": "passed",
+      "evidence": "app/storage/paths.py StoragePathPolicy and retention constants; tests/test_storage_paths.py."
+    },
+    {
+      "criterion": "В проекте есть тестовая база: unit tests обязательны, integration tests покрывают SQLite schema/config/scheduler foundation.",
+      "status": "passed",
+      "evidence": "pytest suite has 35 tests across config, SQLite temporary DB schema checks, scheduler constants, storage paths, boundaries, and tooling; test audit passed."
+    },
+    {
+      "criterion": "Нет Docker, PostgreSQL, Redis, Celery, Kubernetes или иной out-of-MVP инфраструктуры.",
+      "status": "passed",
+      "evidence": "pyproject dependencies contain only pytest dev tooling; tests/test_project_tooling.py::test_forbidden_infrastructure_dependencies_absent; no live SDKs introduced."
+    },
+    {
+      "criterion": "README/docs при необходимости обновлены только в части запуска foundation и без изменения продуктовых решений.",
+      "status": "passed",
+      "evidence": "README.md documents local foundation setup/test/smoke commands and explicitly states deploy/full flows are out of scope."
+    },
+    {
+      "criterion": "Локальные smoke-команды позволяют агенту проверить, что foundation запускается и тесты проходят.",
+      "status": "passed",
+      "evidence": "`python -m pytest`, `python -m pytest -v`, and `python -c \"import app; print('ok')\"` were run successfully in .venv."
+    }
+  ],
+  "techSpecAcceptanceCriteria": [
+    {
+      "criterion": "Python project metadata and package imports work.",
+      "status": "passed",
+      "evidence": "pyproject.toml exists; tests/test_project_tooling.py::test_app_package_imports passes."
+    },
+    {
+      "criterion": "pytest test suite exists and passes.",
+      "status": "passed",
+      "evidence": "Full suite: 35 passed."
+    },
+    {
+      "criterion": "Settings loader supports .env and required MVP env vars.",
+      "status": "passed",
+      "evidence": "tests/test_config.py::test_settings_load_from_fake_env and ::test_env_file_loading_does_not_require_real_secrets."
+    },
+    {
+      "criterion": "Strict/runtime settings validation requires all three Telegram bot tokens.",
+      "status": "passed",
+      "evidence": "tests/test_config.py::test_strict_mode_requires_all_three_bot_tokens."
+    },
+    {
+      "criterion": "Settings/logging redacts secret values.",
+      "status": "passed",
+      "evidence": "tests/test_config.py::test_secret_values_are_redacted and ::test_logging_setup_uses_redacted_metadata."
+    },
+    {
+      "criterion": "SQLite schema initializer creates only technical-state tables.",
+      "status": "passed",
+      "evidence": "tests/test_sqlite_schema.py::test_init_creates_required_technical_tables and ::test_init_does_not_create_business_primary_tables."
+    },
+    {
+      "criterion": "SQLite schema includes physical constraints for draft identity, scheduler idempotency, and reminder deduplication.",
+      "status": "passed",
+      "evidence": "tests/test_sqlite_schema.py::test_draft_sessions_owns_draft_id and ::test_scheduler_and_reminders_have_idempotency_constraints."
+    },
+    {
+      "criterion": "Google Sheets gateway boundary exists with fake implementation for tests.",
+      "status": "passed",
+      "evidence": "app/sheets/gateway.py; tests/test_boundaries.py::test_sheets_fake_requires_no_credentials."
+    },
+    {
+      "criterion": "Main/error/notification bot boundaries exist as separate concepts.",
+      "status": "passed",
+      "evidence": "app/bot/clients.py BotPurpose; tests/test_boundaries.py::test_three_bot_boundaries_are_distinct."
+    },
+    {
+      "criterion": "Notification routing prevents technical errors from using participant/captain/tracker/Sitnikov routes.",
+      "status": "passed",
+      "evidence": "tests/test_boundaries.py::test_technical_errors_route_only_to_error_bot."
+    },
+    {
+      "criterion": "Scheduler constants match approved product decisions.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_foundation.py::test_reminder_schedule_matches_product_decisions."
+    },
+    {
+      "criterion": "File-storage policy matches audio, SQLite, PDF, and backup paths.",
+      "status": "passed",
+      "evidence": "tests/test_storage_paths.py covers audio, sqlite, pdf, and backup path policies."
+    },
+    {
+      "criterion": "No Docker, PostgreSQL, Redis, Celery, Kubernetes, live Telegram SDK, live Google API SDK, PDF library, or speech SDK is introduced.",
+      "status": "passed",
+      "evidence": "pyproject dependencies are empty at runtime; tests/test_boundaries.py::test_boundary_modules_do_not_import_live_sdks and project tooling dependency test pass."
+    },
+    {
+      "criterion": "README or docs contain local foundation verification commands if needed.",
+      "status": "passed",
+      "evidence": "README.md contains .venv setup, pytest, and import smoke commands."
+    }
+  ],
+  "auditEvidence": [
+    {
+      "task": 7,
+      "report": "work/mvp-foundation/logs/working/task-7/code-audit.json",
+      "status": "passed",
+      "blockingFindings": 0
+    },
+    {
+      "task": 8,
+      "report": "work/mvp-foundation/logs/working/task-8/security-audit.json",
+      "status": "passed",
+      "blockingFindings": 0,
+      "lowResidualRisks": 2
+    },
+    {
+      "task": 9,
+      "report": "work/mvp-foundation/logs/working/task-9/test-audit.json",
+      "status": "passed",
+      "blockingFindings": 0,
+      "lowFindings": 1
+    }
+  ],
+  "coverageVerification": [
+    {
+      "featureFile": "app/config.py",
+      "tests": ["tests/test_config.py"],
+      "result": "covered"
+    },
+    {
+      "featureFile": "app/logging.py",
+      "tests": ["tests/test_config.py"],
+      "result": "covered"
+    },
+    {
+      "featureFile": "app/storage/sqlite.py",
+      "tests": ["tests/test_sqlite_schema.py"],
+      "result": "covered"
+    },
+    {
+      "featureFile": "app/scheduler/calendar.py",
+      "tests": ["tests/test_scheduler_foundation.py"],
+      "result": "covered"
+    },
+    {
+      "featureFile": "app/storage/paths.py",
+      "tests": ["tests/test_storage_paths.py", "tests/test_boundaries.py"],
+      "result": "covered"
+    },
+    {
+      "featureFile": "app/bot/clients.py",
+      "tests": ["tests/test_boundaries.py"],
+      "result": "covered"
+    },
+    {
+      "featureFile": "app/sheets/gateway.py",
+      "tests": ["tests/test_boundaries.py"],
+      "result": "covered"
+    },
+    {
+      "featureFile": "app/services/notifications.py",
+      "tests": ["tests/test_boundaries.py"],
+      "result": "covered"
+    },
+    {
+      "featureFile": "app/reports/generator.py",
+      "tests": ["tests/test_boundaries.py"],
+      "result": "covered"
+    },
+    {
+      "featureFile": "app/speech/transcription.py",
+      "tests": ["tests/test_boundaries.py"],
+      "result": "covered"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "minor",
+      "title": "StoragePathPolicy root validation deferred",
+      "expected": "Future configurable roots should be validated as local paths.",
+      "actual": "Defaults are safe and fragments are validated; roots are not yet user-configurable in this foundation.",
+      "reproduction": "See task-8 security-audit residual risk for app/storage/paths.py line 16.",
+      "resolution": "Deferred to future task that wires StoragePathPolicy roots from settings."
+    },
+    {
+      "severity": "minor",
+      "title": "Standalone redact_value is intentionally weak without key context",
+      "expected": "Settings/logging use key-aware redaction.",
+      "actual": "redact_mapping protects settings by key; redact_value alone only catches secret-like substrings.",
+      "reproduction": "See task-8 security-audit residual risk for app/config.py line 147.",
+      "resolution": "No blocker; continue using redact_mapping for settings/log metadata."
+    },
+    {
+      "severity": "minor",
+      "title": "One smoke test is low-value",
+      "expected": "Smoke tests should protect setup behavior.",
+      "actual": "tests/test_project_tooling.py::test_pytest_smoke only asserts project root exists.",
+      "reproduction": "See task-9 test-audit finding TA-001.",
+      "resolution": "No blocker; surrounding tests provide meaningful coverage."
+    }
+  ],
+  "deferredToPostDeploy": [],
+  "deployPerformed": false,
+  "postDeployRequiredForThisFeature": false
+}
