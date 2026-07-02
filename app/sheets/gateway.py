@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Protocol
 
 
@@ -34,11 +34,32 @@ class SheetsGateway(Protocol):
     def append_weekly_report(self, row: SheetRow) -> None:
         """Append a final weekly report row to the business storage."""
 
+    def find_weekly_report(self, participant_id: str, *, week_number: int) -> SheetRow | None:
+        """Find one weekly report for a participant/week if it already exists."""
+
+    def append_weekly_report_step(self, row: SheetRow) -> None:
+        """Append a final weekly report to planned-step relation row."""
+
+    def close_planned_steps(
+        self,
+        participant_id: str,
+        goal_id: str,
+        step_ids: Sequence[str],
+        *,
+        closed_week_number: int,
+        closed_report_id: str,
+        closed_at: str,
+    ) -> None:
+        """Mark selected participant planned steps as closed in business storage."""
+
     def append_insight(self, row: SheetRow) -> None:
         """Append a final insight row to the business storage."""
 
     def list_weekly_reports(self) -> list[SheetRow]:
         """Return weekly report rows for tests or future readers."""
+
+    def list_weekly_report_steps(self) -> list[SheetRow]:
+        """Return weekly report step relation rows for tests or future readers."""
 
     def list_insights(self) -> list[SheetRow]:
         """Return insight rows for tests or future readers."""
@@ -52,12 +73,14 @@ class FakeSheetsGateway:
         goals: Iterable[SheetRow] = (),
         planned_steps: Iterable[SheetRow] = (),
         weekly_reports: Iterable[SheetRow] = (),
+        weekly_report_steps: Iterable[SheetRow] = (),
         insights: Iterable[SheetRow] = (),
     ) -> None:
         self._participants = _copy_rows(participants)
         self._goals = _copy_rows(goals)
         self._planned_steps = _copy_rows(planned_steps)
         self._weekly_reports = _copy_rows(weekly_reports)
+        self._weekly_report_steps = _copy_rows(weekly_report_steps)
         self._insights = _copy_rows(insights)
 
     def find_participant_by_telegram_id(self, telegram_id: int) -> SheetRow | None:
@@ -103,11 +126,51 @@ class FakeSheetsGateway:
     def append_weekly_report(self, row: SheetRow) -> None:
         self._weekly_reports.append(dict(row))
 
+    def find_weekly_report(self, participant_id: str, *, week_number: int) -> SheetRow | None:
+        for row in self._weekly_reports:
+            if row.get("participant_id") == participant_id and row.get("week_number") == week_number:
+                return dict(row)
+        return None
+
+    def append_weekly_report_step(self, row: SheetRow) -> None:
+        self._weekly_report_steps.append(dict(row))
+
+    def close_planned_steps(
+        self,
+        participant_id: str,
+        goal_id: str,
+        step_ids: Sequence[str],
+        *,
+        closed_week_number: int,
+        closed_report_id: str,
+        closed_at: str,
+    ) -> None:
+        matching_rows = [
+            row
+            for row in self._planned_steps
+            if row.get("participant_id") == participant_id
+            and row.get("goal_id") == goal_id
+            and row.get("step_id") in step_ids
+        ]
+        found_step_ids = {str(row.get("step_id")) for row in matching_rows}
+        missing_step_ids = [step_id for step_id in step_ids if step_id not in found_step_ids]
+        if missing_step_ids:
+            raise KeyError(f"Planned steps not found for participant/goal: {', '.join(missing_step_ids)}")
+
+        for row in matching_rows:
+            row["step_status"] = "closed"
+            row["closed_week_number"] = closed_week_number
+            row["closed_report_id"] = closed_report_id
+            row["closed_at"] = closed_at
+
     def append_insight(self, row: SheetRow) -> None:
         self._insights.append(dict(row))
 
     def list_weekly_reports(self) -> list[SheetRow]:
         return [dict(row) for row in self._weekly_reports]
+
+    def list_weekly_report_steps(self) -> list[SheetRow]:
+        return [dict(row) for row in self._weekly_report_steps]
 
     def list_insights(self) -> list[SheetRow]:
         return [dict(row) for row in self._insights]

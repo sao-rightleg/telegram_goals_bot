@@ -1,0 +1,18 @@
+{
+  "reviewer": "code-reviewer",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "app/sheets/gateway.py",
+    "tests/test_weekly_report_sheets_gateway.py"
+  ],
+  "findings": [],
+  "notes": [
+    "SheetsGateway protocol and FakeSheetsGateway now expose weekly report duplicate lookup, WeeklyReportSteps storage, and planned-step closure operations.",
+    "Fake gateway preserves defensive-copy behavior for new relation rows.",
+    "close_planned_steps validates all selected step IDs before mutating rows, preventing partial updates on missing or foreign IDs."
+  ]
+}
