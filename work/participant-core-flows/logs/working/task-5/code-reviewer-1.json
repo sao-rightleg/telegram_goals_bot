@@ -1,0 +1,18 @@
+{
+  "reviewer": "code-reviewer",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "app/services/participant_flows.py",
+    "tests/test_participant_views.py"
+  ],
+  "findings": [],
+  "notes": [
+    "View actions re-resolve current Telegram ID through Sheets gateway.",
+    "Goal, steps, and progress formatting reuses Task 1 pure formatters.",
+    "Out-of-scope menu actions are inert and do not write business facts."
+  ]
+}

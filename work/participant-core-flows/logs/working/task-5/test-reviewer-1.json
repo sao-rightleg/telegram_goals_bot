@@ -1,0 +1,26 @@
+{
+  "reviewer": "test-reviewer",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "tests/test_participant_views.py"
+  ],
+  "findings": [],
+  "test_results": [
+    {
+      "command": ".venv/bin/python -m pytest tests/test_participant_views.py -v",
+      "result": "7 passed"
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q",
+      "result": "68 passed"
+    }
+  ],
+  "notes": [
+    "Tests cover scoped goal, scoped steps, planned-step progress, secondary weekly history, consent gate, missing active goal, and inert out-of-scope actions.",
+    "Tests use fake Sheets, fake bot clients, notification router, and temporary SQLite."
+  ]
+}
