@@ -1,0 +1,122 @@
+{
+  "task": 8,
+  "type": "security-audit",
+  "status": "completed",
+  "auditor": "main agent",
+  "scope": {
+    "source_files": [
+      "app/services/insights.py",
+      "app/storage/insight_drafts.py",
+      "app/storage/sqlite.py",
+      "app/sheets/gateway.py",
+      "app/bot/messages.py",
+      "app/services/participant_flows.py"
+    ],
+    "test_files": [
+      "tests/test_insight_add_flow.py",
+      "tests/test_insight_boundaries.py",
+      "tests/test_insight_draft_repository.py",
+      "tests/test_insight_list_flow.py",
+      "tests/test_insight_messages.py",
+      "tests/test_insight_sheets_gateway.py"
+    ],
+    "reference_docs": [
+      "work/insight-flow/user-spec.md",
+      "work/insight-flow/tech-spec.md",
+      ".codex/skills/project-knowledge/references/patterns.md"
+    ]
+  },
+  "summary": {
+    "blocking_security_findings": 1,
+    "unresolved_blocking_security_findings": 0,
+    "non_blocking_security_findings": 1,
+    "positive_controls": [
+      "Identity is resolved from Telegram ID through the Sheets gateway before protected add/list/full-text operations.",
+      "Consent is enforced before insight data is shown or saved.",
+      "Full-text lookup is participant-scoped by participant_id and insight_id.",
+      "Missing and cross-participant full-text callbacks do not include full insight text in admin notifications.",
+      "No live Telegram SDK, Google SDK, transcription provider, public link, deploy path, or new dependency was introduced.",
+      "Search found no hardcoded production secrets in insight-flow source or tests."
+    ]
+  },
+  "findings": [
+    {
+      "id": "SA-001",
+      "severity": "high",
+      "blocking": true,
+      "category": "privacy-storage-boundary",
+      "title": "Saved insight draft retains full personal text in SQLite after final save",
+      "location": {
+        "primary": "app/storage/insight_drafts.py:197",
+        "secondary": [
+          "app/storage/insight_drafts.py:211",
+          "app/storage/insight_drafts.py:219",
+          "app/storage/insight_drafts.py:314",
+          "app/storage/insight_drafts.py:361",
+          "app/services/insights.py:238",
+          "work/insight-flow/user-spec.md:69",
+          "work/insight-flow/user-spec.md:103",
+          "work/insight-flow/user-spec.md:135",
+          "work/insight-flow/tech-spec.md:127"
+        ]
+      },
+      "attack_or_failure_scenario": "After a participant saves an insight, SQLite keeps the saved draft session and its draft_messages rows through the foreign-key relationship. Those rows contain the full insight text. If the local SQLite file is copied, leaked, or backed up longer than intended, it contains final personal insight content even though Google Sheets is the approved business source of truth.",
+      "impact": "SQLite becomes a second store of final personal insight facts. This violates the approved storage boundary and increases personal-data exposure beyond what is needed for idempotency.",
+      "recommendation": "On successful save, preserve only minimal idempotency metadata: draft_id, telegram_id, participant_id, week_number, saved_insight_id, saved_at, and status. Delete associated draft_messages rows, or replace them with a non-sensitive system marker, before clearing active dialog state. Duplicate-finalization should use saved_insight_id rather than retained full text.",
+      "suggested_regression_test": "After saving an insight, query draft_messages for the saved draft and assert no full insight text remains while get_recent_saved_draft still returns enough saved marker data to answer duplicate finalization with INSIGHT_DUPLICATE_TEXT.",
+      "resolution": {
+        "status": "resolved",
+        "summary": "mark_saved now deletes draft_messages for the saved draft after storing minimal saved_insight_id/saved_at metadata.",
+        "tests": [
+          "tests/test_insight_draft_repository.py::test_set_title_and_mark_saved_are_recoverable"
+        ]
+      }
+    },
+    {
+      "id": "SA-002",
+      "severity": "medium",
+      "blocking": false,
+      "category": "callback-integrity",
+      "title": "Duplicate participant/week insight_id generation can make callbacks ambiguous",
+      "location": {
+        "primary": "app/services/insights.py:218",
+        "secondary": [
+          "app/services/insights.py:316",
+          "app/sheets/gateway.py:182",
+          "work/insight-flow/logs/working/task-7/code-audit.json"
+        ]
+      },
+      "attack_or_failure_scenario": "If multiple same-week insights exist with the same insight_id, get_participant_insight returns the first matching row. A participant pressing a full-text callback for a later insight could receive an older full text. The participant scope prevents cross-user leakage, but same-user callback integrity is broken.",
+      "impact": "This can disclose the wrong personal insight to the same participant and makes audit/debugging of insight callbacks unreliable.",
+      "recommendation": "Resolve together with IA-001 from the code audit by generating a unique stable insight_id per saved insight while keeping participant-scoped lookup.",
+      "suggested_regression_test": "Save two same-week insights for one participant and assert each full-text callback returns the matching text by distinct insight_id.",
+      "resolution": {
+        "status": "resolved",
+        "summary": "Resolved with IA-001 by deriving unique final insight ids from unique per-draft ids.",
+        "tests": [
+          "tests/test_insight_add_flow.py::test_multiple_current_week_insights_are_saved_with_distinct_callbacks"
+        ]
+      }
+    }
+  ],
+  "checks": {
+    "consent_enforcement": "pass",
+    "participant_scoping": "pass",
+    "captain_team_access": "pass",
+    "callback_privacy": "pass",
+    "admin_notification_content": "pass",
+    "secret_handling": "pass",
+    "dependency_scan": {
+      "result": "not_applicable",
+      "reason": "pyproject.toml has no runtime dependencies and insight-flow added no new packages."
+    },
+    "static_secret_search": {
+      "command": "rg -n \"token|secret|credentials|api_key|password|private_key|BEGIN\" app tests work/insight-flow",
+      "result": "No insight-flow production secrets found; matches were test placeholders or documentation."
+    }
+  },
+  "verification": {
+    "report_json_validated": true,
+    "implementation_changes_made": true
+  }
+}

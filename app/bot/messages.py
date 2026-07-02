@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from app.services.insight_models import InsightListItem, InsightPage
 from app.services.participant_models import Goal, PlannedStep, WeeklyStatus
 from app.services.weekly_report_models import WeeklyReportStatus
 
@@ -34,9 +35,33 @@ WEEKLY_REPORT_GREEN_SUCCESS_TEXT = "Принято. Победа недели с
 WEEKLY_REPORT_BLUE_SUCCESS_TEXT = "Принято. Частичная победа сохранена."
 WEEKLY_REPORT_RED_SUCCESS_TEXT = "Принято. Отчёт за неделю сохранён."
 
+INSIGHT_ADD_BUTTON = "➕ Добавить инсайт"
+INSIGHT_LIST_BUTTON = "📜 Посмотреть инсайты"
+INSIGHT_CANCEL_BUTTON = "Отмена"
+INSIGHT_DONE_BUTTON = "✅ Готово"
+INSIGHT_READ_FULL_TEXT = "читать целиком"
+
+INSIGHT_TITLE_PROMPT_TEXT = "Как кратко озаглавить твой инсайт?"
+INSIGHT_TITLE_TOO_LONG_TEXT = "Заголовок должен быть не длиннее 120 символов. Сократи его, пожалуйста."
+INSIGHT_EMPTY_TEXT = "Я не получил текст инсайта. Отправь инсайт текстом и нажми ✅ Готово."
+INSIGHT_EMPTY_LIST_TEXT = "У тебя пока нет сохранённых инсайтов."
+INSIGHT_SUCCESS_TEXT = "Инсайт сохранён."
+INSIGHT_DUPLICATE_TEXT = "Инсайт уже сохранён."
+INSIGHT_MISSING_TEXT = "Инсайт не найден."
+INSIGHT_MISSING_ACTIVE_GOAL_TEXT = "Прости, у тебя не зафиксировано активной цели, обратись к капитану"
+INSIGHT_VOICE_NOT_AVAILABLE_TEXT = "Голосовые инсайты будут доступны позже. Сейчас отправь текст."
+
 
 def format_missing_data_message() -> str:
     return MISSING_DATA_TEXT
+
+
+def build_insight_menu_buttons() -> tuple[str, str]:
+    return (INSIGHT_ADD_BUTTON, INSIGHT_LIST_BUTTON)
+
+
+def build_insight_text_buttons() -> tuple[str, str]:
+    return (INSIGHT_DONE_BUTTON, INSIGHT_CANCEL_BUTTON)
 
 
 def build_weekly_report_status_buttons() -> tuple[str, str, str]:
@@ -65,6 +90,51 @@ def get_weekly_report_success_text(status: WeeklyReportStatus) -> str:
     if status is WeeklyReportStatus.BLUE:
         return WEEKLY_REPORT_BLUE_SUCCESS_TEXT
     return WEEKLY_REPORT_RED_SUCCESS_TEXT
+
+
+def make_insight_title_fallback(text: str, *, limit: int = 100) -> str:
+    normalized = " ".join(text.split())
+    if len(normalized) <= limit:
+        return normalized
+
+    suffix = "..."
+    trimmed = normalized[: limit - len(suffix)].rstrip()
+    if " " in trimmed:
+        trimmed = trimmed.rsplit(" ", 1)[0]
+    return f"{trimmed}{suffix}"
+
+
+def format_insight_page(page: InsightPage) -> str:
+    if not page.items:
+        return INSIGHT_EMPTY_LIST_TEXT
+
+    start = page.page_index * page.page_size + 1
+    end = min((page.page_index + 1) * page.page_size, page.total_count)
+    lines = [f"Твои инсайты: {start}-{end} из {page.total_count}"]
+
+    for item in page.items:
+        lines.extend(
+            (
+                "",
+                _format_insight_date(item.insight_date),
+                f"Инсайт: {item.title}",
+                f"{_truncate_insight_preview(item.text_preview)}...{INSIGHT_READ_FULL_TEXT}",
+            )
+        )
+
+    return "\n".join(lines)
+
+
+def format_full_insight_text(item: InsightListItem) -> str:
+    full_text = item.full_text if item.full_text is not None else item.text_preview
+    return "\n".join(
+        (
+            _format_insight_date(item.insight_date),
+            f"Инсайт: {item.title}",
+            "",
+            full_text,
+        )
+    )
 
 
 def format_goal_view(goal: Goal) -> str:
@@ -144,6 +214,24 @@ def _format_goal_value(goal: Goal) -> str:
     if not currency:
         return str(amount)
     return f"{amount} {currency}"
+
+
+def _format_insight_date(value: str) -> str:
+    parts = value.split("-", 2)
+    if len(parts) == 3 and all(parts):
+        year, month, day = parts
+        return f"{day}.{month}.{year}"
+    return value
+
+
+def _truncate_insight_preview(text: str, *, limit: int = 100) -> str:
+    normalized = " ".join(text.split())
+    if len(normalized) <= limit:
+        return normalized
+    trimmed = normalized[:limit].rstrip()
+    if " " in trimmed:
+        trimmed = trimmed.rsplit(" ", 1)[0]
+    return trimmed
 
 
 def _format_step_lines(steps: Sequence[PlannedStep]) -> list[str]:

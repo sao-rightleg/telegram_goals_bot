@@ -1,0 +1,358 @@
+# Interview Plan for Feature Planning
+#
+# Tracks progress of adaptive discovery interview for a new feature/bug/refactoring.
+# Updated after EACH user response with scoring, values, and remaining gaps.
+#
+# Scoring: 0-100% (how well we understand this aspect)
+# Status: pending → partial → complete
+# Required: true = must reach threshold, false = cover if relevant
+
+# ============================================================================
+# Interview Metadata (Session Recovery)
+# ============================================================================
+interview_metadata:
+  started: "2026-07-02 20:01:50"  # Timestamp (YYYY-MM-DD HH:MM:SS)
+  last_updated: "2026-07-02 20:55:47"
+  status: "completed"  # not_started | in_progress | completed
+  can_resume: true
+  current_question_num: 7
+  feature_size: "M"  # S | M | L
+
+# ============================================================================
+# Conversation History (for session recovery)
+# ============================================================================
+# Preserves complete Q&A. Update after EVERY user response.
+#
+conversation_history:
+  - question_num: 1
+    timestamp: "2026-07-02 20:01:50"
+    topic: "initial_scope"
+    agent_question: |
+      We identified insight-flow as the next MVP block after weekly-report-flow and clarified how participants should view saved insights.
+    user_answer: |
+      Voice insight intake is required in the MVP, but implementation timing may be decided by Codex. "Посмотреть инсайты" should send a list of the participant's insights with date, short insight summary, and text/transcription preview. Captains in this feature see only their own insights. Truncated insight text should end with "...{читать целиком}", where "читать целиком" is clickable and sends the full insight text.
+    summary: "Personal insight flow; captain sees own insights only; list uses previews with clickable full-text expansion; voice support remains required for MVP."
+  - question_num: 2
+    timestamp: "2026-07-02 20:08:44"
+    topic: "insight_metadata_and_empty_draft"
+    agent_question: |
+      Clarify insight listing, title, date/week binding, and empty draft handling.
+    user_answer: |
+      After a participant records an insight, the bot may ask "как кратко озаглавить твой инсайт?". Insights must always be bound to date and week so weekly summary can include the insight. If the participant sends empty content or presses done without content, the bot must say it received nothing as an insight and ask the participant to repeat.
+    summary: "Insights require date/week binding; empty insights are not saved; title flow and pagination still need final UX decision."
+  - question_num: 3
+    timestamp: "2026-07-02 20:26:26"
+    topic: "title_and_pagination_decision"
+    agent_question: |
+      Proposal: after content, ask for a short insight title with a skip option; list latest 10 insights with pagination and per-insight full-text callback.
+    user_answer: |
+      User agreed with the proposed UX.
+    summary: "Use title step with skip fallback; list latest 10 insights first; paginate older/newer insights; open full text by insight-specific callback."
+  - question_num: 4
+    timestamp: "2026-07-02 20:34:23"
+    topic: "voice_scope_boundary"
+    agent_question: |
+      Confirm whether real voice transcription should be excluded from insight-flow and implemented later as shared voice-processing for weekly reports and insights.
+    user_answer: |
+      User confirmed.
+    summary: "Insight-flow excludes real voice transcription implementation; it must remain compatible with a later shared voice-processing feature for weekly reports and insights."
+  - question_num: 5
+    timestamp: "2026-07-02 20:43:21"
+    topic: "schema_scope_limits_and_post_save"
+    agent_question: |
+      Clarify insight_title schema extension, previous-week scope behavior, per-week limits, and post-save navigation.
+    user_answer: |
+      User confirmed adding insight_title to Insights. Adding insights for previous week is not needed because the challenge is already in week 3; participant should add insights only for the current week. Participant may save multiple insights per week without limit. After save, bot says "Инсайт сохранён." and returns to the ordinary role menu.
+    summary: "Add insight_title; add flow is current-week only; no per-week limit; post-save returns to ordinary menu."
+  - question_num: 6
+    timestamp: "2026-07-02 20:50:55"
+    topic: "edge_cases"
+    agent_question: |
+      Clarify no active goal, empty insight list, title length, and insight text length behavior.
+    user_answer: |
+      If participant has no active goal, do not save the insight and show: "Прости, у тебя не зафиксировано активной цели, обратись к капитану". Empty list text "У тебя пока нет сохранённых инсайтов." is accepted. Title is limited to 120 characters and bot asks to shorten longer titles. Insight text has no UX-level limit.
+    summary: "No active goal blocks save with custom message; empty list copy accepted; title max 120 chars; no UX-level text limit."
+  - question_num: 7
+    timestamp: "2026-07-02 20:55:47"
+    topic: "final_edge_cases"
+    agent_question: |
+      Clarify insight_date, duplicate finalization, stale full-text callback, and cancel behavior.
+    user_answer: |
+      User agreed with all proposals: add separate insight_date, duplicate done does not create a second insight and responds "Инсайт уже сохранён.", stale/missing full-text callback responds "Инсайт не найден." and notifies admin, and add flow includes "Отмена" to clear draft and return to the ordinary menu.
+    summary: "Add insight_date; duplicate finalization is idempotent; stale full-text callback is safe and admin-notified; cancel clears draft."
+# Format:
+# - question_num: 1
+#   timestamp: "2025-11-12 15:20:33"
+#   topic: "user_problem"
+#   agent_question: |
+#     [Full question text]
+#   user_answer: |
+#     [Full answer text]
+#   summary: "Brief summary"
+
+# ============================================================================
+# Phase 1: High-Level Feature Understanding
+# ============================================================================
+# Interview Cycle 1 scope
+phase1_feature_overview:
+
+  feature_name:
+    score: 95
+    status: "complete"
+    value: "insight-flow"
+    gaps: ""
+    required: true
+
+  feature_description:
+    score: 90
+    status: "complete"
+    value: "Allow a known consenting participant to open the personal insights section, add an insight, bind it to date and challenge week, optionally give it a short title, and view their own saved insights. Insights are separate from weekly progress and do not change weekly status. The list view shows the latest 10 insights first, compact previews, per-insight 'читать целиком' callbacks, and older/newer pagination."
+    gaps: ""
+    required: true
+
+  work_type:
+    score: 95
+    status: "complete"
+    value: "feature"
+    gaps: ""
+    required: true
+
+  user_problem:
+    score: 88
+    status: "complete"
+    value: "Participants need a place to record meaningful observations without turning them into weekly victories or progress changes. They also need to reread past insights without flooding the chat with long messages. Insights must be available for weekly summaries by date/week binding while remaining personal in this feature."
+    gaps: ""
+    required: true
+
+  target_users:
+    score: 90
+    status: "complete"
+    value: "Participants. Captains may use the same personal insight flow for their own insights only; team insight access is out of scope for this feature."
+    gaps: ""
+    required: false
+
+  success_criteria:
+    score: 88
+    status: "complete"
+    value: "A consenting participant can add an insight, save it to Google Sheets as a final business fact with date/week binding and optional short title, list their own insights newest-first, paginate older/newer pages, and request the full text of a truncated insight. Saved insights do not affect weekly reports, status, score, planned steps, or progress. Empty insight drafts are not saved and the bot asks the participant to repeat."
+    gaps: ""
+    required: true
+
+  constraints:
+    score: 90
+    status: "complete"
+    value: "Must preserve consent, Telegram ID identity, participant isolation, Google Sheets as final business storage, SQLite only for temporary drafts, and role boundaries. Real voice insight intake is required for MVP but explicitly deferred from this feature to a later shared voice-processing feature for weekly reports and insights. Insight-flow must remain compatible with future voice draft attachments. No team insight view, live Telegram SDK, live Google API adapter, scheduler, PDF, deploy, or production actions in this feature."
+    gaps: ""
+    required: true
+
+  testing_strategy:
+    score: 90
+    status: "complete"
+    value: "Use unit and boundary tests with FakeSheetsGateway and temporary SQLite. Add copy/formatter tests, Sheets gateway scoped insight tests, InsightDraftRepository tests mirroring weekly report drafts, and service tests for consent, unknown user, participant scoping, save/list/full-text pagination, empty draft, and out-of-scope exclusions. Integration/E2E with live Telegram or Google APIs is not needed for this feature because existing architecture still uses service-level boundaries and fake adapters."
+    gaps: ""
+    required: true
+
+# ============================================================================
+# Phase 2: User Experience & Scenarios
+# ============================================================================
+# Interview Cycle 2 scope (together with Phase 3)
+phase2_user_experience:
+
+  user_stories:
+    score: 90
+    status: "complete"
+    value: "Participant opens '💡 Мои инсайты', chooses add insight, records a current-week text insight, optionally titles it, saves it, receives 'Инсайт сохранён.', and returns to the ordinary role menu. Participant can cancel add flow to clear draft and return to the ordinary menu. Participant can also view latest personal insights, paginate older/newer pages, and open full text for one insight."
+    gaps: ""
+    required: true
+
+  acceptance_criteria:
+    score: 88
+    status: "complete"
+    value: "Insights use a new insight_title field, are current-week only when added, are date/week bound, allow multiple insights per week, save separately from weekly reports/progress, and return to the role menu after successful save. Empty insight lists show 'У тебя пока нет сохранённых инсайтов.'. Missing active goal blocks saving with 'Прости, у тебя не зафиксировано активной цели, обратись к капитану'. Titles are limited to 120 characters. Full-text access and pagination must work only for the current participant's insights."
+    gaps: ""
+    required: true
+
+  edge_cases:
+    score: 90
+    status: "complete"
+    value: "Empty content is not saved. Several insights in one week are allowed. Previous-week adding is excluded from this feature. No active goal blocks save with custom user-facing copy. Empty list copy is defined. Title over 120 characters asks participant to shorten. Insight text has no UX-level limit. Duplicate finalization does not create a second insight and responds 'Инсайт уже сохранён.'. Missing/stale full-text callback responds 'Инсайт не найден.' and notifies admin. Pagination must not move past available pages."
+    gaps: ""
+    required: true
+
+  error_scenarios:
+    score: 88
+    status: "complete"
+    value: "Unknown user and no-consent behavior should follow existing participant flow. Empty insight draft asks the participant to repeat. Missing active goal blocks save with the approved user-facing message. Sheets write failure, invalid callback, stale/missing insight callback, and draft recovery route technical errors to admin without exposing secrets or other participants' data. Stale/missing full-text callback shows 'Инсайт не найден.'. Duplicate finalization is idempotent."
+    gaps: ""
+    required: true
+
+  verification_strategy:
+    score: 85
+    status: "complete"
+    value: "Pre-deploy verification should run the full local pytest suite and targeted insight-flow tests for add/list/full-text/pagination/scoping/empty/missing-goal/cancel/duplicate/stale-callback cases. No live Telegram, live Google API, deploy, or production action is required for this feature."
+    gaps: ""
+    required: true
+
+  ui_ux_requirements:
+    score: 90
+    status: "complete"
+    value: "The insights section has '➕ Добавить инсайт' and '📜 Посмотреть инсайты'. Add flow asks for scope, content, then 'Как кратко озаглавить твой инсайт?' with a skip option. If skipped, the title fallback is the first 80-100 characters. List items show date, title, and truncated text/transcription preview ending with '...{читать целиком}'. Activating 'читать целиком' sends the full insight text as a separate message. List view shows latest 10 first and paginates with '← Раньше' and 'Позже →'. If no content was received, the bot says it did not receive an insight and asks the participant to send it again."
+    gaps: ""
+    required: false
+
+  risks:
+    score: 85
+    status: "complete"
+    value: "Main risks: scope creep into real voice processing, team insight access, reports, live SDKs, or deploy; schema mismatch because insight_title and insight_date are new fields; privacy leak through full-text callback. Mitigations: keep voice deferred, keep captain team insight access out of scope, add explicit schema fields, and enforce participant_id scoping on every list/get callback."
+    gaps: ""
+    required: true
+
+  technical_decisions:
+    score: 88
+    status: "complete"
+    value: "Add insight_title and insight_date to Insights. Implement add flow for current week only. Defer real voice transcription to shared voice-processing. Implement full-text reading via participant-scoped callback by insight_id, not public links. Include cancel and idempotent duplicate finalization behavior."
+    gaps: ""
+    required: false
+
+  deploy_approach:
+    score: 85
+    status: "complete"
+    value: "No deploy in this feature. Future deploy must use GitHub CI/CD only and requires explicit user approval."
+    gaps: ""
+    required: false
+
+  manual_user_actions:
+    score: 85
+    status: "complete"
+    value: "Before live use, admin must add new Google Sheets columns insight_title and insight_date to Insights. No secrets or new external service setup are needed for this feature."
+    gaps: ""
+    required: false
+
+# ============================================================================
+# Phase 3: Integration & Technical Context
+# ============================================================================
+# Interview Cycle 2 scope (together with Phase 2)
+phase3_integration:
+
+  integration_points:
+    score: 90
+    status: "complete"
+    value: "Uses existing participant identity/consent patterns, MenuAction.VIEW_INSIGHTS, FakeSheetsGateway/SheetsGateway insight storage, current_challenge_week_number for week binding, SQLite draft_sessions/draft_insights/draft_messages for temporary drafts, and NotificationRouter for technical errors."
+    gaps: ""
+    required: true
+
+  dependencies:
+    score: 88
+    status: "complete"
+    value: "Depends on mvp-foundation, participant-core-flows, existing Google Sheets boundary, existing SQLite schema, and scheduler calendar helpers. Does not depend on voice-processing implementation."
+    gaps: ""
+    required: false
+
+  technical_constraints:
+    score: 88
+    status: "complete"
+    value: "Must not store final insight facts in SQLite, must not expose another participant's insights through callbacks, must not use live Telegram/Google/voice SDKs, must keep callbacks opaque and participant-scoped, and must avoid public links for full insight text."
+    gaps: ""
+    required: false
+
+  data_requirements:
+    score: 90
+    status: "complete"
+    value: "Final insight rows need insight_id, participant_id, goal_id, week_number, insight_scope, insight_title, insight_date, insight_text or future transcription_text, created_by_id, created_by_role, and created_at. For this feature add flow uses current-week scope only. Final rows live in Google Sheets; SQLite stores only active draft messages/title/scope metadata."
+    gaps: ""
+    required: false
+
+  migration_needs:
+    score: 85
+    status: "complete"
+    value: "No existing production insight data migration is required in this planning stage. Schema docs/spec must note adding insight_title and insight_date before live use."
+    gaps: ""
+    required: false
+
+# ============================================================================
+# Phase 4: Completion
+# ============================================================================
+phase4_completion:
+  userspec_file: "work/insight-flow/user-spec.md"  # work/{feature}/user-spec.md
+  status: "approved"  # pending | created | approved
+
+# ============================================================================
+# Decision Rules
+# ============================================================================
+decision_rules:
+
+  required_threshold: 85
+  optional_threshold: 50
+
+  # Stop criteria (BOTH must be true to exit a cycle)
+  stop_criteria:
+    - "All required items in current cycle scope score >= 85%"
+    - "Structural: every required item has non-empty value, no TBD, gaps empty or conscious limitations"
+
+  priority_order:
+    - "Required items with score < 85% (lowest score first)"
+    - "Optional items mentioned by user in context"
+    - "Other optional items if user seems knowledgeable"
+
+  question_strategy:
+    - "3-4 questions per batch about different gaps"
+    - "Run as many batches as needed — batch size is NOT cycle limit"
+    - "Propose solutions based on PK, not just ask questions"
+    - "Challenge with substance: counterexamples, code references, unexplored scenarios"
+    - "After each response: update scores, values, gaps, conversation_history, save"
+
+# ============================================================================
+# Interview Progress
+# ============================================================================
+progress:
+  current_phase: "phase2_user_experience"
+  questions_asked: 7
+  last_question: "Confirmed insight_date, duplicate finalization, stale full-text callback, and cancel behavior."
+  total_required_score: 89
+  total_optional_score: 88
+  completion_estimate: "95%"
+  user_detail_level: "moderate"  # brief | moderate | detailed
+
+# ============================================================================
+# Notes
+# ============================================================================
+notes: |
+  Free-form notes:
+  - Code research saved to work/insight-flow/code-research.md.
+  - Google Sheets Insights currently has no insight_title column; user-spec/tech-spec must decide whether to add it.
+  - User confirmed adding insight_title.
+  - Add insight flow is current-week only, despite older docs listing previous-week and goal-general scopes.
+  - VIEW_INSIGHTS currently returns NOT_AVAILABLE_TEXT and must become active in this feature.
+  - Real voice transcription remains deferred to voice-processing.
+
+# ============================================================================
+# USAGE INSTRUCTIONS
+# ============================================================================
+#
+# 1. INIT: Created by init-feature-folder.sh at work/{feature}/logs/userspec/interview.yml
+#    Set metadata.started, metadata.status: in_progress
+#
+# 2. INITIAL SCORING: After user's free-form description, score ALL items
+#    Detailed 80-95%, brief 50-70%, vague 20-40%, not mentioned 0%
+#
+# 3. INTERVIEW LOOP (save after EVERY response):
+#    a) Find required items with score < 85% in current cycle scope
+#    b) Ask 3-4 questions about different gaps
+#    c) Propose solutions based on PK
+#    d) User answers
+#    e) Update: conversation_history, scores, values, gaps, metadata
+#    f) Save immediately
+#    g) Check stop criteria (score >= 85% AND structural: value filled, no TBD, gaps resolved)
+#    h) Not done → repeat. Done → next cycle.
+#
+# 4. CYCLES:
+#    Cycle 1: phase1_feature_overview items
+#    Cycle 2: phase2_user_experience + phase3_integration items
+#    Cycle 3: ALL items still below threshold (cleanup pass)
+#
+# 5. RESUME: If metadata.status is "in_progress"
+#    Load, show conversation summary, resume from current state
+#
+# 6. COMPLETION: After user approves user-spec.md
+#    Set phase4_completion.status: approved
+#    Set metadata.status: completed

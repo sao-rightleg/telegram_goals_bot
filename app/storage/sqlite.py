@@ -159,6 +159,9 @@ SCHEMA_STATEMENTS = [
         created_by_role TEXT NOT NULL CHECK (
             created_by_role IN ('participant', 'captain', 'admin')
         ),
+        insight_title TEXT,
+        saved_insight_id TEXT,
+        saved_at TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (draft_id) REFERENCES draft_sessions(draft_id) ON DELETE CASCADE
@@ -314,6 +317,15 @@ def initialize_schema(db_path: str | Path) -> None:
         connection.execute("PRAGMA foreign_keys = ON")
         for statement in SCHEMA_STATEMENTS:
             connection.execute(statement)
+        _ensure_columns(
+            connection,
+            "draft_insights",
+            {
+                "insight_title": "TEXT",
+                "saved_insight_id": "TEXT",
+                "saved_at": "TEXT",
+            },
+        )
 
 
 def list_tables(db_path: str | Path) -> set[str]:
@@ -338,3 +350,17 @@ def list_indexes(db_path: str | Path) -> set[str]:
             """
         ).fetchall()
     return {row[0] for row in rows}
+
+
+def _ensure_columns(
+    connection: sqlite3.Connection,
+    table_name: str,
+    columns: dict[str, str],
+) -> None:
+    existing = {
+        row[1]
+        for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+    for column_name, definition in columns.items():
+        if column_name not in existing:
+            connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")

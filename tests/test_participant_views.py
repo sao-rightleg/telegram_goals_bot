@@ -157,7 +157,6 @@ def test_out_of_scope_actions_are_inert(tmp_path: Path) -> None:
     )
 
     for action in (
-        MenuAction.VIEW_INSIGHTS,
         MenuAction.VIEW_TEAM,
         MenuAction.CAPTAIN_MANUAL_REPORT,
         MenuAction.VIEW_TEAM_REPORT,
@@ -169,7 +168,7 @@ def test_out_of_scope_actions_are_inert(tmp_path: Path) -> None:
         )
         assert response.text == NOT_AVAILABLE_TEXT
 
-    assert len(main_bot.sent_messages) == 4
+    assert len(main_bot.sent_messages) == 3
     assert error_bot.sent_messages == []
     assert gateway.list_weekly_reports() == [{"weekly_report_id": "WR001", "participant_id": "P001"}]
     assert gateway.list_insights() == []

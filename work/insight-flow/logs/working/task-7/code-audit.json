@@ -1,0 +1,101 @@
+{
+  "task": 7,
+  "type": "code-audit",
+  "status": "completed",
+  "auditor": "main agent",
+  "scope": {
+    "source_files": [
+      "app/services/insights.py",
+      "app/services/insight_models.py",
+      "app/storage/insight_drafts.py",
+      "app/storage/sqlite.py",
+      "app/sheets/gateway.py",
+      "app/bot/messages.py",
+      "app/services/participant_flows.py"
+    ],
+    "test_files": [
+      "tests/test_insight_add_flow.py",
+      "tests/test_insight_boundaries.py",
+      "tests/test_insight_draft_repository.py",
+      "tests/test_insight_list_flow.py",
+      "tests/test_insight_messages.py",
+      "tests/test_insight_sheets_gateway.py",
+      "tests/test_participant_boundaries.py",
+      "tests/test_participant_views.py",
+      "tests/test_sqlite_schema.py"
+    ],
+    "reference_docs": [
+      "work/insight-flow/user-spec.md",
+      "work/insight-flow/tech-spec.md",
+      "work/insight-flow/code-research.md"
+    ]
+  },
+  "summary": {
+    "blocking_findings": 1,
+    "unresolved_blocking_findings": 0,
+    "major_findings": 0,
+    "minor_findings": 0,
+    "notes": [
+      "Architecture remains adapter-independent and uses existing fake boundaries.",
+      "Participant scoping, consent checks, stale callback handling, and SQLite business-storage boundaries are covered by focused tests.",
+      "No new external SDKs, deploy artifacts, schedulers, PDF generators, or voice-processing dependencies were introduced."
+    ]
+  },
+  "findings": [
+    {
+      "id": "IA-001",
+      "severity": "critical",
+      "blocking": true,
+      "category": "functional-correctness",
+      "title": "Current participant/week identifiers block unlimited insights in one week",
+      "location": {
+        "primary": "app/services/insights.py:55",
+        "secondary": [
+          "app/services/insights.py:218",
+          "app/services/insights.py:312",
+          "app/services/insights.py:316",
+          "app/storage/sqlite.py:38",
+          "tests/test_insight_add_flow.py:66"
+        ]
+      },
+      "requirement": "work/insight-flow/user-spec.md:169 states that multiple insights per week are allowed without limit.",
+      "problem": "start_add creates draft_id from only participant_id and week_number, while draft_sessions.draft_id is a primary key. After a successful save, the saved draft row remains for idempotency, so a second insight in the same week for the same participant attempts to insert the same draft_id and will fail with a SQLite uniqueness error. Final save also derives insight_id from only participant_id and week_number, so multiple saved insights in the same week would share one insight_id, making full-text callbacks ambiguous even if draft creation were fixed.",
+      "impact": "A participant cannot reliably add more than one insight in the current week, contradicting approved requirements and user decisions. Duplicate insight_id values also undermine list/full-text callback behavior for same-week insights.",
+      "recommendation": "Generate a unique per-draft identifier at draft creation, for example by appending a monotonic timestamp, UUID/ULID, or Telegram message id based nonce to the participant/week prefix. Derive insight_id from that stable draft_id or store a separate generated insight_id on the draft. Keep duplicate finalization idempotent by reusing the saved marker for the same draft, not by collapsing all participant/week insights into one id.",
+      "suggested_regression_test": "Add a service test that saves two insights for the same participant and week, asserts two distinct rows exist, both share the same week_number/current_week scope, and both have different participant-scoped insight_id values."
+      ,
+      "resolution": {
+        "status": "resolved",
+        "summary": "Insight draft ids now include a unique UUID suffix and final insight ids are derived from the stored draft id, preserving idempotency per draft while allowing multiple same-week insights.",
+        "tests": [
+          "tests/test_insight_add_flow.py::test_multiple_current_week_insights_are_saved_with_distinct_callbacks"
+        ]
+      }
+    }
+  ],
+  "coverage_assessment": {
+    "architecture_fit": "pass",
+    "separation_of_concerns": "pass",
+    "draft_lifecycle": "needs_fix",
+    "callback_privacy": "pass",
+    "participant_weekly_report_regressions": "pass",
+    "test_maintainability": "pass_with_gap",
+    "missing_tests": [
+      "No regression currently saves two insights in the same participant/week, which allowed IA-001 to pass unnoticed."
+    ]
+  },
+  "verification": {
+    "report_json_validated": true,
+    "implementation_changes_made": true,
+    "tests_run_before_audit": [
+      {
+        "command": ".venv/bin/python -m pytest tests/test_insight_boundaries.py tests/test_participant_boundaries.py tests/test_weekly_report_boundaries.py -v",
+        "result": "16 passed"
+      },
+      {
+        "command": ".venv/bin/python -m pytest -q",
+        "result": "158 passed"
+      }
+    ]
+  }
+}

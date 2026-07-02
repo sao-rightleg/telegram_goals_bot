@@ -1,0 +1,149 @@
+{
+  "task": 9,
+  "type": "test-audit",
+  "status": "completed",
+  "auditor": "main agent",
+  "scope": {
+    "test_files_reviewed": [
+      "tests/test_insight_add_flow.py",
+      "tests/test_insight_boundaries.py",
+      "tests/test_insight_draft_repository.py",
+      "tests/test_insight_list_flow.py",
+      "tests/test_insight_messages.py",
+      "tests/test_insight_sheets_gateway.py",
+      "tests/test_participant_boundaries.py",
+      "tests/test_participant_views.py",
+      "tests/test_sqlite_schema.py"
+    ],
+    "source_files_cross_checked": [
+      "app/services/insights.py",
+      "app/storage/insight_drafts.py",
+      "app/sheets/gateway.py",
+      "app/bot/messages.py",
+      "app/services/participant_flows.py"
+    ],
+    "acceptance_sources": [
+      "work/insight-flow/user-spec.md",
+      "work/insight-flow/tech-spec.md",
+      "work/insight-flow/tasks/1.md",
+      "work/insight-flow/tasks/2.md",
+      "work/insight-flow/tasks/3.md",
+      "work/insight-flow/tasks/4.md",
+      "work/insight-flow/tasks/5.md",
+      "work/insight-flow/tasks/6.md"
+    ]
+  },
+  "summary": {
+    "blocking_test_gaps": 3,
+    "unresolved_blocking_test_gaps": 0,
+    "non_blocking_test_gaps": 0,
+    "strengths": [
+      "Message contracts, list formatting, title fallback, pagination bounds, and full-text formatting have direct unit coverage.",
+      "Sheets gateway tests cover participant scoping and defensive copies.",
+      "Draft repository tests cover active draft creation, ordered text assembly, title/saved markers, clearing, and no business SQLite tables.",
+      "Service flow tests cover current-week save, missing active goal, empty finalization, title limit, skip title, cancel, duplicate finalization, and deferred voice response.",
+      "Boundary tests cover captain personal scoping, no weekly/progress side effects, no voice state, no forbidden runtime dependencies, and safe admin notifications."
+    ],
+    "overall_assessment": "Blocking gaps were converted into regressions and fixed after the audit; coverage is ready for pre-deploy QA."
+  },
+  "findings": [
+    {
+      "id": "TA-001",
+      "severity": "critical",
+      "blocking": true,
+      "category": "missing-regression",
+      "title": "No test saves multiple insights for the same participant and week",
+      "related_audit_finding": "IA-001",
+      "evidence": [
+        "work/insight-flow/user-spec.md:169 allows unlimited insights per week.",
+        "tests/test_insight_add_flow.py:47 saves only one insight and asserts a participant/week-derived insight_id.",
+        "No insight test covers starting and saving a second current-week insight after a successful save."
+      ],
+      "risk": "The current implementation can pass all tests while failing the approved unlimited-insights-per-week requirement.",
+      "required_follow_up": "Add a failing service regression that saves two current-week insights for the same participant, expects two rows, distinct insight_id values, and correct full-text callbacks for both.",
+      "resolution": {
+        "status": "resolved",
+        "tests": [
+          "tests/test_insight_add_flow.py::test_multiple_current_week_insights_are_saved_with_distinct_callbacks"
+        ]
+      }
+    },
+    {
+      "id": "TA-002",
+      "severity": "high",
+      "blocking": true,
+      "category": "missing-regression",
+      "title": "No test asserts full insight text is removed from SQLite after successful save",
+      "related_audit_finding": "SA-001",
+      "evidence": [
+        "work/insight-flow/user-spec.md:69 requires clearing SQLite draft after save.",
+        "work/insight-flow/user-spec.md:135 requires final Insight facts to live only in the Sheets boundary.",
+        "tests/test_insight_draft_repository.py:55 checks saved draft recovery but does not assert draft_messages is purged after mark_saved.",
+        "tests/test_insight_add_flow.py:47 checks active draft is gone but does not inspect retained draft_messages content."
+      ],
+      "risk": "Tests allow SQLite to retain full personal insight text after final save, weakening the storage-boundary guarantee.",
+      "required_follow_up": "Add a repository or service regression that saves an insight, verifies duplicate finalization still works from a saved marker, and verifies draft_messages no longer contains the full insight text.",
+      "resolution": {
+        "status": "resolved",
+        "tests": [
+          "tests/test_insight_draft_repository.py::test_set_title_and_mark_saved_are_recoverable"
+        ]
+      }
+    },
+    {
+      "id": "TA-003",
+      "severity": "high",
+      "blocking": true,
+      "category": "acceptance-coverage-gap",
+      "title": "Insight-specific unknown-user and no-consent add/list/full-text tests are missing",
+      "related_acceptance_criteria": [
+        "work/insight-flow/user-spec.md:109",
+        "work/insight-flow/user-spec.md:110",
+        "work/insight-flow/tech-spec.md:291"
+      ],
+      "evidence": [
+        "Participant-core tests cover unknown and no-consent behavior for existing participant actions.",
+        "Insight service tests build participants with consent_given=True and do not exercise unknown or no-consent start_add/list_insights/get_full_text directly."
+      ],
+      "risk": "A future change could bypass consent or unknown-user handling inside insight-specific methods while participant-core tests still pass.",
+      "required_follow_up": "Add direct insight service tests for unknown user and non-consenting user across start_add, list_insights, and get_full_text; assert no insight data is returned or written and admin/error routing remains safe.",
+      "resolution": {
+        "status": "resolved",
+        "tests": [
+          "tests/test_insight_add_flow.py::test_unknown_user_cannot_use_insight_service",
+          "tests/test_insight_add_flow.py::test_non_consenting_user_cannot_add_list_or_open_insights"
+        ]
+      }
+    }
+  ],
+  "acceptance_coverage": {
+    "menu_and_copy": "covered",
+    "unknown_user": "covered",
+    "consent_required": "covered",
+    "captain_personal_scope": "covered",
+    "draft_creation_before_save": "covered",
+    "current_week_scope_and_final_row_fields": "covered",
+    "missing_active_goal": "covered",
+    "empty_draft": "covered",
+    "ordered_text_messages": "covered",
+    "title_prompt_limit_and_skip": "covered",
+    "save_success_and_role_menu": "covered",
+    "duplicate_finalization": "covered_for_same_draft_and_same_week_follow_up",
+    "cancel": "covered",
+    "list_scope_empty_latest10_pagination": "covered",
+    "full_text_callback_scope_and_stale": "covered",
+    "weekly_progress_side_effects": "covered",
+    "sqlite_business_storage_boundary": "covered",
+    "no_secrets_network_live_sdk": "covered"
+  },
+  "verification": {
+    "report_json_validated": true,
+    "implementation_changes_made": true,
+    "tests_observed": [
+      {
+        "command": ".venv/bin/python -m pytest -q",
+        "result": "158 passed before this audit"
+      }
+    ]
+  }
+}

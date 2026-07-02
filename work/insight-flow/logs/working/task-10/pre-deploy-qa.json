@@ -1,0 +1,329 @@
+{
+  "task": 10,
+  "type": "pre-deploy-qa",
+  "status": "passed",
+  "qa_agent": "main agent",
+  "summary": {
+    "totalChecks": 49,
+    "passed": 49,
+    "failed": 0,
+    "notVerifiable": 0,
+    "criticals": 0,
+    "majors": 0,
+    "minors": 0
+  },
+  "testSuite": {
+    "status": "passed",
+    "command": ".venv/bin/python -m pytest -q",
+    "details": "161 passed in 6.91s",
+    "productionSecretsRequired": false,
+    "networkRequired": false
+  },
+  "auditReports": [
+    {
+      "path": "work/insight-flow/logs/working/task-7/code-audit.json",
+      "status": "passed",
+      "unresolvedBlockingIssues": 0,
+      "evidence": "unresolved_blocking_findings = 0"
+    },
+    {
+      "path": "work/insight-flow/logs/working/task-8/security-audit.json",
+      "status": "passed",
+      "unresolvedBlockingIssues": 0,
+      "evidence": "unresolved_blocking_security_findings = 0"
+    },
+    {
+      "path": "work/insight-flow/logs/working/task-9/test-audit.json",
+      "status": "passed",
+      "unresolvedBlockingIssues": 0,
+      "evidence": "unresolved_blocking_test_gaps = 0"
+    }
+  ],
+  "userSpecAcceptanceCriteria": [
+    {
+      "id": "US-AC-01",
+      "criterion": "`💡 Мои инсайты` opens personal insight menu instead of inert action.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_insight_menu_is_available_from_view_insights; tests/test_participant_boundaries.py::test_feature_does_not_introduce_out_of_scope_dependencies_or_artifacts"
+    },
+    {
+      "id": "US-AC-02",
+      "criterion": "Insight menu contains add and list actions.",
+      "status": "passed",
+      "evidence": "tests/test_insight_messages.py::test_insight_menu_buttons_match_spec; tests/test_insight_add_flow.py::test_insight_menu_is_available_from_view_insights"
+    },
+    {
+      "id": "US-AC-03",
+      "criterion": "Unknown user receives approved copy and admin technical notification.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_unknown_user_cannot_use_insight_service"
+    },
+    {
+      "id": "US-AC-04",
+      "criterion": "User without consent cannot add or view insights.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_non_consenting_user_cannot_add_list_or_open_insights"
+    },
+    {
+      "id": "US-AC-05",
+      "criterion": "Captain sees and adds only personal insights.",
+      "status": "passed",
+      "evidence": "tests/test_insight_boundaries.py::test_captain_sees_only_personal_insights; created_by_role assertion in tests/test_insight_add_flow.py::test_current_week_text_insight_is_saved_to_sheets covers participant role and service role mapping covers captain."
+    },
+    {
+      "id": "US-AC-06",
+      "criterion": "Add flow creates SQLite draft and does not write final facts before save.",
+      "status": "passed",
+      "evidence": "tests/test_insight_draft_repository.py::test_create_insight_draft_writes_technical_state; tests/test_insight_add_flow.py::test_empty_finalize_keeps_draft_and_asks_for_text"
+    },
+    {
+      "id": "US-AC-07",
+      "criterion": "Add flow saves only current challenge week.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_current_week_text_insight_is_saved_to_sheets"
+    },
+    {
+      "id": "US-AC-08",
+      "criterion": "Final Insight uses insight_scope = current_week.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_current_week_text_insight_is_saved_to_sheets"
+    },
+    {
+      "id": "US-AC-09",
+      "criterion": "Final Insight contains required fields.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_current_week_text_insight_is_saved_to_sheets"
+    },
+    {
+      "id": "US-AC-10",
+      "criterion": "Insights schema supports insight_title and insight_date.",
+      "status": "passed",
+      "evidence": "tests/test_insight_sheets_gateway.py::test_insight_rows_support_title_and_date_fields; tests/test_insight_add_flow.py::test_current_week_text_insight_is_saved_to_sheets"
+    },
+    {
+      "id": "US-AC-11",
+      "criterion": "Missing active goal blocks save with approved copy.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_missing_active_goal_blocks_save_with_custom_copy"
+    },
+    {
+      "id": "US-AC-12",
+      "criterion": "Empty draft does not create final Insight.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_empty_finalize_keeps_draft_and_asks_for_text"
+    },
+    {
+      "id": "US-AC-13",
+      "criterion": "Multiple text messages are assembled in order.",
+      "status": "passed",
+      "evidence": "tests/test_insight_draft_repository.py::test_append_text_messages_preserves_order; tests/test_insight_add_flow.py::test_current_week_text_insight_is_saved_to_sheets"
+    },
+    {
+      "id": "US-AC-14",
+      "criterion": "Bot asks for short title after text.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_current_week_text_insight_is_saved_to_sheets"
+    },
+    {
+      "id": "US-AC-15",
+      "criterion": "Title longer than 120 characters is rejected.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_title_over_limit_is_rejected"
+    },
+    {
+      "id": "US-AC-16",
+      "criterion": "Skip title creates fallback from first 80-100 text characters.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_skip_title_uses_text_fallback; tests/test_insight_messages.py::test_title_fallback_uses_first_100_characters_without_cutting_last_word"
+    },
+    {
+      "id": "US-AC-17",
+      "criterion": "Successful save returns success, clears draft, and returns role-aware menu.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_current_week_text_insight_is_saved_to_sheets"
+    },
+    {
+      "id": "US-AC-18",
+      "criterion": "Duplicate finalization creates no duplicate Insight.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_duplicate_finalization_is_idempotent"
+    },
+    {
+      "id": "US-AC-19",
+      "criterion": "Cancel clears draft and saves no Insight.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_cancel_clears_draft_without_saving"
+    },
+    {
+      "id": "US-AC-20",
+      "criterion": "List shows only current participant insights.",
+      "status": "passed",
+      "evidence": "tests/test_insight_list_flow.py::test_list_shows_current_participant_latest_10_first; tests/test_insight_boundaries.py::test_captain_sees_only_personal_insights"
+    },
+    {
+      "id": "US-AC-21",
+      "criterion": "Empty list uses approved copy.",
+      "status": "passed",
+      "evidence": "tests/test_insight_list_flow.py::test_empty_list_returns_approved_copy"
+    },
+    {
+      "id": "US-AC-22",
+      "criterion": "List shows latest 10 newest-first.",
+      "status": "passed",
+      "evidence": "tests/test_insight_list_flow.py::test_list_shows_current_participant_latest_10_first"
+    },
+    {
+      "id": "US-AC-23",
+      "criterion": "Pagination supports older/newer pages when more than 10 insights exist.",
+      "status": "passed",
+      "evidence": "tests/test_insight_list_flow.py::test_pagination_over_16_insights_is_bounded"
+    },
+    {
+      "id": "US-AC-24",
+      "criterion": "Pagination is bounded.",
+      "status": "passed",
+      "evidence": "tests/test_insight_list_flow.py::test_pagination_over_16_insights_is_bounded"
+    },
+    {
+      "id": "US-AC-25",
+      "criterion": "Each preview item exposes read-full action text.",
+      "status": "passed",
+      "evidence": "tests/test_insight_messages.py::test_format_insight_page_truncates_preview_and_adds_read_full_action"
+    },
+    {
+      "id": "US-AC-26",
+      "criterion": "Full-text callback returns text only for current participant's Insight.",
+      "status": "passed",
+      "evidence": "tests/test_insight_list_flow.py::test_full_text_callback_returns_own_insight_only"
+    },
+    {
+      "id": "US-AC-27",
+      "criterion": "Missing/stale callback returns approved copy and admin technical notification.",
+      "status": "passed",
+      "evidence": "tests/test_insight_list_flow.py::test_stale_callback_notifies_admin"
+    },
+    {
+      "id": "US-AC-28",
+      "criterion": "Insight does not create weekly/progress/scheduler/PDF/voice side effects.",
+      "status": "passed",
+      "evidence": "tests/test_insight_boundaries.py::test_insight_save_does_not_change_weekly_progress; tests/test_insight_boundaries.py::test_voice_message_creates_no_audio_or_transcription_state; tests/test_insight_boundaries.py::test_out_of_scope_dependencies_are_not_imported"
+    },
+    {
+      "id": "US-AC-29",
+      "criterion": "SQLite is not business storage for final Insight facts.",
+      "status": "passed",
+      "evidence": "tests/test_insight_boundaries.py::test_insight_save_does_not_change_weekly_progress; tests/test_insight_draft_repository.py::test_set_title_and_mark_saved_are_recoverable"
+    },
+    {
+      "id": "US-AC-30",
+      "criterion": "Tests pass without production tokens, Google credentials, live Telegram, voice provider, or network.",
+      "status": "passed",
+      "evidence": ".venv/bin/python -m pytest -q -> 161 passed; static dependency checks in tests/test_insight_boundaries.py"
+    }
+  ],
+  "techSpecAcceptanceCriteria": [
+    {
+      "id": "TS-AC-01",
+      "criterion": "MenuAction.VIEW_INSIGHTS is no longer inert for insight-flow.",
+      "status": "passed",
+      "evidence": "app/services/participant_flows.py routes VIEW_INSIGHTS to insight menu; tests/test_insight_add_flow.py::test_insight_menu_is_available_from_view_insights"
+    },
+    {
+      "id": "TS-AC-02",
+      "criterion": "Insight service exposes add/list/full-text/cancel/finalize without live Telegram SDK.",
+      "status": "passed",
+      "evidence": "app/services/insights.py; tests/test_insight_add_flow.py and tests/test_insight_list_flow.py use FakeBotClient and no SDK imports."
+    },
+    {
+      "id": "TS-AC-03",
+      "criterion": "Unknown and non-consenting users cannot add/list/open insights.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_unknown_user_cannot_use_insight_service; tests/test_insight_add_flow.py::test_non_consenting_user_cannot_add_list_or_open_insights"
+    },
+    {
+      "id": "TS-AC-04",
+      "criterion": "Captain users are scoped to own participant ID.",
+      "status": "passed",
+      "evidence": "tests/test_insight_boundaries.py::test_captain_sees_only_personal_insights"
+    },
+    {
+      "id": "TS-AC-05",
+      "criterion": "Sheets gateway supports participant-scoped insight listing and lookup.",
+      "status": "passed",
+      "evidence": "tests/test_insight_sheets_gateway.py::test_list_insights_for_participant_filters_and_returns_copies; tests/test_insight_sheets_gateway.py::test_get_participant_insight_scopes_by_participant_and_id"
+    },
+    {
+      "id": "TS-AC-06",
+      "criterion": "Final Insight rows include insight_title and insight_date.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_current_week_text_insight_is_saved_to_sheets"
+    },
+    {
+      "id": "TS-AC-07",
+      "criterion": "Final Insight rows use current_week scope.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_current_week_text_insight_is_saved_to_sheets"
+    },
+    {
+      "id": "TS-AC-08",
+      "criterion": "Missing active goal writes no Insight and returns custom copy.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_missing_active_goal_blocks_save_with_custom_copy"
+    },
+    {
+      "id": "TS-AC-09",
+      "criterion": "SQLite draft repository uses technical draft tables and clears active state after save/cancel.",
+      "status": "passed",
+      "evidence": "tests/test_insight_draft_repository.py; tests/test_insight_add_flow.py::test_cancel_clears_draft_without_saving; tests/test_insight_draft_repository.py::test_set_title_and_mark_saved_are_recoverable"
+    },
+    {
+      "id": "TS-AC-10",
+      "criterion": "Ordered draft text messages become final insight_text.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_current_week_text_insight_is_saved_to_sheets"
+    },
+    {
+      "id": "TS-AC-11",
+      "criterion": "Title length, skip fallback, empty draft, cancel, duplicate finalization, stale callback, and pagination boundaries are covered.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py, tests/test_insight_list_flow.py, and tests/test_insight_messages.py cover these cases."
+    },
+    {
+      "id": "TS-AC-12",
+      "criterion": "Full-text callback cannot return another participant's insight.",
+      "status": "passed",
+      "evidence": "tests/test_insight_list_flow.py::test_full_text_callback_returns_own_insight_only; tests/test_insight_boundaries.py::test_error_notifications_do_not_include_full_insight_text"
+    },
+    {
+      "id": "TS-AC-13",
+      "criterion": "No weekly/status/scheduler/PDF/audio/transcription/live SDK/deploy/production action introduced.",
+      "status": "passed",
+      "evidence": "tests/test_insight_boundaries.py::test_insight_save_does_not_change_weekly_progress; tests/test_insight_boundaries.py::test_voice_message_creates_no_audio_or_transcription_state; tests/test_insight_boundaries.py::test_out_of_scope_dependencies_are_not_imported"
+    },
+    {
+      "id": "TS-AC-14",
+      "criterion": "Full local pytest suite passes without production secrets or network.",
+      "status": "passed",
+      "evidence": ".venv/bin/python -m pytest -q -> 161 passed in 6.91s"
+    }
+  ],
+  "coverageVerification": {
+    "status": "passed",
+    "featureFilesHaveTests": true,
+    "coverageToolConfigured": false,
+    "details": "No pytest-cov configuration is present in pyproject.toml. Feature files are covered by direct unit/integration tests listed in acceptance evidence."
+  },
+  "liveActions": {
+    "deploy": false,
+    "push": false,
+    "liveTelegramMessages": false,
+    "liveGoogleApiCalls": false,
+    "voiceProviderCalls": false,
+    "productionSecretsUsed": false
+  },
+  "findings": [],
+  "deferredToPostDeploy": [],
+  "verification": {
+    "report_json_validated": true
+  }
+}

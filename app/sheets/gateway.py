@@ -55,6 +55,12 @@ class SheetsGateway(Protocol):
     def append_insight(self, row: SheetRow) -> None:
         """Append a final insight row to the business storage."""
 
+    def list_insights_for_participant(self, participant_id: str) -> list[SheetRow]:
+        """Return final insight rows scoped to one participant."""
+
+    def get_participant_insight(self, participant_id: str, insight_id: str) -> SheetRow | None:
+        """Return one participant-scoped insight row when available."""
+
     def list_weekly_reports(self) -> list[SheetRow]:
         """Return weekly report rows for tests or future readers."""
 
@@ -165,6 +171,19 @@ class FakeSheetsGateway:
 
     def append_insight(self, row: SheetRow) -> None:
         self._insights.append(dict(row))
+
+    def list_insights_for_participant(self, participant_id: str) -> list[SheetRow]:
+        return [
+            dict(row)
+            for row in self._insights
+            if row.get("participant_id") == participant_id
+        ]
+
+    def get_participant_insight(self, participant_id: str, insight_id: str) -> SheetRow | None:
+        for row in self._insights:
+            if row.get("participant_id") == participant_id and row.get("insight_id") == insight_id:
+                return dict(row)
+        return None
 
     def list_weekly_reports(self) -> list[SheetRow]:
         return [dict(row) for row in self._weekly_reports]

@@ -99,8 +99,14 @@ def test_feature_does_not_introduce_out_of_scope_dependencies_or_artifacts(tmp_p
         weekly_reports=[{"weekly_report_id": "WR001", "participant_id": "P001"}],
     )
 
-    for action in (
+    insight_response = service.handle_menu_action(
+        TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
         MenuAction.VIEW_INSIGHTS,
+        occurred_at=NOW,
+    )
+    assert insight_response.text == "Мои инсайты"
+
+    for action in (
         MenuAction.VIEW_TEAM,
         MenuAction.CAPTAIN_MANUAL_REPORT,
         MenuAction.VIEW_TEAM_REPORT,

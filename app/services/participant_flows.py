@@ -9,6 +9,7 @@ from app.bot.menus import MenuAction, build_role_menu
 from app.bot.messages import (
     CONSENT_ACCEPT_BUTTON,
     CONSENT_TEXT,
+    build_insight_menu_buttons,
     MISSING_DATA_TEXT,
     NOT_AVAILABLE_TEXT,
     UNKNOWN_USER_TEXT,
@@ -107,6 +108,17 @@ class ParticipantFlowService:
             return response
 
         normalized_action = _normalize_action(action)
+        if normalized_action is MenuAction.VIEW_INSIGHTS:
+            return self._send_simple_response(
+                user,
+                participant=participant,
+                text="Мои инсайты",
+                flow="insight",
+                step="menu",
+                occurred_at=occurred_at,
+                buttons=build_insight_menu_buttons(),
+            )
+
         if normalized_action in _INERT_ACTIONS:
             return self._send_simple_response(
                 user,
@@ -219,8 +231,9 @@ class ParticipantFlowService:
         flow: str,
         step: str,
         occurred_at: str,
+        buttons: tuple[str, ...] = (),
     ) -> FlowResponse:
-        response = FlowResponse(chat_id=user.chat_id, text=text)
+        response = FlowResponse(chat_id=user.chat_id, text=text, buttons=buttons)
         self.dialog_states.upsert(
             _dialog_state_for(
                 user=user,
@@ -292,7 +305,6 @@ def _dialog_state_for(
 
 
 _INERT_ACTIONS = {
-    MenuAction.VIEW_INSIGHTS,
     MenuAction.VIEW_TEAM,
     MenuAction.CAPTAIN_MANUAL_REPORT,
     MenuAction.VIEW_TEAM_REPORT,
