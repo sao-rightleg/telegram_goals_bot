@@ -114,7 +114,7 @@ Review details — in JSON files via links. QA report — in logs/working/.
 ## Task 5: External integration boundaries
 
 **Status:** Done
-**Commit:** pending
+**Commit:** 89fff28
 **Agent:** main agent
 **Summary:** Added boundary protocols and fake implementations for Google Sheets, three Telegram bot clients, notification routing, report generation, and speech transcription. Technical errors route only through the error bot boundary, report/speech fakes reuse the Task 4 storage path policy, and boundary modules avoid live SDK imports.
 **Deviations:** Formal reviewer sub-agents were not spawned because the user did not explicitly request multi-agent execution in this turn; local verification was completed.
