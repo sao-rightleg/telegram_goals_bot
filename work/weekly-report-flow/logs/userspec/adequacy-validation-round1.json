@@ -1,0 +1,14 @@
+{
+  "validator": "userspec-adequacy-validator",
+  "mode": "local-fallback",
+  "status": "pass",
+  "checked_at": "2026-07-02",
+  "subagent_status": "skipped: multi-agent spawn unavailable in this session",
+  "findings": [],
+  "checks": [
+    "Scope is feasible on top of existing participant-core-flows boundaries.",
+    "Voice, scheduler, gray no-answer, captain manual report, live adapters, and deploy are correctly excluded.",
+    "Google Sheets and SQLite storage boundaries match approved architecture.",
+    "Feature size M is appropriate because it touches service orchestration, Sheets boundary, SQLite draft state, and integration tests."
+  ]
+}

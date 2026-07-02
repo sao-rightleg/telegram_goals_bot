@@ -1,0 +1,110 @@
+metadata:
+  status: completed
+  mode: autonomous_from_approved_docs
+  feature_name: weekly-report-flow
+  work_type: feature
+  size: M
+  source_documents:
+    - docs/01_requirements.md
+    - docs/02_open_questions.md
+    - docs/03_architecture.md
+    - docs/04_google_sheets_schema.md
+    - docs/05_sqlite_state_schema.md
+    - docs/06_telegram_scenarios.md
+    - docs/08_mvp_plan.md
+    - work/participant-core-flows/user-spec.md
+    - work/participant-core-flows/tech-spec.md
+  note: >
+    User requested autonomous continuation. No new business decisions were introduced.
+    Requirements were derived from already approved project documentation.
+phase1_feature_overview:
+  feature_name:
+    value: weekly-report-flow
+    status: covered
+    score: 95
+  work_type:
+    value: feature
+    status: covered
+    score: 95
+  problem:
+    value: >
+      Participant core flows exist, but participants still cannot submit weekly reports
+      that update weekly status and planned-step progress in Google Sheets.
+    status: covered
+    score: 95
+  scope:
+    value: >
+      Implement service-level participant weekly report submission: start flow, choose
+      green/blue/red status, select planned steps when required, collect text draft,
+      finalize before deadline, write final facts to Google Sheets, and clear SQLite draft.
+    status: covered
+    score: 95
+  out_of_scope:
+    value: >
+      Voice processing, scheduler reminders, automatic gray no-answer closure, late text
+      handling after deadline, captain manual report, insights, PDF reports, live Telegram SDK,
+      live Google API adapter, deploy, and production actions.
+    status: covered
+    score: 95
+phase2_user_experience:
+  start_weekly_report:
+    value: >
+      A future Telegram handler/reminder can start the participant weekly report flow.
+      Bot shows remaining open planned steps and asks for weekly status.
+    status: covered
+    score: 90
+  green_status:
+    value: >
+      Green requires selecting one or more open planned steps, collecting text, saving
+      status green/🟩/1, closing selected planned steps, and confirming save.
+    status: covered
+    score: 95
+  blue_status:
+    value: >
+      Blue requires selecting one or more planned steps with partial progress, collecting
+      text, saving status blue/🟦/0.5 and partial step relations without closing steps.
+    status: covered
+    score: 95
+  red_status:
+    value: >
+      Red collects text about what prevented a weekly victory and saves status red/🟥/0
+      without requiring selected planned steps.
+    status: covered
+    score: 95
+phase3_integration:
+  google_sheets:
+    value: >
+      WeeklyReports and WeeklyReportSteps are final business facts in Google Sheets.
+      PlannedSteps are updated only through the Sheets boundary.
+    status: covered
+    score: 95
+  sqlite:
+    value: >
+      SQLite stores draft session, selected status, selected steps, and ordered text messages
+      only until final save or cancellation.
+    status: covered
+    score: 95
+  deadline:
+    value: >
+      Participant report submission is accepted only before Sunday 23:59 Asia/Yekaterinburg
+      for the current week. Late status changes are out of scope.
+    status: covered
+    score: 90
+  deploy_approach:
+    value: No production deploy in this feature; local tests and smoke checks only.
+    status: covered
+    score: 95
+testing_strategy:
+  unit_tests:
+    value: Required for status mapping, validation, deadline guard, draft transformations, and formatting.
+    status: covered
+    score: 95
+  integration_tests:
+    value: Required for weekly report orchestration with fake Sheets and temporary SQLite draft state.
+    status: covered
+    score: 95
+  e2e_tests:
+    value: Not required because live Telegram and live Google Sheets adapters remain out of scope.
+    status: covered
+    score: 90
+conversation_history: []

@@ -1,0 +1,15 @@
+{
+  "validator": "userspec-quality-validator",
+  "mode": "local-fallback",
+  "status": "pass",
+  "checked_at": "2026-07-02",
+  "subagent_status": "skipped: multi-agent spawn unavailable in this session",
+  "findings": [],
+  "checks": [
+    "Frontmatter present with created/status/type/size.",
+    "Required template sections are filled.",
+    "Acceptance criteria are testable.",
+    "Out-of-scope items are explicit.",
+    "Verification section contains concrete local checks."
+  ]
+}
