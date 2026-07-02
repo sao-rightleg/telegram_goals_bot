@@ -91,3 +91,22 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `source .venv/bin/activate && python -m pytest tests/test_sqlite_schema.py -v` → 6 passed
 - `source .venv/bin/activate && python -m pytest -v` → 19 passed
 - `git diff --check` → OK
+
+## Task 4: Scheduler and file-storage foundations
+
+**Status:** Done
+**Commit:** pending
+**Agent:** main agent
+**Summary:** Added executable scheduler calendar constants for the approved Yekaterinburg timezone, challenge dates, reminder schedule, and idempotency keys. Added local storage path policies for audio, SQLite, PDFs, and backups with retention constants and safeguards against URL/path traversal fragments.
+**Deviations:** Formal reviewer sub-agents were not spawned because the user did not explicitly request multi-agent execution in this turn; local verification was completed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run → multi-agent review not started in current execution mode.
+- test-reviewer: Not run → multi-agent review not started in current execution mode.
+
+**Verification:**
+- `source .venv/bin/activate && python -m pytest tests/test_scheduler_foundation.py tests/test_storage_paths.py -v` → 10 passed
+- `source .venv/bin/activate && python -m pytest -v` → 29 passed
+- `git diff --check` → OK

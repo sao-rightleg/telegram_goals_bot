@@ -9,7 +9,7 @@ feature_dir: work/mvp-foundation
 execution_plan: work/mvp-foundation/logs/execution-plan.md
 team_name: mvp-foundation
 
-last_completed_wave: 1
+last_completed_wave: 2
 total_waves: 6
 
 # Format: task_number: status (planned | in_progress | done)
@@ -22,7 +22,7 @@ tasks:
   1: done
   2: done
   3: done
-  4: planned
+  4: done
   5: planned
   6: planned
   7: planned
@@ -30,4 +30,4 @@ tasks:
   9: planned
   10: planned
 
-next_wave: 2
+next_wave: 3
