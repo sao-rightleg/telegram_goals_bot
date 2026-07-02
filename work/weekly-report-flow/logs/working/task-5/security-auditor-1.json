@@ -1,0 +1,21 @@
+{
+  "reviewer": "security-auditor",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "app/services/weekly_reports.py",
+    "tests/test_weekly_report_start_flow.py",
+    "tests/test_weekly_report_step_selection.py"
+  ],
+  "findings": [],
+  "notes": [
+    "Participant resolution is by Telegram ID through SheetsGateway.",
+    "Unknown and non-consenting users are blocked before draft creation.",
+    "Deadline and duplicate guards run before start/status/step progression.",
+    "Step selection is validated through participant-scoped active-goal planned steps.",
+    "Admin notifications include technical context and no secrets."
+  ]
+}

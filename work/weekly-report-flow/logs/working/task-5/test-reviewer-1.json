@@ -1,0 +1,27 @@
+{
+  "reviewer": "test-reviewer",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "tests/test_weekly_report_start_flow.py",
+    "tests/test_weekly_report_step_selection.py"
+  ],
+  "findings": [],
+  "test_results": [
+    {
+      "command": ".venv/bin/python -m pytest tests/test_weekly_report_start_flow.py tests/test_weekly_report_step_selection.py -q",
+      "result": "12 passed"
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q",
+      "result": "106 passed"
+    }
+  ],
+  "notes": [
+    "Tests cover identity, consent, late guard, duplicate guard, missing data notification, start rendering, green/blue/red selection, cross-participant step rejection, and duplicate progression guard.",
+    "Tests use fake Sheets, fake bots, notification router, and temp SQLite only."
+  ]
+}

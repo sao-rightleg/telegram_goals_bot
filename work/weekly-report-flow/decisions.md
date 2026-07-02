@@ -15,6 +15,21 @@ Reviews:
 
 Deviations: None.
 
+## Task 5: Start, status selection, and step selection service flow
+
+Summary: Added service-level weekly report start, status selection, and step selection flow with Telegram ID identity lookup, consent/deadline/duplicate gates, missing-data notifications, and SQLite draft state updates.
+
+Verification:
+- `.venv/bin/python -m pytest tests/test_weekly_report_start_flow.py tests/test_weekly_report_step_selection.py -q` -> 12 passed.
+- `.venv/bin/python -m pytest -q` -> 106 passed.
+
+Reviews:
+- Code review: `work/weekly-report-flow/logs/working/task-5/code-reviewer-1.json`
+- Security review: `work/weekly-report-flow/logs/working/task-5/security-auditor-1.json`
+- Test review: `work/weekly-report-flow/logs/working/task-5/test-reviewer-1.json`
+
+Deviations: None.
+
 ## Task 4: Weekly report calendar helper
 
 Summary: Added deterministic weekly report calendar helpers for current challenge week, Sunday 23:59 Yekaterinburg deadline, and open/closed deadline checks.

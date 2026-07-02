@@ -1,0 +1,19 @@
+{
+  "reviewer": "code-reviewer",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "app/services/weekly_reports.py",
+    "tests/test_weekly_report_start_flow.py",
+    "tests/test_weekly_report_step_selection.py"
+  ],
+  "findings": [],
+  "notes": [
+    "WeeklyReportService exposes service-level start, status selection, and step selection operations without live Telegram handler wiring.",
+    "The service reuses SheetsGateway, NotificationRouter, BotClient, and WeeklyReportDraftRepository boundaries.",
+    "Final WeeklyReport writes, WeeklyReportSteps writes, planned-step closure, text collection, and voice handling remain out of scope for Task 5."
+  ]
+}
