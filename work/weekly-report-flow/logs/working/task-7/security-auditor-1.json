@@ -1,0 +1,19 @@
+{
+  "reviewer": "security-auditor",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "app/services/weekly_reports.py",
+    "tests/test_weekly_report_boundaries.py"
+  ],
+  "findings": [],
+  "notes": [
+    "Cross-participant step IDs do not update draft selected steps.",
+    "Late and duplicate finalization paths create no new final facts or relation rows.",
+    "Invalid draft recovery notification avoids secrets and full report text.",
+    "Static checks confirm no live Telegram, Google, voice, PDF, Docker, Celery, or Redis imports were introduced in weekly report modules."
+  ]
+}

@@ -16,6 +16,7 @@ from app.bot.messages import (
     WEEKLY_REPORT_EMPTY_TEXT,
     WEEKLY_REPORT_GREEN_STEP_REQUIRED_TEXT,
     WEEKLY_REPORT_LATE_TEXT,
+    WEEKLY_REPORT_RECOVERY_TEXT,
     WEEKLY_REPORT_VOICE_NOT_AVAILABLE_TEXT,
     build_weekly_report_status_buttons,
     get_weekly_report_success_text,
@@ -150,6 +151,26 @@ class WeeklyReportService:
 
     def reject_voice_message(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
         return self._send(user, text=WEEKLY_REPORT_VOICE_NOT_AVAILABLE_TEXT)
+
+    def recover_invalid_draft(
+        self,
+        user: TelegramUserContext,
+        *,
+        reason: str,
+        now: datetime,
+    ) -> FlowResponse:
+        self.drafts.clear_draft(user.telegram_id)
+        self.notification_router.send(
+            category=NotificationCategory.TECHNICAL_ERROR,
+            text=(
+                "invalid_weekly_report_draft "
+                f"telegram_id={user.telegram_id} "
+                f"reason={reason} "
+                f"occurred_at={_occurred_at(now)}"
+            ),
+            recipients=(),
+        )
+        return self._send(user, text=WEEKLY_REPORT_RECOVERY_TEXT)
 
     def finalize_report(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
         context = self._resolve_context(user, now=now)

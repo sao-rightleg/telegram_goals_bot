@@ -15,6 +15,20 @@ Reviews:
 
 Deviations: None.
 
+## Task 7: Weekly report boundary regression tests
+
+Summary: Added boundary regression coverage for cross-participant step rejection, late and duplicate finalization, invalid draft recovery, missing data notifications, out-of-scope imports, and SQLite business-boundary preservation.
+
+Verification:
+- `.venv/bin/python -m pytest tests/test_weekly_report_boundaries.py -q` -> 6 passed.
+- `.venv/bin/python -m pytest -q` -> 121 passed.
+
+Reviews:
+- Code review: `work/weekly-report-flow/logs/working/task-7/code-reviewer-1.json`
+- Security review: `work/weekly-report-flow/logs/working/task-7/security-auditor-1.json`
+
+Deviations: None.
+
 ## Task 6: Text draft collection and final save
 
 Summary: Completed text draft collection and final weekly report save flow, including green/blue/red final facts, WeeklyReportSteps relations, green planned-step closure, empty-text guard, voice rejection, duplicate/late guards, and SQLite draft cleanup.
