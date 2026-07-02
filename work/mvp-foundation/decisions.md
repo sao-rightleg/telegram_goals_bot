@@ -110,3 +110,23 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `source .venv/bin/activate && python -m pytest tests/test_scheduler_foundation.py tests/test_storage_paths.py -v` → 10 passed
 - `source .venv/bin/activate && python -m pytest -v` → 29 passed
 - `git diff --check` → OK
+
+## Task 5: External integration boundaries
+
+**Status:** Done
+**Commit:** pending
+**Agent:** main agent
+**Summary:** Added boundary protocols and fake implementations for Google Sheets, three Telegram bot clients, notification routing, report generation, and speech transcription. Technical errors route only through the error bot boundary, report/speech fakes reuse the Task 4 storage path policy, and boundary modules avoid live SDK imports.
+**Deviations:** Formal reviewer sub-agents were not spawned because the user did not explicitly request multi-agent execution in this turn; local verification was completed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run → multi-agent review not started in current execution mode.
+- security-auditor: Not run → multi-agent review not started in current execution mode.
+- test-reviewer: Not run → multi-agent review not started in current execution mode.
+
+**Verification:**
+- `source .venv/bin/activate && python -m pytest tests/test_boundaries.py -v` → 6 passed
+- `source .venv/bin/activate && python -m pytest -v` → 35 passed
+- `git diff --check` → OK
