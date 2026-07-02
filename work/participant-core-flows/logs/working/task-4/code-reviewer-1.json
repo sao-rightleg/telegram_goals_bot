@@ -1,0 +1,18 @@
+{
+  "reviewer": "code-reviewer",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "app/services/participant_flows.py",
+    "tests/test_participant_start_flow.py"
+  ],
+  "findings": [],
+  "notes": [
+    "Service is adapter-independent and uses injected Sheets, bot, notification, and dialog state boundaries.",
+    "Telegram handlers remain out of scope; behavior is testable at service level.",
+    "Dialog state writes only technical flow metadata."
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "reviewer": "security-auditor",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "app/services/participant_flows.py",
+    "tests/test_participant_start_flow.py"
+  ],
+  "findings": [],
+  "notes": [
+    "Unknown users receive only the approved participant-facing message.",
+    "Technical unknown-user context is routed through NotificationRouter with TECHNICAL_ERROR.",
+    "Consent is written through Sheets gateway and menu/data are not shown before consent in start flow.",
+    "No secrets, live SDKs, deploy actions, or production credentials were introduced."
+  ]
+}

@@ -44,3 +44,18 @@ Reviews:
 - Test review: `work/participant-core-flows/logs/working/task-3/test-reviewer-1.json`
 
 Deviations: None.
+
+## Task 4: Participant start and consent service
+
+Summary: Added participant start and consent orchestration with Sheets identity lookup, main-bot user replies, error-bot unknown-user notifications, consent writes, role-aware menus, and SQLite technical dialog state.
+
+Verification:
+- `.venv/bin/python -m pytest tests/test_participant_start_flow.py -v` -> 6 passed.
+- `.venv/bin/python -m pytest -q` -> 61 passed.
+
+Reviews:
+- Code review: `work/participant-core-flows/logs/working/task-4/code-reviewer-1.json`
+- Security review: `work/participant-core-flows/logs/working/task-4/security-auditor-1.json`
+- Test review: `work/participant-core-flows/logs/working/task-4/test-reviewer-1.json`
+
+Deviations: None.

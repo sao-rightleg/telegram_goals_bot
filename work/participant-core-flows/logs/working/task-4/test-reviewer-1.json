@@ -1,0 +1,26 @@
+{
+  "reviewer": "test-reviewer",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "tests/test_participant_start_flow.py"
+  ],
+  "findings": [],
+  "test_results": [
+    {
+      "command": ".venv/bin/python -m pytest tests/test_participant_start_flow.py -v",
+      "result": "6 passed"
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q",
+      "result": "61 passed"
+    }
+  ],
+  "notes": [
+    "Tests cover unknown user, known user without consent, consent acceptance, known consenting captain menu, invalid consent callback, and error-bot-only technical routing.",
+    "Tests use fake Sheets, fake bot clients, notification router, and temporary SQLite."
+  ]
+}
