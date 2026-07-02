@@ -51,3 +51,23 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `source .venv/bin/activate && python -m pytest -v` → 3 passed
 - `source .venv/bin/activate && python -c "import app; print('ok')"` → ok
 - `git diff --check` → OK
+
+## Task 2: Settings and secret redaction
+
+**Status:** Done
+**Commit:** pending
+**Agent:** main agent
+**Summary:** Added typed settings loading from process environment or optional `.env`, strict validation for the three Telegram bot tokens and core MVP settings, secret redaction helpers, and logging setup that accepts redacted settings metadata. Kept timezone out of runtime configuration.
+**Deviations:** Formal reviewer sub-agents were not spawned because the user did not explicitly request multi-agent execution in this turn; local verification was completed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run → multi-agent review not started in current execution mode.
+- security-auditor: Not run → multi-agent review not started in current execution mode.
+- test-reviewer: Not run → multi-agent review not started in current execution mode.
+
+**Verification:**
+- `source .venv/bin/activate && python -m pytest tests/test_config.py -v` → 10 passed
+- `source .venv/bin/activate && python -m pytest -v` → 13 passed
+- `git diff --check` → OK
