@@ -1,0 +1,30 @@
+{
+  "feature": "weekly-report-flow",
+  "validator": "task-validator",
+  "round": 1,
+  "status": "approved",
+  "mode": "local-fallback",
+  "task_count": 11,
+  "findings": [],
+  "checks": {
+    "frontmatter_present": true,
+    "status_planned": true,
+    "dependencies_present": true,
+    "waves_present": true,
+    "skills_present": true,
+    "reviewers_present": true,
+    "required_skills_present": true,
+    "description_present": true,
+    "what_to_do_present": true,
+    "acceptance_criteria_present": true,
+    "context_files_present": true,
+    "verification_steps_present": true,
+    "post_completion_present": true,
+    "audit_and_qa_tasks_have_no_reviewers": true
+  },
+  "notes": [
+    "Tasks follow the local participant-core-flows task style.",
+    "Code tasks include TDD anchors.",
+    "Audit and QA tasks omit TDD anchors because they are analysis/verification tasks."
+  ]
+}
