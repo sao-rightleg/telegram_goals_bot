@@ -1,0 +1,27 @@
+{
+  "reviewer": "test-reviewer",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "tests/test_weekly_report_messages.py",
+    "tests/test_participant_messages.py"
+  ],
+  "findings": [],
+  "test_results": [
+    {
+      "command": ".venv/bin/python -m pytest tests/test_weekly_report_messages.py -q",
+      "result": "5 passed"
+    },
+    {
+      "command": ".venv/bin/python -m pytest tests/test_participant_messages.py -q",
+      "result": "8 passed"
+    }
+  ],
+  "notes": [
+    "Tests cover approved status mapping, status buttons, success messages, safe validation copy, and voice out-of-scope copy.",
+    "Tests are pure unit tests and require no production secrets or network access."
+  ]
+}

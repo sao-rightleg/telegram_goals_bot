@@ -1,0 +1,19 @@
+{
+  "reviewer": "code-reviewer",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "app/services/weekly_report_models.py",
+    "app/bot/messages.py",
+    "tests/test_weekly_report_messages.py"
+  ],
+  "findings": [],
+  "notes": [
+    "Weekly report contracts are adapter-independent and do not import Telegram, Google, SQLite, scheduler, voice, PDF, or deployment code.",
+    "User-facing copy is centralized in app/bot/messages.py with existing participant copy.",
+    "Status mapping matches the approved green/blue/red symbol and score contract."
+  ]
+}

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from app.services.participant_models import Goal, PlannedStep, WeeklyStatus
+from app.services.weekly_report_models import WeeklyReportStatus
 
 
 UNKNOWN_USER_TEXT = "Извините, вас нет в базе участников. Свяжитесь со своим капитаном."
@@ -16,9 +17,54 @@ CONSENT_ACCEPT_BUTTON = "✅ Согласен"
 MISSING_DATA_TEXT = "Данные пока не заполнены. Свяжитесь со своим капитаном."
 NOT_AVAILABLE_TEXT = "Раздел будет доступен позже."
 
+WEEKLY_REPORT_GREEN_BUTTON = "🟩 Победа есть"
+WEEKLY_REPORT_BLUE_BUTTON = "🟦 Частично"
+WEEKLY_REPORT_RED_BUTTON = "🟥 Победы нет"
+WEEKLY_REPORT_DONE_BUTTON = "✅ Готово"
+
+WEEKLY_REPORT_STATUS_PROMPT_TEXT = "Выбери статус недели."
+WEEKLY_REPORT_GREEN_STEP_REQUIRED_TEXT = "Выбери один или несколько открытых шагов."
+WEEKLY_REPORT_BLUE_STEP_REQUIRED_TEXT = "Выбери один или несколько шагов с частичным прогрессом."
+WEEKLY_REPORT_EMPTY_TEXT = "Отправь текст отчёта, потом нажми «✅ Готово»."
+WEEKLY_REPORT_LATE_TEXT = "Дедлайн недели уже прошёл. Отчёт не может изменить статус."
+WEEKLY_REPORT_DUPLICATE_TEXT = "Отчёт за эту неделю уже принят."
+WEEKLY_REPORT_VOICE_NOT_AVAILABLE_TEXT = "Голосовые отчёты будут доступны позже. Сейчас отправь текст."
+WEEKLY_REPORT_RECOVERY_TEXT = "Черновик отчёта сброшен. Начни отправку отчёта заново."
+WEEKLY_REPORT_GREEN_SUCCESS_TEXT = "Принято. Победа недели сохранена."
+WEEKLY_REPORT_BLUE_SUCCESS_TEXT = "Принято. Частичная победа сохранена."
+WEEKLY_REPORT_RED_SUCCESS_TEXT = "Принято. Отчёт за неделю сохранён."
+
 
 def format_missing_data_message() -> str:
     return MISSING_DATA_TEXT
+
+
+def build_weekly_report_status_buttons() -> tuple[str, str, str]:
+    return (
+        WEEKLY_REPORT_GREEN_BUTTON,
+        WEEKLY_REPORT_BLUE_BUTTON,
+        WEEKLY_REPORT_RED_BUTTON,
+    )
+
+
+def format_weekly_report_status_prompt() -> str:
+    return WEEKLY_REPORT_STATUS_PROMPT_TEXT
+
+
+def get_weekly_report_step_required_text(status: WeeklyReportStatus) -> str:
+    if status is WeeklyReportStatus.GREEN:
+        return WEEKLY_REPORT_GREEN_STEP_REQUIRED_TEXT
+    if status is WeeklyReportStatus.BLUE:
+        return WEEKLY_REPORT_BLUE_STEP_REQUIRED_TEXT
+    return ""
+
+
+def get_weekly_report_success_text(status: WeeklyReportStatus) -> str:
+    if status is WeeklyReportStatus.GREEN:
+        return WEEKLY_REPORT_GREEN_SUCCESS_TEXT
+    if status is WeeklyReportStatus.BLUE:
+        return WEEKLY_REPORT_BLUE_SUCCESS_TEXT
+    return WEEKLY_REPORT_RED_SUCCESS_TEXT
 
 
 def format_goal_view(goal: Goal) -> str:
