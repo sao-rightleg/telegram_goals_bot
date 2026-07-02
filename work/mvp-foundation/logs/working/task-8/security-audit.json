@@ -1,0 +1,49 @@
+{
+  "task": 8,
+  "type": "security-audit",
+  "status": "passed",
+  "summary": "No blocking security findings were identified in the foundation scope. Secret-bearing settings are loaded from environment/.env, redacted diagnostics are available, generated/local sensitive files are ignored, SQLite uses technical-state tables only, and technical error routing is isolated to the error bot boundary.",
+  "findings": [],
+  "checks": [
+    {
+      "name": "Secret handling",
+      "result": "passed",
+      "files": ["app/config.py", "app/logging.py", ".gitignore", ".env.example"],
+      "evidence": "No literal production secrets are present; .env and credential-like files are ignored; config redaction redacts token/credential keyed settings."
+    },
+    {
+      "name": "Notification routing",
+      "result": "passed",
+      "files": ["app/services/notifications.py", "tests/test_boundaries.py"],
+      "evidence": "TECHNICAL_ERROR ignores supplied user/report recipients and sends only to admin_error_recipient through error_bot."
+    },
+    {
+      "name": "SQLite boundary",
+      "result": "passed",
+      "files": ["app/storage/sqlite.py", "tests/test_sqlite_schema.py"],
+      "evidence": "Schema creates technical-state tables and tests assert business-primary tables are not created."
+    },
+    {
+      "name": "Path traversal and public URL avoidance",
+      "result": "passed",
+      "files": ["app/storage/paths.py", "tests/test_storage_paths.py"],
+      "evidence": "Path fragments reject absolute paths, traversal, nested path fragments, and URL-like strings; default paths are local."
+    }
+  ],
+  "residualRisks": [
+    {
+      "severity": "low",
+      "file": "app/storage/paths.py",
+      "line": 16,
+      "description": "StoragePathPolicy root directories are configurable dataclass fields and are not validated as local-only roots. Defaults are safe and current tests cover default outputs, but future code that accepts root values from user-controlled input should validate roots too.",
+      "recommendation": "When root paths become configurable from settings, validate them with a root-specific local-path guard before use."
+    },
+    {
+      "severity": "low",
+      "file": "app/config.py",
+      "line": 147,
+      "description": "redact_value only redacts strings containing token/secret/password/credential/api_key. Current Settings.as_dict redaction is protected by secret-like keys, but arbitrary standalone secret values without these substrings would not be redacted.",
+      "recommendation": "Keep using redact_mapping for settings/log records; if arbitrary values are logged later, prefer key-aware redaction or explicit sensitive-field metadata."
+    }
+  ]
+}

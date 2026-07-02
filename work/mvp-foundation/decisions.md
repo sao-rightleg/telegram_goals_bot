@@ -149,3 +149,54 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `source .venv/bin/activate && python -m pytest` → 35 passed
 - `source .venv/bin/activate && python -c "import app; print('ok')"` → ok
 - `git diff --check` → OK
+
+## Task 7: Code Audit
+
+**Status:** Done
+**Commit:** pending
+**Agent:** main agent
+**Summary:** Reviewed foundation source, tests, and README for code quality, module boundaries, shared-resource ownership, and scope creep. The audit passed with no blocking findings; report written to `work/mvp-foundation/logs/working/task-7/code-audit.json`.
+**Deviations:** None.
+
+**Reviews:**
+
+*Round 1:*
+- code-audit: passed → `work/mvp-foundation/logs/working/task-7/code-audit.json`
+
+**Verification:**
+- `test -f work/mvp-foundation/logs/working/task-7/code-audit.json` → OK
+- `python3 -m json.tool work/mvp-foundation/logs/working/task-7/code-audit.json` → OK
+
+## Task 8: Security Audit
+
+**Status:** Done
+**Commit:** pending
+**Agent:** main agent
+**Summary:** Reviewed settings, logging, SQLite schema, storage paths, notification routing, and tests for secret leakage, unsafe paths, business-data storage drift, and unauthorized technical-error routing. The audit passed with no blocking findings; low residual hardening notes are documented in `work/mvp-foundation/logs/working/task-8/security-audit.json`.
+**Deviations:** None.
+
+**Reviews:**
+
+*Round 1:*
+- security-audit: passed → `work/mvp-foundation/logs/working/task-8/security-audit.json`
+
+**Verification:**
+- `test -f work/mvp-foundation/logs/working/task-8/security-audit.json` → OK
+- `python3 -m json.tool work/mvp-foundation/logs/working/task-8/security-audit.json` → OK
+
+## Task 9: Test Audit
+
+**Status:** Done
+**Commit:** pending
+**Agent:** main agent
+**Summary:** Reviewed all foundation tests for meaningful assertions, negative cases, production-secret isolation, and coverage of config, redaction, SQLite, scheduler, storage, and boundary behavior. The audit passed with one low-severity smoke-test improvement noted in `work/mvp-foundation/logs/working/task-9/test-audit.json`.
+**Deviations:** None.
+
+**Reviews:**
+
+*Round 1:*
+- test-audit: passed → `work/mvp-foundation/logs/working/task-9/test-audit.json`
+
+**Verification:**
+- `test -f work/mvp-foundation/logs/working/task-9/test-audit.json` → OK
+- `python3 -m json.tool work/mvp-foundation/logs/working/task-9/test-audit.json` → OK
