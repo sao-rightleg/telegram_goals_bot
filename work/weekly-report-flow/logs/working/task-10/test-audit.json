@@ -1,0 +1,39 @@
+{
+  "task": 10,
+  "audit": "tests",
+  "mode": "local-fallback",
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "scope": [
+    "tests/test_weekly_report_messages.py",
+    "tests/test_weekly_report_sheets_gateway.py",
+    "tests/test_weekly_report_draft_repository.py",
+    "tests/test_weekly_report_calendar.py",
+    "tests/test_weekly_report_start_flow.py",
+    "tests/test_weekly_report_step_selection.py",
+    "tests/test_weekly_report_finalize.py",
+    "tests/test_weekly_report_boundaries.py"
+  ],
+  "blocking_findings": [],
+  "non_blocking_findings": [],
+  "coverage_assessment": {
+    "status_mapping_and_copy": "covered",
+    "sheets_boundary": "covered",
+    "sqlite_draft_repository": "covered",
+    "deadline_helper": "covered",
+    "start_and_selection_flow": "covered",
+    "green_blue_red_finalization": "covered",
+    "late_duplicate_empty_text_voice_guards": "covered",
+    "boundary_regressions": "covered"
+  },
+  "verification": [
+    {
+      "command": ".venv/bin/python -m pytest -q",
+      "result": "121 passed"
+    }
+  ],
+  "notes": [
+    "Tests are local unit/integration tests using fake Sheets, fake bot clients, notification router, and temp SQLite.",
+    "No tests require production Telegram token, Google credentials, network access, or deploy."
+  ]
+}

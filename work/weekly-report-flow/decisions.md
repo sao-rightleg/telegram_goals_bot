@@ -15,6 +15,43 @@ Reviews:
 
 Deviations: None.
 
+## Task 8: Code Audit
+
+Summary: Completed weekly-report-flow code audit. No blocking code-quality findings were found.
+
+Verification:
+- `.venv/bin/python -m pytest -q` -> 121 passed.
+
+Reviews:
+- Code audit: `work/weekly-report-flow/logs/working/task-8/code-audit.json`
+
+Deviations: None.
+
+## Task 9: Security Audit
+
+Summary: Completed weekly-report-flow security audit for participant isolation, consent gating, deadline/duplicate guards, storage boundaries, notification content, and out-of-scope runtime boundaries. No blocking security findings were found.
+
+Verification:
+- `.venv/bin/python -m pytest tests/test_weekly_report_boundaries.py -q` -> 6 passed.
+- `.venv/bin/python -m pytest -q` -> 121 passed.
+
+Reviews:
+- Security audit: `work/weekly-report-flow/logs/working/task-9/security-audit.json`
+
+Deviations: None.
+
+## Task 10: Test Audit
+
+Summary: Completed weekly-report-flow test audit. Coverage matches the approved user-spec and tech-spec scope with local fake-boundary and temp-SQLite tests.
+
+Verification:
+- `.venv/bin/python -m pytest -q` -> 121 passed.
+
+Reviews:
+- Test audit: `work/weekly-report-flow/logs/working/task-10/test-audit.json`
+
+Deviations: None.
+
 ## Task 7: Weekly report boundary regression tests
 
 Summary: Added boundary regression coverage for cross-participant step rejection, late and duplicate finalization, invalid draft recovery, missing data notifications, out-of-scope imports, and SQLite business-boundary preservation.

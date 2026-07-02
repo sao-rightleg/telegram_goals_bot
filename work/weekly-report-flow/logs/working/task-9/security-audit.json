@@ -1,0 +1,39 @@
+{
+  "task": 9,
+  "audit": "security",
+  "mode": "local-fallback",
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "scope": [
+    "app/services/weekly_reports.py",
+    "app/sheets/gateway.py",
+    "app/storage/weekly_report_drafts.py",
+    "tests/test_weekly_report_boundaries.py"
+  ],
+  "blocking_findings": [],
+  "non_blocking_findings": [],
+  "checked_controls": [
+    "Telegram ID participant resolution",
+    "consent gate before draft creation",
+    "deadline and duplicate guards before final save",
+    "participant/goal scoped step selection",
+    "SQLite draft cleanup",
+    "admin notifications without secrets or full report text",
+    "no production secrets or network calls",
+    "no live Telegram, live Google API, scheduler runtime, voice processing, PDF, deploy, Docker, Redis, or Celery"
+  ],
+  "verification": [
+    {
+      "command": ".venv/bin/python -m pytest tests/test_weekly_report_boundaries.py -q",
+      "result": "6 passed"
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q",
+      "result": "121 passed"
+    }
+  ],
+  "notes": [
+    "No blocking security finding found.",
+    "Residual implementation risk for future live Google adapter: multi-row final save cannot be truly atomic in Sheets and must keep idempotent retry design."
+  ]
+}

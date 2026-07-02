@@ -1,0 +1,30 @@
+{
+  "task": 8,
+  "audit": "code",
+  "mode": "local-fallback",
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "scope": [
+    "app/bot/messages.py",
+    "app/services/weekly_report_models.py",
+    "app/sheets/gateway.py",
+    "app/storage/weekly_report_drafts.py",
+    "app/scheduler/calendar.py",
+    "app/services/weekly_reports.py",
+    "tests/test_weekly_report_*.py"
+  ],
+  "blocking_findings": [],
+  "non_blocking_findings": [],
+  "verification": [
+    {
+      "command": ".venv/bin/python -m pytest -q",
+      "result": "121 passed"
+    }
+  ],
+  "notes": [
+    "Weekly report flow is service-level and does not add live Telegram handler wiring.",
+    "Storage boundaries are explicit: final facts through SheetsGateway, draft state through SQLite repository.",
+    "Task implementation follows existing fake-boundary and temp-SQLite patterns.",
+    "No code-quality blocker found."
+  ]
+}
