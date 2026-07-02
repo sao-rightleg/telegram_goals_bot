@@ -1,0 +1,18 @@
+{
+  "reviewer": "code-reviewer",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "app/sheets/gateway.py",
+    "tests/test_participant_sheets_gateway.py"
+  ],
+  "findings": [],
+  "notes": [
+    "FakeSheetsGateway preserves existing weekly report and insight behavior.",
+    "New reads return defensive row copies.",
+    "Methods stay within the generic SheetRow boundary style established by foundation."
+  ]
+}

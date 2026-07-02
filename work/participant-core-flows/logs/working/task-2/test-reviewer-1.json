@@ -1,0 +1,27 @@
+{
+  "reviewer": "test-reviewer",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "tests/test_participant_sheets_gateway.py",
+    "tests/test_boundaries.py"
+  ],
+  "findings": [],
+  "test_results": [
+    {
+      "command": ".venv/bin/python -m pytest tests/test_participant_sheets_gateway.py tests/test_boundaries.py -v",
+      "result": "13 passed"
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q",
+      "result": "50 passed"
+    }
+  ],
+  "notes": [
+    "Tests cover lookup, defensive copies, scoped consent update, scoped active goal, scoped steps, and scoped weekly history.",
+    "Existing foundation boundary tests are included to catch regressions."
+  ]
+}

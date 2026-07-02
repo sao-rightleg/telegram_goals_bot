@@ -1,0 +1,111 @@
+import pytest
+
+from app.sheets.gateway import FakeSheetsGateway
+
+
+def test_find_participant_by_telegram_id_returns_copy() -> None:
+    gateway = FakeSheetsGateway(
+        participants=[
+            {
+                "participant_id": "P001",
+                "telegram_id": 1001,
+                "full_name": "Participant One",
+            }
+        ]
+    )
+
+    row = gateway.find_participant_by_telegram_id(1001)
+    assert row == {
+        "participant_id": "P001",
+        "telegram_id": 1001,
+        "full_name": "Participant One",
+    }
+
+    assert row is not None
+    row["full_name"] = "Mutated"
+
+    assert gateway.find_participant_by_telegram_id(1001)["full_name"] == "Participant One"
+
+
+def test_find_participant_by_unknown_telegram_id_returns_none() -> None:
+    gateway = FakeSheetsGateway(participants=[{"participant_id": "P001", "telegram_id": 1001}])
+
+    assert gateway.find_participant_by_telegram_id(404) is None
+
+
+def test_update_participant_consent_updates_only_matching_participant() -> None:
+    gateway = FakeSheetsGateway(
+        participants=[
+            {"participant_id": "P001", "telegram_id": 1001, "consent_given": False},
+            {"participant_id": "P002", "telegram_id": 1002, "consent_given": False},
+        ]
+    )
+
+    gateway.update_participant_consent(
+        "P001",
+        consent_given=True,
+        consent_given_at="2026-07-02T10:00:00+05:00",
+    )
+
+    assert gateway.find_participant_by_telegram_id(1001)["consent_given"] is True
+    assert (
+        gateway.find_participant_by_telegram_id(1001)["consent_given_at"]
+        == "2026-07-02T10:00:00+05:00"
+    )
+    assert gateway.find_participant_by_telegram_id(1002)["consent_given"] is False
+
+
+def test_update_participant_consent_missing_participant_fails_clearly() -> None:
+    gateway = FakeSheetsGateway(participants=[])
+
+    with pytest.raises(KeyError, match="P404"):
+        gateway.update_participant_consent(
+            "P404",
+            consent_given=True,
+            consent_given_at="2026-07-02T10:00:00+05:00",
+        )
+
+
+def test_get_active_goal_filters_by_participant_and_status() -> None:
+    gateway = FakeSheetsGateway(
+        goals=[
+            {"goal_id": "G001", "participant_id": "P001", "goal_status": "paused"},
+            {"goal_id": "G002", "participant_id": "P002", "goal_status": "active"},
+            {"goal_id": "G003", "participant_id": "P001", "goal_status": "active"},
+        ]
+    )
+
+    assert gateway.get_active_goal("P001") == {
+        "goal_id": "G003",
+        "participant_id": "P001",
+        "goal_status": "active",
+    }
+
+
+def test_list_planned_steps_filters_by_participant_and_goal() -> None:
+    gateway = FakeSheetsGateway(
+        planned_steps=[
+            {"step_id": "S001", "participant_id": "P001", "goal_id": "G001"},
+            {"step_id": "S002", "participant_id": "P001", "goal_id": "G002"},
+            {"step_id": "S003", "participant_id": "P002", "goal_id": "G001"},
+        ]
+    )
+
+    assert gateway.list_planned_steps("P001", "G001") == [
+        {"step_id": "S001", "participant_id": "P001", "goal_id": "G001"}
+    ]
+
+
+def test_list_weekly_status_history_filters_by_participant() -> None:
+    gateway = FakeSheetsGateway(
+        weekly_reports=[
+            {"weekly_report_id": "WR001", "participant_id": "P001", "week_number": 1},
+            {"weekly_report_id": "WR002", "participant_id": "P002", "week_number": 1},
+            {"weekly_report_id": "WR003", "participant_id": "P001", "week_number": 2},
+        ]
+    )
+
+    assert gateway.list_weekly_status_history("P001") == [
+        {"weekly_report_id": "WR001", "participant_id": "P001", "week_number": 1},
+        {"weekly_report_id": "WR003", "participant_id": "P001", "week_number": 2},
+    ]
