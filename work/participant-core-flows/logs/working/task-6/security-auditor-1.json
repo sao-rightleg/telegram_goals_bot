@@ -1,0 +1,17 @@
+{
+  "reviewer": "security-auditor",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "tests/test_participant_boundaries.py"
+  ],
+  "findings": [],
+  "notes": [
+    "Regression tests cover participant data isolation, consent-before-data, error-bot-only missing-data routing, and SQLite business-table absence.",
+    "Out-of-scope checks cover live SDKs, deploy-adjacent dependencies, PDF, voice, scheduler, Redis/Celery/PostgreSQL imports, reports, and insights writes.",
+    "Tests require no production secrets or network access."
+  ]
+}

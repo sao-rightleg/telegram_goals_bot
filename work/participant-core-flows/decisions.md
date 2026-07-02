@@ -74,3 +74,18 @@ Reviews:
 - Test review: `work/participant-core-flows/logs/working/task-5/test-reviewer-1.json`
 
 Deviations: None.
+
+## Task 6: Boundary and regression tests
+
+Summary: Added cross-flow regression tests for participant scoping, consent-before-data, missing-data error routing, SQLite business-table absence, and out-of-scope dependency/artifact exclusions.
+
+Verification:
+- `.venv/bin/python -m pytest tests/test_participant_boundaries.py -v` -> 5 passed.
+- `.venv/bin/python -m pytest -v` -> 73 passed.
+
+Reviews:
+- Code review: `work/participant-core-flows/logs/working/task-6/code-reviewer-1.json`
+- Security review: `work/participant-core-flows/logs/working/task-6/security-auditor-1.json`
+- Test review: `work/participant-core-flows/logs/working/task-6/test-reviewer-1.json`
+
+Deviations: None.
