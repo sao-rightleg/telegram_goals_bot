@@ -1,0 +1,18 @@
+{
+  "reviewer": "code-reviewer",
+  "mode": "local-fallback",
+  "round": 1,
+  "status": "approved",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable in this session: previous spawn_agent calls failed with service tier validation error",
+  "scope": [
+    "app/scheduler/calendar.py",
+    "tests/test_weekly_report_calendar.py"
+  ],
+  "findings": [],
+  "notes": [
+    "Calendar helpers are deterministic and accept explicit datetime values.",
+    "Helpers reuse the fixed Asia/Yekaterinburg timezone and existing challenge calendar constants.",
+    "No scheduler runtime, job dispatch, reminders, automatic gray closure, deploy, or production time action was introduced."
+  ]
+}

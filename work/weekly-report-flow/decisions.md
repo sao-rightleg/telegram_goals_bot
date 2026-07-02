@@ -15,6 +15,20 @@ Reviews:
 
 Deviations: None.
 
+## Task 4: Weekly report calendar helper
+
+Summary: Added deterministic weekly report calendar helpers for current challenge week, Sunday 23:59 Yekaterinburg deadline, and open/closed deadline checks.
+
+Verification:
+- `.venv/bin/python -m pytest tests/test_weekly_report_calendar.py tests/test_scheduler_foundation.py -q` -> 11 passed.
+- `.venv/bin/python -m pytest -q` -> 94 passed.
+
+Reviews:
+- Code review: `work/weekly-report-flow/logs/working/task-4/code-reviewer-1.json`
+- Test review: `work/weekly-report-flow/logs/working/task-4/test-reviewer-1.json`
+
+Deviations: None.
+
 ## Task 3: Weekly report draft repository
 
 Summary: Added a SQLite repository for weekly report technical draft state, including draft creation, selected status/steps, ordered text messages, active draft loading, stale-state recovery, and cleanup.

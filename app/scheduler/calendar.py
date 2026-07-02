@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 
 TIMEZONE_NAME = "Asia/Yekaterinburg"
@@ -32,6 +33,24 @@ def final_summary_end_date() -> date:
     return CHALLENGE_END_DATE + timedelta(days=FINAL_SUMMARY_WINDOW_DAYS)
 
 
+def current_challenge_week_number(now: datetime) -> int:
+    local_now = _as_yekaterinburg(now)
+    days_since_start = (local_now.date() - challenge_start_date()).days
+    return max(1, min(CHALLENGE_TOTAL_WEEKS, days_since_start // 7 + 1))
+
+
+def weekly_report_deadline(now: datetime) -> datetime:
+    local_now = _as_yekaterinburg(now)
+    days_until_sunday = 6 - local_now.weekday()
+    deadline_date = local_now.date() + timedelta(days=days_until_sunday)
+    return datetime.combine(deadline_date, time(23, 59), tzinfo=ZoneInfo(TIMEZONE_NAME))
+
+
+def is_weekly_report_open(now: datetime) -> bool:
+    local_now = _as_yekaterinburg(now)
+    return local_now <= weekly_report_deadline(local_now)
+
+
 def reminder_schedule() -> tuple[ScheduleItem, ...]:
     return (
         ScheduleItem("monday_reminder", 0, time(10, 0), "start-of-week reminder"),
@@ -58,3 +77,10 @@ def build_idempotency_key(
     if recipient_id is not None:
         parts.append(f"recipient_{recipient_id}")
     return ":".join(parts)
+
+
+def _as_yekaterinburg(value: datetime) -> datetime:
+    timezone = ZoneInfo(TIMEZONE_NAME)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone)
+    return value.astimezone(timezone)
