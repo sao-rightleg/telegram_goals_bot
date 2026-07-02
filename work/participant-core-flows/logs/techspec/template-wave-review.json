@@ -1,0 +1,17 @@
+{
+  "validator": "tech-spec-validator",
+  "mode": "local-fallback",
+  "status": "pass",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable: could not resolve the child model for service tier validation",
+  "findings": [],
+  "checks": [
+    "Frontmatter contains created, status, branch, and size.",
+    "Required template sections are present.",
+    "Architecture includes shared resources.",
+    "Decisions include user-spec rationale and alternatives.",
+    "User-Spec Deviations is filled with None.",
+    "Implementation tasks are grouped by waves and end with Audit Wave and Final Wave.",
+    "Final Wave contains mandatory Pre-deploy QA and no deploy task because deploy is out of scope."
+  ]
+}

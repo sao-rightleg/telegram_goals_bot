@@ -1,0 +1,15 @@
+{
+  "validator": "security-auditor",
+  "mode": "local-fallback",
+  "status": "pass",
+  "checked_at": "2026-07-02",
+  "subagent_status": "unavailable: could not resolve the child model for service tier validation",
+  "findings": [],
+  "security_checks": [
+    "Consent is required before business data views.",
+    "Protected actions re-resolve Telegram ID through Sheets instead of trusting local state.",
+    "Unknown-user and missing-data notifications go only to admin error chat through error bot.",
+    "No production secrets, live SDK setup, deploy, or credential handling is introduced.",
+    "SQLite remains technical state only and does not store participant business facts."
+  ]
+}
