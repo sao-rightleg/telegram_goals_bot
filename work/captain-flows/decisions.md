@@ -112,3 +112,24 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `.venv/bin/python -m pytest tests/test_captain_team_flow.py tests/test_participant_boundaries.py -q` → 10 passed
 - `.venv/bin/python -m pytest -q` → 196 passed
 - `git diff --check` → OK
+
+## Task 4: Captain manual report flow
+
+**Status:** Done
+**Commit:** 026ee6a
+**Agent:** main agent
+**Summary:** Added captain manual report start, status selection, step selection, text collection, and finalization on top of the existing weekly report draft and Sheets boundaries. Final rows use the selected participant as report subject, captain submitter metadata, `flow_source = captain_manual`, and revalidate ownership, dropped status, deadline, duplicate, active goal, and selected steps before save.
+**Deviations:** Formal reviewer subagents were not run because the current tool policy requires explicit user permission for delegation; smoke and full local suite passed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run → subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_captain_manual_report_flow.py -q` → 8 passed
+- `.venv/bin/python -m pytest tests/test_captain_manual_report_flow.py tests/test_weekly_report_finalize.py tests/test_weekly_report_boundaries.py -q` → 26 passed
+- `.venv/bin/python -m pytest -q` → 204 passed
+- `git diff --check` → OK
