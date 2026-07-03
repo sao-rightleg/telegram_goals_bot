@@ -133,3 +133,24 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `.venv/bin/python -m pytest tests/test_captain_manual_report_flow.py tests/test_weekly_report_finalize.py tests/test_weekly_report_boundaries.py -q` → 26 passed
 - `.venv/bin/python -m pytest -q` → 204 passed
 - `git diff --check` → OK
+
+## Task 5: Captain boundary regression coverage
+
+**Status:** Done
+**Commit:** 4324472
+**Agent:** main agent
+**Summary:** Added captain boundary regressions for forged other-team participant IDs, dropped participants, duplicate attempts, late finalization, invalid or closed step selection, and out-of-scope dependency imports. The tests assert forbidden responses do not leak other-team participant names or internal IDs and that rejected attempts create no weekly report facts or step relations.
+**Deviations:** Formal reviewer subagents were not run because the current tool policy requires explicit user permission for delegation; smoke and full local suite passed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run → subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_captain_boundaries.py -q` → 6 passed
+- `.venv/bin/python -m pytest tests/test_captain_boundaries.py tests/test_boundaries.py -q` → 13 passed
+- `.venv/bin/python -m pytest -q` → 210 passed
+- `git diff --check` → OK
