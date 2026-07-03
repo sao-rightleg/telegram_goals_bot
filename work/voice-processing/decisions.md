@@ -158,3 +158,19 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `.venv/bin/python -m pytest tests/test_voice_processing_boundaries.py tests/test_boundaries.py tests/test_storage_paths.py -q` → 16 passed
 - `.venv/bin/python -m pytest -q` → 184 passed
 - `git diff --check` → OK
+
+## Task 7: Code Audit
+
+**Status:** Done
+**Commit:** f2869d3
+**Agent:** main agent
+**Summary:** Completed full-feature code audit for voice-processing implementation and tests. The report lists 1 blocking major finding about saved voice insight display using voice-only transcription, plus 1 non-blocking minor finding about failed attachment metadata observability.
+**Deviations:** None.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not applicable → Task 7 is the code audit report.
+
+**Verification:**
+- `.venv/bin/python -m json.tool work/voice-processing/logs/working/task-7/code-audit.json` → valid JSON
