@@ -32,3 +32,24 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - Manual check → OK
 
 -->
+
+## Task 1: Voice message contracts and Telegram file boundary
+
+**Status:** Done
+**Commit:** f538239
+**Agent:** main agent
+**Summary:** Added adapter-independent voice input contracts, approved Russian voice-processing copy, and a fake Telegram file downloader boundary. Kept implementation local/fake-only with no live SDK imports and added TDD coverage for copy, metadata contracts, fake downloads, and boundary import safety.
+**Deviations:** Formal reviewer subagents were not run because the current tool policy requires explicit user permission for delegation; local TDD, smoke, and full-suite verification were completed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run → subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_boundaries.py tests/test_voice_processing_messages.py -q` → 9 passed
+- `.venv/bin/python -m pytest tests/test_boundaries.py tests/test_weekly_report_messages.py tests/test_insight_messages.py tests/test_voice_processing_messages.py -q` → 21 passed
+- `.venv/bin/python -m pytest -q` → 164 passed
+- `git diff --check` → OK
