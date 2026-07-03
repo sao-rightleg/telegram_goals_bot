@@ -137,3 +137,24 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `.venv/bin/python -m pytest tests/test_insight_add_flow.py tests/test_insight_boundaries.py tests/test_voice_processing_service.py -q` → 25 passed
 - `.venv/bin/python -m pytest -q` → 179 passed
 - `git diff --check` → OK
+
+## Task 6: Voice boundary regression coverage
+
+**Status:** Done
+**Commit:** eda2f42
+**Agent:** main agent
+**Summary:** Added cross-flow voice boundary regressions for mixed text/voice ordering, over-limit no-side-effect behavior, admin-only failure routing, unsafe audio path fragments, and gitignored audio/secret artifact assumptions. No application code changes were needed because the current implementation already satisfied these regressions.
+**Deviations:** Formal reviewer subagents were not run because the current tool policy requires explicit user permission for delegation. The TDD anchors passed immediately after adding tests, so this task remained pure regression coverage instead of exposing an implementation gap.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run → subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_voice_processing_boundaries.py::test_mixed_text_and_voice_ordering_across_flows tests/test_voice_processing_boundaries.py::test_over_limit_voice_has_no_side_effects tests/test_voice_processing_boundaries.py::test_voice_failure_routes_only_to_admin_error_chat tests/test_storage_paths.py::test_audio_path_rejects_unsafe_voice_fragments -q` → 4 passed
+- `.venv/bin/python -m pytest tests/test_voice_processing_boundaries.py tests/test_boundaries.py tests/test_storage_paths.py -q` → 16 passed
+- `.venv/bin/python -m pytest -q` → 184 passed
+- `git diff --check` → OK
