@@ -174,3 +174,19 @@ Review details — in JSON files via links. QA report — in logs/working/.
 
 **Verification:**
 - `.venv/bin/python -m json.tool work/voice-processing/logs/working/task-7/code-audit.json` → valid JSON
+
+## Task 8: Security Audit
+
+**Status:** Done
+**Commit:** 6049828
+**Agent:** main agent
+**Summary:** Completed full-feature security audit for voice-processing. The report lists 1 blocking medium finding: failed voice processing can leave a downloaded local audio file without failed attachment metadata or deletion, creating a sensitive-data retention risk.
+**Deviations:** None.
+
+**Reviews:**
+
+*Round 1:*
+- security-auditor: Not applicable → Task 8 is the security audit report.
+
+**Verification:**
+- `.venv/bin/python -m json.tool work/voice-processing/logs/working/task-8/security-audit.json` → valid JSON
