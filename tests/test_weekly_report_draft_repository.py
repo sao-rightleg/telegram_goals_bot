@@ -8,6 +8,7 @@ from app.storage.weekly_report_drafts import WeeklyReportDraftRepository
 
 NOW = "2026-07-02T10:00:00+05:00"
 LATER = "2026-07-02T10:05:00+05:00"
+LATEST = "2026-07-02T10:10:00+05:00"
 
 
 def test_create_weekly_report_draft_writes_technical_state(tmp_path: Path) -> None:
@@ -49,6 +50,81 @@ def test_append_text_messages_preserves_order(tmp_path: Path) -> None:
     assert draft is not None
     assert draft.report_text == "Первое сообщение\nВторое сообщение"
     assert draft.message_count == 2
+
+
+def test_append_voice_transcription_preserves_order(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    _create_draft(repository)
+
+    repository.append_text_message(1001, "Первое сообщение", occurred_at=NOW, telegram_message_id=501)
+    repository.append_voice_transcription(
+        1001,
+        telegram_file_id="voice-file-1",
+        local_file_path="data/audio/P001/week-2/voice-file-1.ogg",
+        duration_seconds=42,
+        transcription_text="Голосовой фрагмент",
+        occurred_at=LATER,
+        telegram_message_id=502,
+    )
+    repository.append_text_message(1001, "Третье сообщение", occurred_at=LATEST, telegram_message_id=503)
+
+    draft = repository.get_active_draft(1001)
+
+    assert draft is not None
+    assert draft.report_text == "Первое сообщение\nГолосовой фрагмент\nТретье сообщение"
+    assert draft.message_count == 3
+
+
+def test_append_voice_attachment_stores_metadata(tmp_path: Path) -> None:
+    db_path = tmp_path / "state.sqlite3"
+    initialize_schema(db_path)
+    repository = WeeklyReportDraftRepository(db_path)
+    _create_draft(repository)
+
+    repository.append_voice_transcription(
+        1001,
+        telegram_file_id="voice-file-1",
+        local_file_path="data/audio/P001/week-2/voice-file-1.ogg",
+        duration_seconds=42,
+        transcription_text="Голосовой фрагмент",
+        occurred_at=LATER,
+        telegram_message_id=502,
+    )
+
+    with sqlite3.connect(db_path) as connection:
+        attachment = connection.execute(
+            """
+            SELECT
+                draft_id,
+                participant_id,
+                telegram_file_id,
+                local_file_path,
+                duration_seconds,
+                transcription_status,
+                transcription_text,
+                error_message,
+                created_at,
+                updated_at
+            FROM draft_attachments
+            """
+        ).fetchone()
+        message = connection.execute(
+            "SELECT message_order, message_type, text, telegram_message_id FROM draft_messages"
+        ).fetchone()
+
+    assert attachment == (
+        "draft-1",
+        "P001",
+        "voice-file-1",
+        "data/audio/P001/week-2/voice-file-1.ogg",
+        42,
+        "success",
+        "Голосовой фрагмент",
+        None,
+        LATER,
+        LATER,
+    )
+    assert message == (1, "voice_transcription", "Голосовой фрагмент", 502)
 
 
 def test_update_status_and_selected_steps(tmp_path: Path) -> None:

@@ -229,6 +229,87 @@ class WeeklyReportDraftRepository:
                 (occurred_at, telegram_id),
             )
 
+    def append_voice_transcription(
+        self,
+        telegram_id: int,
+        *,
+        telegram_file_id: str,
+        local_file_path: str | Path,
+        duration_seconds: int,
+        transcription_text: str,
+        occurred_at: str,
+        telegram_message_id: int | None = None,
+    ) -> None:
+        draft = self.get_active_draft(telegram_id)
+        if draft is None:
+            raise KeyError(f"Active weekly report draft not found for telegram_id={telegram_id}")
+
+        next_order = draft.message_count + 1
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO draft_attachments (
+                    draft_id,
+                    participant_id,
+                    telegram_file_id,
+                    local_file_path,
+                    duration_seconds,
+                    transcription_status,
+                    transcription_text,
+                    error_message,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, 'success', ?, NULL, ?, ?)
+                """,
+                (
+                    draft.draft_id,
+                    draft.participant_id,
+                    telegram_file_id,
+                    str(local_file_path),
+                    duration_seconds,
+                    transcription_text,
+                    occurred_at,
+                    occurred_at,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO draft_messages (
+                    draft_id,
+                    participant_id,
+                    telegram_id,
+                    message_order,
+                    message_type,
+                    text,
+                    telegram_message_id,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, 'voice_transcription', ?, ?, ?)
+                """,
+                (
+                    draft.draft_id,
+                    draft.participant_id,
+                    telegram_id,
+                    next_order,
+                    transcription_text,
+                    telegram_message_id,
+                    occurred_at,
+                ),
+            )
+            connection.execute(
+                "UPDATE draft_sessions SET updated_at = ? WHERE draft_id = ?",
+                (occurred_at, draft.draft_id),
+            )
+            connection.execute(
+                "UPDATE draft_reports SET updated_at = ? WHERE draft_id = ?",
+                (occurred_at, draft.draft_id),
+            )
+            connection.execute(
+                "UPDATE dialog_states SET updated_at = ? WHERE telegram_id = ?",
+                (occurred_at, telegram_id),
+            )
+
     def get_active_draft(self, telegram_id: int) -> WeeklyReportDraft | None:
         with self._connect() as connection:
             row = connection.execute(
