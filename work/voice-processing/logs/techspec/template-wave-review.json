@@ -1,0 +1,35 @@
+{
+  "validator": "tech-spec-validator",
+  "mode": "manual_fallback",
+  "status": "pass",
+  "tooling_note": "Subagent spawn failed with service tier resolution error; the main agent checked template and wave structure locally.",
+  "checks": [
+    {
+      "name": "frontmatter",
+      "status": "pass",
+      "details": "created, status, branch, and size are present."
+    },
+    {
+      "name": "required_sections",
+      "status": "pass",
+      "details": "Solution, Architecture, Decisions, Data Models, Dependencies, Testing Strategy, Agent Verification Plan, Risks, User-Spec Deviations, Acceptance Criteria, and Implementation Tasks are present."
+    },
+    {
+      "name": "task_count",
+      "status": "pass",
+      "details": "10 tasks total, below the 15 task split threshold."
+    },
+    {
+      "name": "waves",
+      "status": "pass",
+      "details": "Implementation waves are followed by Audit Wave and Final Wave with mandatory Pre-deploy QA."
+    },
+    {
+      "name": "task_format",
+      "status": "pass",
+      "details": "Each implementation task has brief description, skill, reviewers, verify-smoke where applicable, files to modify, and files to read."
+    }
+  ],
+  "findings": [],
+  "summary": "Template and wave structure are valid."
+}

@@ -13,7 +13,7 @@ Implement voice messages as an input capability for active draft flows, not as a
 
 Final business writes stay owned by existing flow services. Weekly report finalization continues to enforce consent, deadline, duplicate report, status, selected-step, and planned-step closure rules. Insight finalization continues to keep insights separate from weekly progress and clears personal draft text after successful save.
 
-The implementation remains fake/local-boundary based. It will not add a live Telegram SDK, real transcription SDK, deployment workflow, public audio URLs, Docker, Redis, Celery, PostgreSQL, or a production cleanup scheduler in this feature.
+The implementation remains fake/local-boundary based. It will not add a live Telegram SDK, real transcription SDK, deployment workflow, public audio URLs, Docker, Redis, Celery, PostgreSQL, or a production cleanup scheduler in this feature. Captain manual report voice handling is not implemented until the captain manual report flow exists; this feature keeps the voice service reusable for that future flow without adding the captain flow now.
 
 ## Architecture
 
@@ -36,7 +36,7 @@ The implementation remains fake/local-boundary based. It will not add a live Tel
 4. If no active voice-capable flow exists, the service returns a calm "start a report or insight first" response and does not download the file.
 5. If `duration_seconds > 600`, the service returns the approved too-long message and does not download, store, transcribe, or mutate draft state.
 6. For `weekly_report`, the service loads `WeeklyReportDraftRepository.get_active_draft(...)`; for `insight`, it loads `InsightDraftRepository.get_active_draft(...)`.
-7. The service builds a local audio path through `StoragePathPolicy.audio_path(...)` using current year, challenge week, a safe team slug, participant id, and a generated local file name.
+7. The service builds a local audio path through `StoragePathPolicy.audio_path(...)` using `now.year`, current challenge week, a safe team slug, participant id, and a generated local file name.
 8. The service calls `TelegramFileDownloader.download_file(...)` to save the Telegram file to the local path.
 9. The service calls `SpeechTranscriber.transcribe(...)`.
 10. Repository voice append operation stores one `draft_attachments` row and one ordered `draft_messages` row with `message_type = 'voice_transcription'`.
@@ -134,7 +134,7 @@ No protocol-level new method is required if existing `append_weekly_report(...)`
 - `audio_file_path`
 - `audio_deleted_at`
 
-Weekly report and insight services must preserve these fields when finalizing drafts that contain voice attachments. If multiple voice messages exist, `transcription_text` may be the joined transcription text in draft order and `audio_file_path` may be a deterministic separator-joined list or the first path plus future-proof metadata, as long as tests document the chosen local convention. If this convention changes docs-level schema expectations, it must be recorded before approval.
+Weekly report and insight services must preserve these fields when finalizing drafts that contain voice attachments. If multiple voice messages exist, `transcription_text` stores voice-only transcriptions joined in draft order with `\n`, `audio_file_path` stores local audio paths joined in the same order with `\n`, and `report_text` / `insight_text` stores the full mixed text plus voice transcription content in draft order.
 
 ## Dependencies
 
@@ -144,7 +144,7 @@ Weekly report and insight services must preserve these fields when finalizing dr
 ### Using existing (from project)
 - `app.bot.clients` — add Telegram file download boundary and fake implementation.
 - `app.bot.messages` — approved Russian voice copy.
-- `app.scheduler.calendar` — current challenge week/year and deadline context.
+- `app.scheduler.calendar` — current challenge week and deadline context.
 - `app.services.notifications` — admin-only technical error routing.
 - `app.services.participant_models` — `TelegramUserContext` and `FlowResponse`.
 - `app.speech.transcription` — `MAX_VOICE_DURATION_SECONDS`, `SpeechTranscriber`, fake transcriber.
@@ -201,7 +201,7 @@ The implementing agent verifies the feature locally with fake boundaries and tem
 | Audio path is unsafe or public | Use `StoragePathPolicy.audio_path(...)` and add regression tests for unsafe fragments. |
 | Transcription failure loses user input | Do not clear draft on failure; send retry/text fallback copy and admin-only technical error. |
 | Live SDKs or secrets leak into local tests | Use protocols and fakes only; update boundary import tests to reject live SDK imports in boundary modules. |
-| Multiple voice messages create ambiguous final Sheets fields | Define and test one deterministic convention for joined transcription text and audio path fields during implementation. |
+| Multiple voice messages create ambiguous final Sheets fields | Use newline-joined transcription and audio path fields in draft order, and cover the convention with tests. |
 
 ## User-Spec Deviations
 

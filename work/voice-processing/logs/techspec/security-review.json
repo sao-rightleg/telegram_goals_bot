@@ -1,0 +1,35 @@
+{
+  "validator": "security-auditor",
+  "mode": "manual_fallback",
+  "status": "pass",
+  "tooling_note": "Subagent spawn failed with service tier resolution error; the main agent performed privacy/security checks locally.",
+  "checks": [
+    {
+      "name": "secrets",
+      "status": "pass",
+      "details": "No secrets are requested in chat or required for local tests; real provider credentials remain deferred to protected environment configuration."
+    },
+    {
+      "name": "path_safety",
+      "status": "pass",
+      "details": "Tech spec requires StoragePathPolicy.audio_path and tests for unsafe path fragments."
+    },
+    {
+      "name": "personal_data_minimization",
+      "status": "pass",
+      "details": "SQLite remains technical draft storage; final business facts remain in Google Sheets. Draft cleanup and insight privacy cleanup are explicitly preserved."
+    },
+    {
+      "name": "error_routing",
+      "status": "pass",
+      "details": "Technical errors route only through NotificationRouter/admin error chat."
+    },
+    {
+      "name": "live_sdk_boundary",
+      "status": "pass",
+      "details": "No live Telegram or transcription SDK imports are added in this feature."
+    }
+  ],
+  "findings": [],
+  "summary": "No blocking security findings in the tech spec."
+}

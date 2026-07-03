@@ -1,0 +1,57 @@
+{
+  "validator": "completeness-validator",
+  "mode": "manual_fallback",
+  "status": "pass",
+  "tooling_note": "Subagent spawn failed with service tier resolution error; the main agent performed bidirectional user-spec to tech-spec checks locally.",
+  "coverage": [
+    {
+      "user_spec_area": "voice accepted only inside active draft flow",
+      "tech_spec_coverage": "VoiceMessageService reads DialogStateRepository and supports active weekly_report and insight drafts."
+    },
+    {
+      "user_spec_area": "over 10 minute rejection",
+      "tech_spec_coverage": "Duration > 600 is rejected before download, transcription, or draft mutation."
+    },
+    {
+      "user_spec_area": "local non-public audio path",
+      "tech_spec_coverage": "StoragePathPolicy.audio_path is the required path builder and unsafe paths are included in tests."
+    },
+    {
+      "user_spec_area": "ordered text and voice draft messages",
+      "tech_spec_coverage": "Repositories append ordered voice_transcription draft_messages and final services assemble in draft order."
+    },
+    {
+      "user_spec_area": "weekly report final save fields and guards",
+      "tech_spec_coverage": "Weekly report integration task preserves finalization ownership and required guards."
+    },
+    {
+      "user_spec_area": "insight final save fields and progress isolation",
+      "tech_spec_coverage": "Insight integration task preserves insight/progress separation and post-save cleanup."
+    },
+    {
+      "user_spec_area": "failure handling and admin-only technical errors",
+      "tech_spec_coverage": "Voice service failure path preserves drafts and routes technical errors via NotificationRouter."
+    },
+    {
+      "user_spec_area": "future captain manual report voice handling",
+      "tech_spec_coverage": "Spec explicitly does not implement captain manual voice handling until the captain manual flow exists, while keeping the voice service reusable."
+    }
+  ],
+  "findings": [
+    {
+      "severity": "medium",
+      "location": "work/voice-processing/tech-spec.md",
+      "issue": "The draft left multiple voice audio path storage convention open-ended.",
+      "recommendation": "Define one deterministic convention before approval.",
+      "resolution": "fixed"
+    },
+    {
+      "severity": "low",
+      "location": "work/voice-processing/tech-spec.md",
+      "issue": "Captain manual report was mentioned in user-spec as future scope but the implementation cannot integrate a flow that does not exist yet.",
+      "recommendation": "State that this feature prepares reusable voice handling but does not add captain manual report flow.",
+      "resolution": "fixed"
+    }
+  ],
+  "summary": "The tech spec covers the approved user-spec without remaining scope gaps or unauthorized expansion."
+}
