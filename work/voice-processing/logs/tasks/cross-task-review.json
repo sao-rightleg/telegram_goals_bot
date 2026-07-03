@@ -1,0 +1,30 @@
+{
+  "validator": "task-validator-and-reality-cross-check",
+  "mode": "manual_fallback",
+  "status": "pass",
+  "tooling_note": "Subagent spawning previously failed with service tier resolution error; the main agent validated cross-task dependencies and shared resource ownership locally.",
+  "checks": [
+    {
+      "name": "shared_resource_ownership",
+      "status": "pass",
+      "details": "Task 1 owns Telegram file boundary contracts, Task 2 owns repository operations, Task 3 owns shared voice service, Tasks 4-5 own flow integrations, and Task 6 owns cross-flow regressions."
+    },
+    {
+      "name": "wave_order",
+      "status": "pass",
+      "details": "Wave 1 foundation tasks are independent; Wave 2 tasks depend on foundations; Wave 3 depends on implementation; Audit Wave and Final Wave are last."
+    },
+    {
+      "name": "no_duplicate_heavy_resources",
+      "status": "pass",
+      "details": "No task initializes live SDKs, model instances, database pools, or competing shared services."
+    },
+    {
+      "name": "final_wave",
+      "status": "pass",
+      "details": "Pre-deploy QA depends on all audit tasks and no deploy/post-deploy task is included for this local-boundary feature."
+    }
+  ],
+  "findings": [],
+  "summary": "No cross-task integration conflicts found."
+}

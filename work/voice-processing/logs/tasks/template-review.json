@@ -1,0 +1,44 @@
+{
+  "validator": "task-validator",
+  "mode": "manual_fallback",
+  "status": "pass",
+  "tooling_note": "Subagent spawning previously failed with service tier resolution error; the main agent validated task template compliance locally.",
+  "task_count": 10,
+  "checks": [
+    {
+      "name": "frontmatter",
+      "status": "pass",
+      "details": "All tasks include status, depends_on, wave, skills, verify, reviewers, and teammate_name."
+    },
+    {
+      "name": "required_sections",
+      "status": "pass",
+      "details": "All tasks include required skills, description, what to do, acceptance criteria, context files, verification steps, details, reviewers, and post-completion sections."
+    },
+    {
+      "name": "tdd_anchor",
+      "status": "pass",
+      "details": "Code tasks include TDD Anchor; audit and QA tasks correctly omit it."
+    },
+    {
+      "name": "reviewers",
+      "status": "pass",
+      "details": "Code-writing tasks include code, security, and test reviewers; audit and QA tasks have no reviewers."
+    },
+    {
+      "name": "verify_smoke",
+      "status": "pass",
+      "details": "Implementation and QA tasks include smoke checks where applicable."
+    }
+  ],
+  "findings": [
+    {
+      "severity": "medium",
+      "location": "work/voice-processing/tasks/*.md",
+      "issue": "Initial task context links to app/ and tests/ used two parent segments instead of three from the tasks directory.",
+      "recommendation": "Use ../../../app and ../../../tests in task context links.",
+      "resolution": "fixed"
+    }
+  ],
+  "summary": "Task files comply with the task template after link correction."
+}
