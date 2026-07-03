@@ -170,3 +170,19 @@ Review details — in JSON files via links. QA report — in logs/working/.
 
 **Verification:**
 - `.venv/bin/python -m json.tool work/captain-flows/logs/working/task-6/code-audit.json` → valid JSON
+
+## Task 7: Security Audit
+
+**Status:** Done
+**Commit:** cb4a8fc
+**Agent:** main agent
+**Summary:** Completed a structured security audit for captain authorization, team scoping, forged selected participant IDs, user-facing denial copy, admin-only technical errors, SQL usage, secrets, and dependencies. The audit found no blocking, critical, high, or medium findings and recorded one low operational monitoring note.
+**Deviations:** None.
+
+**Reviews:**
+
+*Round 1:*
+- security-audit: 0 blocking, 0 critical/high/medium, 1 low → [logs/working/task-7/security-audit.json]
+
+**Verification:**
+- `.venv/bin/python -m json.tool work/captain-flows/logs/working/task-7/security-audit.json` → valid JSON
