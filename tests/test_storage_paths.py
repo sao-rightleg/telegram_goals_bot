@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from app.storage.paths import (
     AUDIO_RETENTION_DAYS,
     PDF_RETENTION_DAYS_AFTER_CHALLENGE,
@@ -64,3 +66,19 @@ def test_backup_paths_are_under_backups() -> None:
     for path in (sqlite_backup, sheets_backup, pdf_backup):
         assert path.parts[0] == "backups"
         assert_local_path(path)
+
+
+def test_audio_path_rejects_unsafe_voice_fragments() -> None:
+    policy = StoragePathPolicy()
+
+    unsafe_cases = [
+        {"team_slug": "../team", "participant_id": "participant_001", "file_name": "voice.ogg"},
+        {"team_slug": "team", "participant_id": "/participant_001", "file_name": "voice.ogg"},
+        {"team_slug": "team", "participant_id": "participant_001", "file_name": "../voice.ogg"},
+        {"team_slug": "https://example.com/team", "participant_id": "participant_001", "file_name": "voice.ogg"},
+        {"team_slug": "team/nested", "participant_id": "participant_001", "file_name": "voice.ogg"},
+    ]
+
+    for case in unsafe_cases:
+        with pytest.raises(ValueError):
+            policy.audio_path(year=2026, week_number=4, **case)
