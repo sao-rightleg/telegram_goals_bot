@@ -1,0 +1,122 @@
+{
+  "task": 9,
+  "title": "Test Audit",
+  "feature": "voice-processing",
+  "status": "completed",
+  "auditor": "main agent",
+  "created_at": "2026-07-03",
+  "scope": {
+    "test_files_reviewed": [
+      "tests/test_voice_processing_messages.py",
+      "tests/test_voice_processing_service.py",
+      "tests/test_voice_processing_boundaries.py",
+      "tests/test_weekly_report_draft_repository.py",
+      "tests/test_insight_draft_repository.py",
+      "tests/test_weekly_report_finalize.py",
+      "tests/test_weekly_report_boundaries.py",
+      "tests/test_insight_add_flow.py",
+      "tests/test_insight_boundaries.py",
+      "tests/test_storage_paths.py",
+      "tests/test_boundaries.py"
+    ],
+    "spec_files_reviewed": [
+      "work/voice-processing/user-spec.md",
+      "work/voice-processing/tech-spec.md",
+      "work/voice-processing/tasks/1.md",
+      "work/voice-processing/tasks/2.md",
+      "work/voice-processing/tasks/3.md",
+      "work/voice-processing/tasks/4.md",
+      "work/voice-processing/tasks/5.md",
+      "work/voice-processing/tasks/6.md"
+    ]
+  },
+  "summary": {
+    "overall_result": "issues_found",
+    "blocking_findings_count": 2,
+    "non_blocking_findings_count": 0,
+    "positive_notes": [
+      "Voice service tests use temporary SQLite and fake Telegram/transcription boundaries instead of live credentials or external APIs.",
+      "Duration limit tests assert no download, no transcription, no admin error, and no draft mutation for over-limit voice.",
+      "Repository tests verify mixed text/voice ordering and accepted attachment metadata.",
+      "Weekly report and insight finalization tests assert final Google Sheets rows include text, voice-only transcription, audio path, and audio_deleted_at.",
+      "Boundary tests cover unsafe audio path fragments, admin-only failure routing, forbidden live SDK imports, and ignored audio/secret artifacts."
+    ]
+  },
+  "findings": [
+    {
+      "id": "TA-001",
+      "severity": "major",
+      "blocking": true,
+      "category": "missing_regression",
+      "title": "No regression verifies saved mixed voice insights are displayed with the full insight text",
+      "affected_tests": [
+        {
+          "path": "tests/test_insight_add_flow.py",
+          "line": 112
+        },
+        {
+          "path": "tests/test_insight_add_flow.py",
+          "line": 196
+        }
+      ],
+      "description": "The tests verify that final insight rows store both insight_text and transcription_text, and existing insight list/full-text tests verify text-only insights. No test saves a mixed text plus voice insight and then opens it through list_insights or get_full_text. This gap allowed the participant-facing display path to prefer transcription_text and hide typed text around the voice fragment.",
+      "recommendation": "Add a regression that starts an insight, appends text + voice + text, saves it, then calls get_full_text and list_insights. Assert the displayed full text/preview uses the full mixed insight_text, not the voice-only transcription_text."
+    },
+    {
+      "id": "TA-002",
+      "severity": "medium",
+      "blocking": true,
+      "category": "missing_negative_case",
+      "title": "No test covers cleanup or failed metadata when transcription fails after audio download",
+      "affected_tests": [
+        {
+          "path": "tests/test_voice_processing_service.py",
+          "line": 99
+        },
+        {
+          "path": "tests/test_voice_processing_boundaries.py",
+          "line": 73
+        }
+      ],
+      "description": "Failure tests assert the user response, draft preservation, transcriber request, and admin-only routing. They do not assert what happens to the downloaded local audio file or whether failed draft_attachments metadata is created. This misses the privacy/retention scenario where a downloaded audio file can become orphaned after a transcription or append failure.",
+      "recommendation": "Add a failure-path regression that forces transcription failure after FakeTelegramFileDownloader writes the local file. Assert either the file is deleted or a draft_attachments row exists with transcription_status='failed' and no draft_messages voice_transcription row."
+    }
+  ],
+  "coverage_matrix": {
+    "voice_copy_constants": "covered",
+    "telegram_file_fake_boundary": "covered",
+    "duration_over_600_no_side_effects": "covered",
+    "weekly_report_voice_success": "covered",
+    "insight_voice_success": "covered",
+    "mixed_text_voice_ordering": "covered_for_drafts_and_final_rows",
+    "weekly_deadline_duplicate_guards": "covered",
+    "insight_weekly_progress_isolation": "covered",
+    "admin_only_failure_routing": "covered",
+    "path_traversal_public_url_rejection": "covered",
+    "secret_live_dependency_absence": "covered",
+    "saved_voice_insight_display": "missing",
+    "failed_downloaded_audio_retention": "missing"
+  },
+  "test_quality_assessment": {
+    "behavior_oriented_assertions": "pass_with_findings",
+    "test_isolation": "pass",
+    "external_dependency_isolation": "pass",
+    "mocking_strategy": "pass",
+    "database_integration_coverage": "pass",
+    "negative_case_coverage": "pass_with_findings",
+    "privacy_boundary_coverage": "pass_with_findings"
+  },
+  "acceptance_check": {
+    "test_audit_report_exists": true,
+    "report_valid_json": true,
+    "blocking_findings_absent_or_listed": true
+  },
+  "verification": {
+    "commands": [
+      {
+        "command": ".venv/bin/python -m json.tool work/voice-processing/logs/working/task-9/test-audit.json",
+        "result": "pass"
+      }
+    ]
+  }
+}
