@@ -91,3 +91,24 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `.venv/bin/python -m pytest tests/test_weekly_report_draft_repository.py tests/test_sqlite_schema.py -q` → 18 passed
 - `.venv/bin/python -m pytest -q` → 191 passed
 - `git diff --check` → OK
+
+## Task 3: Captain team view service
+
+**Status:** Done
+**Commit:** 6414805
+**Agent:** main agent
+**Summary:** Added a captain-only team view service that resolves Telegram identity, requires consent and `role = captain`, scopes team rows by captain `team_id`, and sends safe Russian responses through the main bot boundary. Missing captain team data and unknown users route technical details only to the admin error bot.
+**Deviations:** Formal reviewer subagents were not run because the current tool policy requires explicit user permission for delegation; smoke and full local suite passed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run → subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_captain_team_flow.py -q` → 5 passed
+- `.venv/bin/python -m pytest tests/test_captain_team_flow.py tests/test_participant_boundaries.py -q` → 10 passed
+- `.venv/bin/python -m pytest -q` → 196 passed
+- `git diff --check` → OK
