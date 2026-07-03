@@ -1,6 +1,8 @@
+from dataclasses import replace
 from pathlib import Path
 
-from app.bot.messages import WEEKLY_REPORT_EMPTY_TEXT, WEEKLY_REPORT_LATE_TEXT, WEEKLY_REPORT_VOICE_NOT_AVAILABLE_TEXT
+from app.bot.messages import VOICE_ACCEPTED_TEXT, WEEKLY_REPORT_EMPTY_TEXT, WEEKLY_REPORT_LATE_TEXT
+from app.services.voice_messages import StoredVoiceAttachment, VoiceMessageInput, VoiceMessageResult
 from app.services.weekly_report_models import WeeklyReportStatus
 
 from tests.test_weekly_report_start_flow import LATE, NOW, _service, _user
@@ -27,6 +29,9 @@ def test_green_report_saves_weekly_report_relations_closes_steps_and_clears_draf
             "status_symbol": "🟩",
             "score": 1,
             "report_text": "Сделал первый шаг",
+            "transcription_text": "",
+            "audio_file_path": "",
+            "audio_deleted_at": "",
             "submitted_at": NOW.isoformat(),
             "submitted_by_id": "P001",
             "submitted_by_role": "participant",
@@ -117,6 +122,54 @@ def test_ordered_text_messages_are_joined_in_message_order(tmp_path: Path) -> No
     assert gateway.list_weekly_reports()[0]["report_text"] == "Первое\nВторое"
 
 
+def test_voice_report_final_save_includes_transcription_and_audio_path(tmp_path: Path) -> None:
+    service, gateway, drafts, _main_bot, _error_bot = _service(tmp_path)
+    user = _user()
+    _prepare_green(service, user)
+    drafts.append_voice_transcription(
+        user.telegram_id,
+        telegram_file_id="telegram-file-1",
+        local_file_path=Path("data/audio/2026/week_04/T001/P001/voice_1001_501.ogg"),
+        duration_seconds=42,
+        transcription_text="Голосовой отчёт",
+        occurred_at=NOW.isoformat(),
+        telegram_message_id=501,
+    )
+
+    service.finalize_report(user, now=NOW)
+
+    row = gateway.list_weekly_reports()[0]
+    assert row["report_text"] == "Голосовой отчёт"
+    assert row["transcription_text"] == "Голосовой отчёт"
+    assert row["audio_file_path"] == "data/audio/2026/week_04/T001/P001/voice_1001_501.ogg"
+    assert row["audio_deleted_at"] == ""
+
+
+def test_mixed_text_and_voice_report_preserves_order(tmp_path: Path) -> None:
+    service, gateway, drafts, _main_bot, _error_bot = _service(tmp_path)
+    user = _user()
+    _prepare_green(service, user)
+    service.add_text_message(user, "Первое", now=NOW, telegram_message_id=501)
+    drafts.append_voice_transcription(
+        user.telegram_id,
+        telegram_file_id="telegram-file-1",
+        local_file_path=Path("data/audio/2026/week_04/T001/P001/voice_1001_502.ogg"),
+        duration_seconds=42,
+        transcription_text="Голосом второе",
+        occurred_at=NOW.isoformat(),
+        telegram_message_id=502,
+    )
+    service.add_text_message(user, "Третье", now=NOW, telegram_message_id=503)
+
+    service.finalize_report(user, now=NOW)
+
+    row = gateway.list_weekly_reports()[0]
+    assert row["report_text"] == "Первое\nГолосом второе\nТретье"
+    assert row["transcription_text"] == "Голосом второе"
+    assert row["audio_file_path"] == "data/audio/2026/week_04/T001/P001/voice_1001_502.ogg"
+    assert row["audio_deleted_at"] == ""
+
+
 def test_finalize_rejects_late_report_without_final_facts(tmp_path: Path) -> None:
     service, gateway, drafts, _main_bot, _error_bot = _service(tmp_path)
     user = _user()
@@ -144,15 +197,22 @@ def test_finalize_rejects_duplicate_report_without_final_facts(tmp_path: Path) -
     assert drafts.get_active_draft(1001) is not None
 
 
-def test_voice_message_returns_not_available_without_attachment_state(tmp_path: Path) -> None:
+def test_voice_message_appends_to_weekly_draft(tmp_path: Path) -> None:
     service, _gateway, drafts, _main_bot, _error_bot = _service(tmp_path)
     user = _user()
+    service = replace(service, voice_messages=AcceptingVoiceService(drafts=drafts))
     service.start_report(user, now=NOW)
 
-    response = service.reject_voice_message(user, now=NOW)
+    response = service.add_voice_message(
+        user,
+        telegram_file_id="telegram-file-1",
+        duration_seconds=42,
+        now=NOW,
+        telegram_message_id=501,
+    )
 
-    assert response.text == WEEKLY_REPORT_VOICE_NOT_AVAILABLE_TEXT
-    assert drafts.get_active_draft(1001).message_count == 0
+    assert response.text == VOICE_ACCEPTED_TEXT
+    assert drafts.get_active_draft(1001).report_text == "Голосовой отчёт"
 
 
 def test_goal_is_not_auto_achieved_when_all_steps_close(tmp_path: Path) -> None:
@@ -172,3 +232,28 @@ def _prepare_green(service, user) -> None:
     service.start_report(user, now=NOW)
     service.select_status(user, WeeklyReportStatus.GREEN, now=NOW)
     service.select_steps(user, ["S001"], now=NOW)
+
+
+class AcceptingVoiceService:
+    def __init__(self, drafts) -> None:
+        self._drafts = drafts
+
+    def handle_voice(self, request: VoiceMessageInput) -> VoiceMessageResult:
+        self._drafts.append_voice_transcription(
+            request.user.telegram_id,
+            telegram_file_id=request.telegram_file_id,
+            local_file_path=Path("data/audio/2026/week_04/T001/P001/voice_1001_501.ogg"),
+            duration_seconds=request.duration_seconds,
+            transcription_text="Голосовой отчёт",
+            occurred_at=request.now.isoformat(),
+            telegram_message_id=request.telegram_message_id,
+        )
+        return VoiceMessageResult(
+            text=VOICE_ACCEPTED_TEXT,
+            accepted=True,
+            attachment=StoredVoiceAttachment(
+                local_file_path=Path("data/audio/2026/week_04/T001/P001/voice_1001_501.ogg"),
+                transcription_text="Голосовой отчёт",
+                duration_seconds=request.duration_seconds,
+            ),
+        )

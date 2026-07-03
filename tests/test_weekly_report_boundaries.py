@@ -1,7 +1,10 @@
 import ast
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
+from app.bot.messages import WEEKLY_REPORT_LATE_TEXT
+from app.services.voice_messages import VoiceMessageInput, VoiceMessageResult
 from app.services.weekly_report_models import WeeklyReportStatus
 from app.storage.sqlite import BUSINESS_PRIMARY_TABLES, list_tables
 
@@ -67,6 +70,41 @@ def test_duplicate_report_never_writes_second_report_or_relations(tmp_path: Path
     ]
     assert gateway.list_weekly_report_steps() == []
     assert drafts.get_active_draft(1001) is not None
+
+
+def test_voice_does_not_bypass_deadline_or_duplicate_guards(tmp_path: Path) -> None:
+    late_service, _late_gateway, late_drafts, _main_bot, _error_bot = _service(tmp_path / "late")
+    late_service = replace(late_service, voice_messages=ExplodingVoiceService())
+    late_user = _user()
+    late_service.start_report(late_user, now=NOW)
+
+    late_response = late_service.add_voice_message(
+        late_user,
+        telegram_file_id="telegram-file-1",
+        duration_seconds=42,
+        now=LATE,
+        telegram_message_id=501,
+    )
+
+    assert late_response.text == WEEKLY_REPORT_LATE_TEXT
+    assert late_drafts.get_active_draft(1001).message_count == 0
+
+    duplicate_service, gateway, duplicate_drafts, _main_bot, _error_bot = _service(tmp_path / "duplicate")
+    duplicate_service = replace(duplicate_service, voice_messages=ExplodingVoiceService())
+    duplicate_user = _user()
+    duplicate_service.start_report(duplicate_user, now=NOW)
+    gateway.append_weekly_report({"weekly_report_id": "WR001", "participant_id": "P001", "week_number": 4})
+
+    duplicate_response = duplicate_service.add_voice_message(
+        duplicate_user,
+        telegram_file_id="telegram-file-1",
+        duration_seconds=42,
+        now=NOW,
+        telegram_message_id=501,
+    )
+
+    assert duplicate_response.text == "Отчёт за эту неделю уже принят."
+    assert duplicate_drafts.get_active_draft(1001).message_count == 0
 
 
 def test_invalid_draft_recovery_clears_state_and_notifies_admin(tmp_path: Path) -> None:
@@ -141,3 +179,8 @@ def test_weekly_report_feature_does_not_add_out_of_scope_runtime_boundaries(tmp_
 
     assert attachment_count == 0
     assert list_tables(db_path).isdisjoint(BUSINESS_PRIMARY_TABLES)
+
+
+class ExplodingVoiceService:
+    def handle_voice(self, request: VoiceMessageInput) -> VoiceMessageResult:
+        raise AssertionError("voice service should not run after weekly report guard failure")

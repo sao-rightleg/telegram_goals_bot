@@ -24,6 +24,7 @@ from app.bot.messages import (
 from app.scheduler.calendar import current_challenge_week_number, is_weekly_report_open
 from app.services.notifications import NotificationCategory, NotificationRouter
 from app.services.participant_models import FlowResponse, TelegramUserContext
+from app.services.voice_messages import VoiceMessageInput, VoiceMessageService
 from app.services.weekly_report_models import WeeklyReportStatus
 from app.sheets.gateway import SheetRow, SheetsGateway
 from app.storage.weekly_report_drafts import WeeklyReportDraftRepository
@@ -35,6 +36,7 @@ class WeeklyReportService:
     main_bot: BotClient
     notification_router: NotificationRouter
     drafts: WeeklyReportDraftRepository
+    voice_messages: VoiceMessageService | None = None
 
     def start_report(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
         context = self._resolve_context(user, now=now)
@@ -149,6 +151,35 @@ class WeeklyReportService:
         )
         return self._send(user, text="Текст добавлен. Можно отправить ещё или нажать «✅ Готово».")
 
+    def add_voice_message(
+        self,
+        user: TelegramUserContext,
+        *,
+        telegram_file_id: str,
+        duration_seconds: int,
+        now: datetime,
+        telegram_message_id: int | None = None,
+    ) -> FlowResponse:
+        context = self._resolve_context(user, now=now)
+        if isinstance(context, FlowResponse):
+            return context
+
+        if self.drafts.get_active_draft(user.telegram_id) is None:
+            raise KeyError(f"Active weekly report draft not found for telegram_id={user.telegram_id}")
+        if self.voice_messages is None:
+            return self.reject_voice_message(user, now=now)
+
+        result = self.voice_messages.handle_voice(
+            VoiceMessageInput(
+                user=user,
+                telegram_file_id=telegram_file_id,
+                duration_seconds=duration_seconds,
+                telegram_message_id=telegram_message_id,
+                now=now,
+            )
+        )
+        return self._send(user, text=result.text)
+
     def reject_voice_message(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
         return self._send(user, text=WEEKLY_REPORT_VOICE_NOT_AVAILABLE_TEXT)
 
@@ -204,6 +235,9 @@ class WeeklyReportService:
                 "status_symbol": status.symbol,
                 "score": status.score,
                 "report_text": draft.report_text,
+                "transcription_text": _voice_transcription_text(draft),
+                "audio_file_path": _voice_audio_file_path(draft),
+                "audio_deleted_at": "",
                 "submitted_at": submitted_at,
                 "submitted_by_id": participant_id,
                 "submitted_by_role": "participant",
@@ -354,6 +388,16 @@ def _text_prompt(status: WeeklyReportStatus) -> str:
     if status is WeeklyReportStatus.RED:
         return "Что помешало сделать победу недели?"
     return "Что именно ты сделал?"
+
+
+def _voice_transcription_text(draft) -> str:
+    return "\n".join(
+        attachment.transcription_text for attachment in draft.voice_attachments if attachment.transcription_text
+    )
+
+
+def _voice_audio_file_path(draft) -> str:
+    return "\n".join(attachment.local_file_path for attachment in draft.voice_attachments)
 
 
 def _draft_id(participant_id: str, week_number: int) -> str:

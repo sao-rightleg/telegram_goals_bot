@@ -14,6 +14,13 @@ _UNSELECTED_STATUS_SYMBOL = "⬜"
 
 
 @dataclass(frozen=True)
+class WeeklyReportVoiceAttachment:
+    local_file_path: str
+    transcription_text: str
+    duration_seconds: int
+
+
+@dataclass(frozen=True)
 class WeeklyReportDraft:
     draft_id: str
     telegram_id: int
@@ -29,6 +36,7 @@ class WeeklyReportDraft:
     created_at: str
     updated_at: str
     expires_at: str | None = None
+    voice_attachments: tuple[WeeklyReportVoiceAttachment, ...] = ()
 
 
 class WeeklyReportDraftRepository:
@@ -351,6 +359,15 @@ class WeeklyReportDraftRepository:
                 """,
                 (row["draft_id"],),
             ).fetchall()
+            attachment_rows = connection.execute(
+                """
+                SELECT local_file_path, transcription_text, duration_seconds
+                FROM draft_attachments
+                WHERE draft_id = ? AND transcription_status = 'success'
+                ORDER BY draft_attachment_id
+                """,
+                (row["draft_id"],),
+            ).fetchall()
 
         status_code = str(row["status_code"])
         status_symbol = str(row["status_symbol"])
@@ -373,6 +390,14 @@ class WeeklyReportDraftRepository:
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
             expires_at=row["expires_at"],
+            voice_attachments=tuple(
+                WeeklyReportVoiceAttachment(
+                    local_file_path=str(attachment["local_file_path"]),
+                    transcription_text=str(attachment["transcription_text"] or ""),
+                    duration_seconds=int(attachment["duration_seconds"]),
+                )
+                for attachment in attachment_rows
+            ),
         )
 
     def clear_draft(self, telegram_id: int) -> None:
