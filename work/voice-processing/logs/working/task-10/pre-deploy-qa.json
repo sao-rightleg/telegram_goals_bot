@@ -1,0 +1,263 @@
+{
+  "task": 10,
+  "title": "Pre-deploy QA",
+  "feature": "voice-processing",
+  "status": "failed",
+  "created_at": "2026-07-03",
+  "auditor": "main agent",
+  "summary": {
+    "totalChecks": 28,
+    "passed": 25,
+    "failed": 3,
+    "notVerifiable": 0,
+    "criticals": 1,
+    "majors": 1,
+    "minors": 1
+  },
+  "testSuite": {
+    "status": "passed",
+    "details": "184 tests passed with `.venv/bin/python -m pytest -q`."
+  },
+  "auditReports": {
+    "status": "failed",
+    "details": "Task 7, 8, and 9 audit reports are valid JSON, but they contain unresolved blocking findings: CA-001, SA-001, TA-001, TA-002.",
+    "validatedReports": [
+      "work/voice-processing/logs/working/task-7/code-audit.json",
+      "work/voice-processing/logs/working/task-8/security-audit.json",
+      "work/voice-processing/logs/working/task-9/test-audit.json"
+    ]
+  },
+  "artifactCheck": {
+    "status": "passed",
+    "details": "`git status --short`, `git diff --check`, and repository scan found no staged/generated audio files, SQLite databases, credentials, or secrets."
+  },
+  "acceptanceCriteria": [
+    {
+      "id": "US-AC1",
+      "criterion": "Voice messages up to 10 minutes are accepted only inside active draft flows where report or insight input is allowed.",
+      "status": "passed",
+      "evidence": "tests/test_voice_processing_service.py covers weekly and insight active draft routing; no-active-draft path does not download."
+    },
+    {
+      "id": "US-AC2",
+      "criterion": "Voice messages longer than 10 minutes are rejected with approved Russian copy, are not saved, and are not added to drafts.",
+      "status": "passed",
+      "evidence": "tests/test_voice_processing_boundaries.py::test_over_limit_voice_has_no_side_effects and tests/test_voice_processing_service.py over-limit coverage."
+    },
+    {
+      "id": "US-AC3",
+      "criterion": "Accepted audio is stored only under the non-public local audio path and unsafe/public paths are rejected.",
+      "status": "passed",
+      "evidence": "StoragePathPolicy.audio_path is used by VoiceMessageService; tests/test_storage_paths.py rejects public URLs, absolute paths, traversal, and nested fragments."
+    },
+    {
+      "id": "US-AC4",
+      "criterion": "Successful transcription adds an ordered voice_transcription draft message.",
+      "status": "passed",
+      "evidence": "tests/test_weekly_report_draft_repository.py, tests/test_insight_draft_repository.py, and tests/test_voice_processing_boundaries.py cover ordered mixed draft messages."
+    },
+    {
+      "id": "US-AC5",
+      "criterion": "Weekly report final save writes report_text, transcription_text, audio_file_path and preserves status/deadline/step/duplicate guards.",
+      "status": "passed",
+      "evidence": "tests/test_weekly_report_finalize.py, tests/test_weekly_report_boundaries.py, and full suite regression."
+    },
+    {
+      "id": "US-AC6",
+      "criterion": "Insight final save writes insight_text, transcription_text, audio_file_path and does not affect weekly progress.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py::test_voice_insight_final_save_includes_transcription_and_audio_path and tests/test_insight_boundaries.py."
+    },
+    {
+      "id": "US-AC7",
+      "criterion": "Multiple text and voice messages produce final text in the original order.",
+      "status": "failed",
+      "evidence": "Final Sheets rows preserve order, but CA-001 shows saved mixed voice insights are displayed through list/full-text paths using transcription_text before insight_text, hiding typed text around the voice fragment."
+    },
+    {
+      "id": "US-AC8",
+      "criterion": "Download, save, or transcription failures return clear retry/text fallback copy.",
+      "status": "passed",
+      "evidence": "tests/test_voice_processing_service.py and tests/test_voice_processing_boundaries.py assert VOICE_PROCESSING_FAILED_TEXT."
+    },
+    {
+      "id": "US-AC9",
+      "criterion": "Technical voice-processing errors go only to the admin error chat.",
+      "status": "passed",
+      "evidence": "tests/test_voice_processing_boundaries.py::test_voice_failure_routes_only_to_admin_error_chat."
+    },
+    {
+      "id": "US-AC10",
+      "criterion": "Voice-processing failures do not clear the existing draft and do not create a final Google Sheets fact.",
+      "status": "passed",
+      "evidence": "tests/test_voice_processing_service.py failure coverage preserves draft text and does not finalize."
+    },
+    {
+      "id": "US-AC11",
+      "criterion": "Original audio is not logged, committed, or exposed by public link.",
+      "status": "passed",
+      "evidence": "No public URL path accepted; admin errors omit audio path and transcription; repository scan found no generated audio artifacts."
+    },
+    {
+      "id": "US-AC12",
+      "criterion": "After future retention deletion, the system continues using transcription_text and does not require the audio file to exist.",
+      "status": "passed",
+      "evidence": "Final weekly and insight rows store transcription_text and audio_deleted_at compatibility fields; cleanup scheduler is explicitly outside this implementation slice."
+    },
+    {
+      "id": "US-AC13",
+      "criterion": "No web form, Docker, Redis, Celery, PostgreSQL, public audio URLs, separate audio archive, or coaching recommendations are added.",
+      "status": "passed",
+      "evidence": "Boundary tests and dependency review found no out-of-scope runtime dependency or UI surface."
+    },
+    {
+      "id": "TS-AC1",
+      "criterion": "user-spec.md is approved before implementation tasks start.",
+      "status": "passed",
+      "evidence": "work/voice-processing/user-spec.md front matter has status: approved."
+    },
+    {
+      "id": "TS-AC2",
+      "criterion": "No live Telegram, Google, OpenAI/Whisper, or external transcription SDK is imported by boundary modules.",
+      "status": "passed",
+      "evidence": "tests/test_boundaries.py and audit reports verify fake/local boundaries only."
+    },
+    {
+      "id": "TS-AC3",
+      "criterion": "Voice duration over 600 seconds is rejected before download/transcription/draft mutation.",
+      "status": "passed",
+      "evidence": "tests/test_voice_processing_boundaries.py::test_over_limit_voice_has_no_side_effects."
+    },
+    {
+      "id": "TS-AC4",
+      "criterion": "Accepted voice creates a local non-public audio path through StoragePathPolicy.",
+      "status": "passed",
+      "evidence": "app/services/voice_messages.py builds audio paths through StoragePathPolicy.audio_path; tests/test_storage_paths.py covers unsafe fragments."
+    },
+    {
+      "id": "TS-AC5",
+      "criterion": "Accepted voice appends one technical attachment row and one ordered voice_transcription draft message.",
+      "status": "passed",
+      "evidence": "tests/test_weekly_report_draft_repository.py and tests/test_insight_draft_repository.py."
+    },
+    {
+      "id": "TS-AC6",
+      "criterion": "Mixed text and voice messages are assembled in original order for weekly reports and insights.",
+      "status": "failed",
+      "evidence": "Final row assembly is covered, but CA-001/TA-001 show saved mixed voice insights are not displayed with the full mixed text through participant-facing list/full-text paths."
+    },
+    {
+      "id": "TS-AC7",
+      "criterion": "Weekly report finalization includes transcription/audio fields and still enforces deadline, duplicate, selected-step, and empty-content guards.",
+      "status": "passed",
+      "evidence": "tests/test_weekly_report_finalize.py and tests/test_weekly_report_boundaries.py."
+    },
+    {
+      "id": "TS-AC8",
+      "criterion": "Insight finalization includes transcription/audio fields, does not affect weekly status/progress, and preserves post-save draft text cleanup.",
+      "status": "passed",
+      "evidence": "tests/test_insight_add_flow.py, tests/test_insight_boundaries.py, and tests/test_insight_draft_repository.py."
+    },
+    {
+      "id": "TS-AC9",
+      "criterion": "Voice-processing failures preserve active draft and route technical details only to admin error chat.",
+      "status": "failed",
+      "evidence": "Draft preservation and admin routing pass, but SA-001 shows failures after successful download can leave untracked local audio without failed attachment metadata or deletion."
+    },
+    {
+      "id": "TS-AC10",
+      "criterion": "Full local pytest suite passes.",
+      "status": "passed",
+      "evidence": "`.venv/bin/python -m pytest -q` -> 184 passed."
+    },
+    {
+      "id": "TS-AC11",
+      "criterion": "No generated audio files, SQLite databases, credentials, or secrets are staged.",
+      "status": "passed",
+      "evidence": "`git status --short` returned clean before QA edits; artifact scan found no matching files."
+    },
+    {
+      "id": "QA-AC1",
+      "criterion": "Code, security, and test audit reports are valid JSON.",
+      "status": "passed",
+      "evidence": "json.tool passed for task-7/code-audit.json, task-8/security-audit.json, and task-9/test-audit.json."
+    },
+    {
+      "id": "QA-AC2",
+      "criterion": "Audit reports from Tasks 7-9 have no unresolved blocking findings.",
+      "status": "failed",
+      "evidence": "CA-001, SA-001, TA-001, and TA-002 remain unresolved and blocking."
+    },
+    {
+      "id": "QA-AC3",
+      "criterion": "No deploy or live environment action is performed.",
+      "status": "passed",
+      "evidence": "Only local pytest, json.tool, git status, git diff --check, rg, and find were used."
+    },
+    {
+      "id": "QA-AC4",
+      "criterion": "No live Telegram, live Google Sheets, real transcription provider, generated audio, or secrets are required for verification.",
+      "status": "passed",
+      "evidence": "All tests use fake/local boundaries and temporary SQLite."
+    }
+  ],
+  "findings": [
+    {
+      "id": "PQA-001",
+      "severity": "critical",
+      "title": "Pre-deploy gate is blocked by unresolved blocking audit findings",
+      "expected": "Tasks 7-9 audit reports have zero unresolved blocking findings before release readiness.",
+      "actual": "CA-001, SA-001, TA-001, and TA-002 remain unresolved.",
+      "reproduction": "Run json.tool on the three audit reports and inspect summary.blocking_findings_count plus findings where blocking is true."
+    },
+    {
+      "id": "PQA-002",
+      "severity": "major",
+      "title": "Saved mixed voice insights can display only voice transcription",
+      "expected": "Saved insight list/full-text views show the full mixed insight_text in original order.",
+      "actual": "app/services/insights.py::_insight_item_from_row prefers transcription_text before insight_text, so typed text around a voice fragment can be hidden.",
+      "reproduction": "Save an insight with text + voice + text, then call list_insights or get_full_text. Expected full mixed text; actual voice-only transcription."
+    },
+    {
+      "id": "PQA-003",
+      "severity": "minor",
+      "title": "Downloaded audio can remain untracked after transcription or append failure",
+      "expected": "After a post-download failure, the saved local audio is either deleted or tracked in draft_attachments with transcription_status='failed'.",
+      "actual": "VoiceMessageService catches the failure and notifies admin, but does not delete the downloaded file or persist failed attachment metadata.",
+      "reproduction": "Force SpeechTranscriber.transcribe to raise after FakeTelegramFileDownloader writes the local file. The response is correct, but the local file is not represented in draft_attachments."
+    }
+  ],
+  "verification": {
+    "commands": [
+      {
+        "command": ".venv/bin/python -m pytest -q",
+        "result": "pass: 184 passed in 9.29s"
+      },
+      {
+        "command": ".venv/bin/python -m json.tool work/voice-processing/logs/working/task-7/code-audit.json",
+        "result": "pass"
+      },
+      {
+        "command": ".venv/bin/python -m json.tool work/voice-processing/logs/working/task-8/security-audit.json",
+        "result": "pass"
+      },
+      {
+        "command": ".venv/bin/python -m json.tool work/voice-processing/logs/working/task-9/test-audit.json",
+        "result": "pass"
+      },
+      {
+        "command": "git diff --check",
+        "result": "pass"
+      },
+      {
+        "command": "git status --short",
+        "result": "pass: clean before QA edits"
+      },
+      {
+        "command": "find . -maxdepth 5 -type f ...",
+        "result": "pass: no generated audio, SQLite databases, credentials, or secrets found"
+      }
+    ]
+  },
+  "deferredToPostDeploy": []
+}
