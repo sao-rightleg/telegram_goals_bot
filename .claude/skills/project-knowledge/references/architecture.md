@@ -17,7 +17,7 @@
 
 Telegram users interact with thin Telegram handlers. Handlers route updates into business services, business services use SQLite repositories for technical dialogue and draft state, and final business facts go through the Google Sheets integration boundary.
 
-The implemented MVP foundation currently includes adapter-independent boundaries for configuration, logging, Google Sheets access, Telegram bot clients, notification routing, speech transcription, report generation, local storage paths, scheduler calendar constants, participant flows, weekly report flows, and insight flows.
+The implemented MVP foundation currently includes adapter-independent boundaries for configuration, logging, Google Sheets access, Telegram bot clients, notification routing, speech transcription, report generation, local storage paths, scheduler calendar constants, participant flows, weekly report flows, insight flows, and voice message input for active weekly-report and insight drafts.
 
 ## Component Boundaries
 
@@ -63,7 +63,7 @@ SQLite stores technical state only:
 
 SQLite must not become the only source for final business facts.
 
-Current SQLite repositories are limited to dialog state, weekly report drafts, and insight drafts. Saved insight drafts purge full personal text from SQLite after successful Sheets save; Google Sheets remains the final store for insight text.
+Current SQLite repositories are limited to dialog state, weekly report drafts, insight drafts, and temporary voice attachment/message state. Voice transcriptions are stored in draft state only until the owning weekly-report or insight flow finalizes. Saved insight drafts purge full personal text and voice attachment rows from SQLite after successful Sheets save; Google Sheets remains the final store for insight text and voice transcription text.
 
 ## Implemented Flow Slices
 
@@ -71,6 +71,7 @@ Current SQLite repositories are limited to dialog state, weekly report drafts, a
 - Participant core flows: Telegram ID lookup, unknown-user error routing, consent writes, role-aware menu contracts, goal view, planned steps view, progress view, and safe missing-data handling.
 - Weekly report flow: current-week/deadline helpers, draft repository, participant-scoped status and planned-step selection, text draft collection, final report save, selected-step relation storage, duplicate/late guards, and draft cleanup.
 - Insight flow: current-week insight draft repository, add/list/full-text services, optional title handling, participant-scoped pagination, safe callback handling, multiple insights per participant/week, final Sheets save, and post-save SQLite text cleanup.
+- Voice processing input: weekly-report and insight draft flows accept voice messages up to 600 seconds, download audio through a Telegram file boundary, store audio under the local non-public audio path policy, transcribe through the speech boundary, append ordered `voice_transcription` draft messages, and write final transcription/audio path fields through the owning finalization service. Voice processing does not own final Google Sheets writes and cannot bypass weekly deadline, duplicate, selected-step, or insight progress-isolation rules.
 
 ## Bot Separation
 
@@ -98,6 +99,7 @@ Challenge end date: `2026-07-31`.
 - Audio is deleted automatically one month after recording.
 - Audio path remains in Google Sheets after deletion.
 - Transcription remains in Google Sheets.
+- If voice processing fails after audio download, the just-downloaded local file is deleted before returning the retry response; failed attempts do not add user-visible draft messages.
 - PDF is stored locally for 6 months after challenge end.
 - SQLite backup: daily, 14-day retention.
 - Google Sheets export: periodic `.xlsx` or `.csv`, 14-day retention.

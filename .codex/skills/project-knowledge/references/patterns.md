@@ -48,6 +48,7 @@ Prefer simple MVP implementation over overengineering, but avoid choices that bl
 - Restrict Google Sheets access.
 - Store only necessary data.
 - Require participant consent before continuing.
+- For voice processing failures after a local audio download, delete the just-downloaded audio file unless a future feature explicitly adds failed attachment retention/tracking.
 
 ## Error Handling
 
@@ -81,8 +82,8 @@ High-risk tests:
 
 ## Current Test Coverage Shape
 
-The implemented MVP slices are covered with local pytest tests and fake external boundaries. Pre-deploy QA passed for foundation, participant core flows, weekly report flow, and insight flow without production secrets or live API calls.
+The implemented MVP slices are covered with local pytest tests and fake external boundaries. Pre-deploy QA passed for foundation, participant core flows, weekly report flow, insight flow, and voice processing without production secrets or live API calls.
 
-Tests are organized around service boundaries and business risks: config validation, secret redaction, SQLite schema/repositories, participant role and consent gates, weekly report deadline and duplicate guards, Sheets fake behavior, insight privacy boundaries, and forbidden out-of-scope dependencies.
+Tests are organized around service boundaries and business risks: config validation, secret redaction, SQLite schema/repositories, participant role and consent gates, weekly report deadline and duplicate guards, Sheets fake behavior, insight privacy boundaries, voice duration and failure retention behavior, and forbidden out-of-scope dependencies.
 
 When adding the next feature, preserve the same fake-boundary approach until live integration tasks explicitly require real SDKs or external credentials.

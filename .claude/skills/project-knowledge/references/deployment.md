@@ -10,7 +10,7 @@ All deployments must go through GitHub CI/CD unless emergency debugging of broke
 
 Docker, Redis, Celery, Kubernetes, and complex DevOps are out of MVP.
 
-The repository currently contains locally verified MVP slices for the foundation, participant core flows, weekly report flow, and insight flow. They have passed pre-deploy QA with fake/local boundaries; no production deployment or live Telegram/Google/transcription integration has been performed as part of those feature completions.
+The repository currently contains locally verified MVP slices for the foundation, participant core flows, weekly report flow, insight flow, and voice processing input for weekly-report/insight drafts. They have passed pre-deploy QA with fake/local boundaries; no production deployment or live Telegram/Google/transcription integration has been performed as part of those feature completions.
 
 ## Environment Variables and Credentials
 
@@ -67,4 +67,5 @@ Production launch requires a separate test Telegram bot and smoke test.
 - SQLite: daily automatic backup, 14-day retention.
 - Google Sheets: periodic `.xlsx` or `.csv` export, 14-day retention.
 - Audio: no mandatory backup; original audio is deleted one month after recording.
+- Failed voice attempts delete the just-downloaded local audio file when processing fails after download.
 - PDF: no mandatory separate backup; PDF is stored locally for 6 months after challenge end.
