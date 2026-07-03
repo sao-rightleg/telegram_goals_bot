@@ -95,3 +95,24 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `.venv/bin/python -m pytest tests/test_voice_processing_service.py tests/test_voice_processing_messages.py tests/test_boundaries.py tests/test_weekly_report_draft_repository.py tests/test_insight_draft_repository.py -q` → 30 passed
 - `.venv/bin/python -m pytest -q` → 173 passed
 - `git diff --check` → OK
+
+## Task 4: Weekly report voice integration
+
+**Status:** Done
+**Commit:** 22c265d
+**Agent:** main agent
+**Summary:** Connected weekly report voice handling through an optional `VoiceMessageService` dependency while preserving deadline, duplicate, selected-step, and finalization ownership in `WeeklyReportService`. Final weekly report rows now include ordered report text plus `transcription_text`, `audio_file_path`, and `audio_deleted_at` fields derived from accepted draft voice attachments.
+**Deviations:** Formal reviewer subagents were not run because the current tool policy requires explicit user permission for delegation. The legacy `reject_voice_message` method remains as a fallback when the voice dependency is not wired, while the new weekly voice entrypoint uses `add_voice_message`.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run → subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_weekly_report_finalize.py::test_voice_report_final_save_includes_transcription_and_audio_path tests/test_weekly_report_finalize.py::test_mixed_text_and_voice_report_preserves_order tests/test_weekly_report_boundaries.py::test_voice_does_not_bypass_deadline_or_duplicate_guards -q` → 3 passed
+- `.venv/bin/python -m pytest tests/test_weekly_report_finalize.py tests/test_weekly_report_boundaries.py tests/test_voice_processing_service.py -q` → 23 passed
+- `.venv/bin/python -m pytest -q` → 176 passed
+- `git diff --check` → OK
