@@ -206,3 +206,25 @@ Review details — in JSON files via links. QA report — in logs/working/.
 
 **Verification:**
 - `.venv/bin/python -m json.tool work/voice-processing/logs/working/task-9/test-audit.json` → valid JSON
+
+## Task 10: Pre-deploy QA
+
+**Status:** Done
+**Commit:** 892eb33
+**Agent:** main agent
+**Summary:** Pre-deploy QA completed with failed release readiness. Full local pytest passed (`184 passed`), audit JSON reports are valid, and no deploy/live environment action was performed. Release gate is blocked by unresolved findings CA-001, SA-001, TA-001, and TA-002.
+**Deviations:** None.
+
+**Reviews:**
+
+*Round 1:*
+- pre-deploy-qa: Not applicable → Task 10 is the pre-deploy QA report.
+
+**Verification:**
+- `.venv/bin/python -m pytest -q` → 184 passed
+- `.venv/bin/python -m json.tool work/voice-processing/logs/working/task-7/code-audit.json` → valid JSON
+- `.venv/bin/python -m json.tool work/voice-processing/logs/working/task-8/security-audit.json` → valid JSON
+- `.venv/bin/python -m json.tool work/voice-processing/logs/working/task-9/test-audit.json` → valid JSON
+- `git diff --check` → OK
+- `git status --short` → no generated audio, SQLite databases, credentials, or secrets staged before QA edits
+- Full report: `work/voice-processing/logs/working/task-10/pre-deploy-qa.json`
