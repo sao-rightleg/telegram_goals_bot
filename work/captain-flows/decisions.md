@@ -70,3 +70,24 @@ Review details — in JSON files via links. QA report — in logs/working/.
 **Verification:**
 - `.venv/bin/python -m pytest tests/test_participant_messages.py::test_captain_manual_report_messages_are_safe tests/test_participant_sheets_gateway.py::test_get_participant_returns_copy_by_id tests/test_participant_sheets_gateway.py::test_list_participants_by_team_returns_copies -q` → 3 passed
 - `.venv/bin/python -m pytest tests/test_participant_messages.py tests/test_participant_sheets_gateway.py -q` → 18 passed
+
+## Task 2: Captain manual draft repository support
+
+**Status:** Done
+**Commit:** 541db40
+**Agent:** main agent
+**Summary:** Extended the weekly report draft repository to create and read captain manual report drafts with selected participant and captain submitter metadata. Added schema/repository regressions while preserving participant weekly report behavior.
+**Deviations:** Formal reviewer subagents were not run because the current tool policy requires explicit user permission for delegation; smoke and full local suite passed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run → subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_weekly_report_draft_repository.py::test_create_captain_manual_report_draft_writes_selected_participant_state tests/test_weekly_report_draft_repository.py::test_captain_manual_report_draft_clears_like_weekly_report_draft tests/test_sqlite_schema.py::test_captain_manual_report_values_are_allowed -q` → 3 passed
+- `.venv/bin/python -m pytest tests/test_weekly_report_draft_repository.py tests/test_sqlite_schema.py -q` → 18 passed
+- `.venv/bin/python -m pytest -q` → 191 passed
+- `git diff --check` → OK
