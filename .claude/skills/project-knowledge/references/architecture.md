@@ -17,7 +17,7 @@
 
 Telegram users interact with thin Telegram handlers. Handlers route updates into business services, business services use SQLite repositories for technical dialogue and draft state, and final business facts go through the Google Sheets integration boundary.
 
-The implemented MVP foundation currently includes adapter-independent boundaries for configuration, logging, Google Sheets access, Telegram bot clients, notification routing, speech transcription, report generation, local storage paths, scheduler calendar constants, participant flows, weekly report flows, insight flows, and voice message input for active weekly-report and insight drafts.
+The implemented MVP foundation currently includes adapter-independent boundaries for configuration, logging, Google Sheets access, Telegram bot clients, notification routing, speech transcription, report generation, local storage paths, scheduler calendar constants, participant flows, weekly report flows, insight flows, voice message input for active weekly-report and insight drafts, and captain own-team/manual-report service flows.
 
 ## Component Boundaries
 
@@ -72,6 +72,7 @@ Current SQLite repositories are limited to dialog state, weekly report drafts, i
 - Weekly report flow: current-week/deadline helpers, draft repository, participant-scoped status and planned-step selection, text draft collection, final report save, selected-step relation storage, duplicate/late guards, and draft cleanup.
 - Insight flow: current-week insight draft repository, add/list/full-text services, optional title handling, participant-scoped pagination, safe callback handling, multiple insights per participant/week, final Sheets save, and post-save SQLite text cleanup.
 - Voice processing input: weekly-report and insight draft flows accept voice messages up to 600 seconds, download audio through a Telegram file boundary, store audio under the local non-public audio path policy, transcribe through the speech boundary, append ordered `voice_transcription` draft messages, and write final transcription/audio path fields through the owning finalization service. Voice processing does not own final Google Sheets writes and cannot bypass weekly deadline, duplicate, selected-step, or insight progress-isolation rules.
+- Captain flows: captain service resolves Telegram identity, consent, `role = captain`, and captain `team_id`; own-team view lists only rows from the captain's team and avoids internal ID leakage. Captain manual reports reuse weekly report draft state with `flow_source = captain_manual`, selected participant state, and captain submitter metadata. Final manual reports write normal `weekly_reports` and `weekly_report_steps` business facts for the selected participant, revalidate own-team ownership, dropped status, duplicate report, deadline, active goal, selected status, selected steps, and non-empty text before save, and clear draft state after success.
 
 ## Bot Separation
 

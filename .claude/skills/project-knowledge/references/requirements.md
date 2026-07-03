@@ -34,6 +34,10 @@ Product decisions in `docs/02_open_questions.md` are resolved and must be follow
 - Main progress percentage is calculated only from planned steps.
 - `green` and `blue` reports require selected planned step IDs.
 - One weekly report can close or partially progress several steps.
+- Captains can view only their own team through the bot.
+- Captains can manually submit a weekly report for an active own-team participant before the Sunday 23:59 Yekaterinburg deadline.
+- Captain manual reports write normal weekly report business facts with selected participant as report subject and captain `participant_id` as `submitted_by_id` / `submitted_by_role = captain`.
+- Captains cannot report for other teams, dropped participants, duplicate participant/week reports, late reports, or invalid/closed green steps.
 - Final goal achievement is fixed by tracker or admin, not participant/captain and not automatically by the bot.
 - Captain may see full report texts, voice transcriptions, and insights for own team only.
 - Trackers may have direct Google Sheets access but must not change sheet structure, column names, technical IDs, or service fields.

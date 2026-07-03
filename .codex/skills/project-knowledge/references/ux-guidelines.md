@@ -44,6 +44,30 @@ Weekly report done:
 Принято. Победа недели сохранена.
 ```
 
+Captain team title:
+
+```text
+Твоя команда:
+```
+
+Captain-only denial:
+
+```text
+Этот раздел доступен только капитану.
+```
+
+Captain manual report success:
+
+```text
+Капитанский отчёт сохранён.
+```
+
+Captain forbidden participant:
+
+```text
+Этот участник не из твоей команды.
+```
+
 ## Menus
 
 Participant menu:
