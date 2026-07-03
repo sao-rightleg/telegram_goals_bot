@@ -10,6 +10,8 @@ All deployments must go through GitHub CI/CD unless emergency debugging of broke
 
 Docker, Redis, Celery, Kubernetes, and complex DevOps are out of MVP.
 
+The repository currently contains locally verified MVP slices for the foundation, participant core flows, weekly report flow, and insight flow. They have passed pre-deploy QA with fake/local boundaries; no production deployment or live Telegram/Google/transcription integration has been performed as part of those feature completions.
+
 ## Environment Variables and Credentials
 
 Use `.env` or protected credential files locally. Use GitHub Actions secrets in CI/CD.

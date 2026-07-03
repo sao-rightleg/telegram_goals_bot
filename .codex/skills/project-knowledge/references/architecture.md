@@ -16,22 +16,9 @@
 
 ## High-Level Architecture
 
-```text
-Telegram users
-  |
-  v
-Telegram Bot Layer
-  |
-  +--> Dialogue State Layer --> SQLite
-  |
-  +--> Business Services
-          |
-          +--> Google Sheets Integration --> Google Sheets
-          +--> Voice Processing -----------> local audio files + transcription provider
-          +--> Report Generation ----------> local PDF files
-          +--> Notification Routing -------> Telegram recipients via main/error/notification bots
-          +--> Scheduler ------------------> reminders, closing, reports
-```
+Telegram users interact with thin Telegram handlers. Handlers route updates into business services, business services use SQLite repositories for technical dialogue and draft state, and final business facts go through the Google Sheets integration boundary.
+
+The implemented MVP foundation currently includes adapter-independent boundaries for configuration, logging, Google Sheets access, Telegram bot clients, notification routing, speech transcription, report generation, local storage paths, scheduler calendar constants, participant flows, weekly report flows, and insight flows.
 
 ## Component Boundaries
 
@@ -76,6 +63,15 @@ SQLite stores technical state only:
 - Technical error events.
 
 SQLite must not become the only source for final business facts.
+
+Current SQLite repositories are limited to dialog state, weekly report drafts, and insight drafts. Saved insight drafts purge full personal text from SQLite after successful Sheets save; Google Sheets remains the final store for insight text.
+
+## Implemented Flow Slices
+
+- Foundation: package/test tooling, typed settings, secret redaction, SQLite schema creation, storage path policy, scheduler constants, and external integration boundaries.
+- Participant core flows: Telegram ID lookup, unknown-user error routing, consent writes, role-aware menu contracts, goal view, planned steps view, progress view, and safe missing-data handling.
+- Weekly report flow: current-week/deadline helpers, draft repository, participant-scoped status and planned-step selection, text draft collection, final report save, selected-step relation storage, duplicate/late guards, and draft cleanup.
+- Insight flow: current-week insight draft repository, add/list/full-text services, optional title handling, participant-scoped pagination, safe callback handling, multiple insights per participant/week, final Sheets save, and post-save SQLite text cleanup.
 
 ## Bot Separation
 
