@@ -1,0 +1,257 @@
+{
+  "status": "passed",
+  "created_at": "2026-07-03",
+  "feature": "captain-flows",
+  "summary": {
+    "totalChecks": 39,
+    "passed": 37,
+    "failed": 0,
+    "notVerifiable": 2,
+    "criticals": 0,
+    "majors": 0,
+    "minors": 0
+  },
+  "testSuite": {
+    "status": "passed",
+    "details": "Full local pytest suite passed: 210 passed in 10.99s."
+  },
+  "auditReports": [
+    {
+      "report": "work/captain-flows/logs/working/task-6/code-audit.json",
+      "status": "passed",
+      "evidence": "json.tool valid; 0 blocking and 0 major findings."
+    },
+    {
+      "report": "work/captain-flows/logs/working/task-7/security-audit.json",
+      "status": "passed",
+      "evidence": "json.tool valid; 0 blocking, 0 critical, 0 high, 0 medium findings."
+    },
+    {
+      "report": "work/captain-flows/logs/working/task-8/test-audit.json",
+      "status": "passed",
+      "evidence": "json.tool valid; 0 blocking findings."
+    }
+  ],
+  "artifactCheck": {
+    "status": "passed",
+    "evidence": "git status --short returned no staged or unstaged generated SQLite databases, credentials, secrets, audio, or PDFs before writing this QA report."
+  },
+  "userSpecAcceptanceCriteria": [
+    {
+      "id": "US-AC1",
+      "criterion": "Only role = captain sees and starts captain actions.",
+      "status": "passed",
+      "evidence": "app/bot/menus.py::build_role_menu includes captain-only actions only for role captain; tests/test_participant_messages.py::test_captain_menu_contains_participant_and_captain_actions; tests/test_captain_team_flow.py::test_non_captain_cannot_view_team."
+    },
+    {
+      "id": "US-AC2",
+      "criterion": "Captain sees only own-team participants.",
+      "status": "passed",
+      "evidence": "tests/test_captain_team_flow.py::test_captain_can_view_only_own_team asserts own-team names are visible and other-team names/IDs are absent."
+    },
+    {
+      "id": "US-AC3",
+      "criterion": "Captain cannot select another team's participant through forged callback/ID.",
+      "status": "passed",
+      "evidence": "tests/test_captain_boundaries.py::test_forged_other_team_participant_id_is_rejected; CaptainService reloads target participant by id and compares target team_id to captain team_id."
+    },
+    {
+      "id": "US-AC4",
+      "criterion": "Captain cannot submit manual report for dropped participant.",
+      "status": "passed",
+      "evidence": "tests/test_captain_boundaries.py::test_dropped_participant_manual_report_is_rejected."
+    },
+    {
+      "id": "US-AC5",
+      "criterion": "Captain cannot submit duplicate weekly report for participant/week.",
+      "status": "passed",
+      "evidence": "tests/test_captain_manual_report_flow.py::test_captain_manual_report_rejects_duplicate_before_final_save and tests/test_captain_boundaries.py::test_duplicate_report_attempt_creates_no_new_report_or_step_relation."
+    },
+    {
+      "id": "US-AC6",
+      "criterion": "Captain cannot save status-changing manual report after Sunday 23:59 Asia/Yekaterinburg.",
+      "status": "passed",
+      "evidence": "tests/test_captain_manual_report_flow.py::test_captain_manual_report_rejects_late_before_final_save and tests/test_captain_boundaries.py::test_captain_manual_report_after_deadline_is_rejected."
+    },
+    {
+      "id": "US-AC7",
+      "criterion": "Green captain report requires valid selected planned step IDs and cannot reuse already closed steps.",
+      "status": "passed",
+      "evidence": "tests/test_captain_manual_report_flow.py::test_captain_green_manual_report_saves_report_steps_and_submitter; tests/test_captain_boundaries.py::test_invalid_or_closed_step_selection_is_rejected."
+    },
+    {
+      "id": "US-AC8",
+      "criterion": "Blue captain report requires one or more valid related planned step IDs.",
+      "status": "passed",
+      "evidence": "tests/test_captain_manual_report_flow.py::test_captain_blue_manual_report_writes_partial_relations_without_closing_steps and ::test_captain_blue_manual_report_requires_valid_steps."
+    },
+    {
+      "id": "US-AC9",
+      "criterion": "Red captain report does not require step selection and creates no weekly_report_steps.",
+      "status": "passed",
+      "evidence": "tests/test_captain_manual_report_flow.py::test_captain_red_manual_report_does_not_require_steps."
+    },
+    {
+      "id": "US-AC10",
+      "criterion": "Already closed planned steps cannot be closed again through captain report.",
+      "status": "passed",
+      "evidence": "tests/test_captain_boundaries.py::test_invalid_or_closed_step_selection_is_rejected."
+    },
+    {
+      "id": "US-AC11",
+      "criterion": "Final weekly report stores selected participant_id, team_id, selected status, report text, score, and week_number.",
+      "status": "passed",
+      "evidence": "tests/test_captain_manual_report_flow.py::test_captain_green_manual_report_saves_report_steps_and_submitter asserts the full weekly report row."
+    },
+    {
+      "id": "US-AC12",
+      "criterion": "Final weekly report stores submitted_by_id as captain participant_id and submitted_by_role = captain.",
+      "status": "passed",
+      "evidence": "tests/test_captain_manual_report_flow.py green and blue finalization tests assert submitted_by_id = C001 and submitted_by_role = captain."
+    },
+    {
+      "id": "US-AC13",
+      "criterion": "Captain manual report does not change insights and does not create a separate business fact outside weekly reports.",
+      "status": "passed",
+      "evidence": "CaptainService writes final facts through append_weekly_report and append_weekly_report_step only; no insight service or separate captain report table is used."
+    },
+    {
+      "id": "US-AC14",
+      "criterion": "Technical selected participant/status/steps/draft state stays in SQLite until final save.",
+      "status": "passed",
+      "evidence": "tests/test_weekly_report_draft_repository.py::test_create_captain_manual_report_draft_writes_selected_participant_state."
+    },
+    {
+      "id": "US-AC15",
+      "criterion": "Successful final save clears technical draft.",
+      "status": "passed",
+      "evidence": "tests/test_captain_manual_report_flow.py green/blue/red finalization tests assert drafts.get_active_draft(captain.telegram_id) is None."
+    },
+    {
+      "id": "US-AC16",
+      "criterion": "Google Sheets or SQLite technical failures do not become final business facts and technical errors route only to admin error chat.",
+      "status": "not_verifiable",
+      "evidence": "Pre-deploy fake-boundary tests verify unknown/missing data technical errors route to error bot only, and rejected captain attempts create no final facts. Real Google Sheets/SQLite failure behavior requires live adapter fault handling or explicit fault-injection tests outside this local slice."
+    },
+    {
+      "id": "US-AC17",
+      "criterion": "Technical error details are not sent to participants, other captains, trackers, or Alexander Sitnikov.",
+      "status": "passed",
+      "evidence": "tests/test_boundaries.py::test_technical_errors_route_only_to_error_bot; captain missing/unknown tests assert main bot receives safe copy while error details go to error bot."
+    },
+    {
+      "id": "US-AC18",
+      "criterion": "Feature does not add web form, PostgreSQL, Docker, Redis, Celery, web admin panel, participant-created steps, past-week editing, or late/yellow status.",
+      "status": "passed",
+      "evidence": "tests/test_captain_boundaries.py::test_captain_flow_does_not_import_out_of_scope_runtime_dependencies; pyproject.toml has no runtime dependencies; no deploy/live integrations were added."
+    }
+  ],
+  "techSpecAcceptanceCriteria": [
+    {
+      "id": "TS-AC1",
+      "criterion": "User spec is approved before implementation tasks start.",
+      "status": "passed",
+      "evidence": "work/captain-flows/user-spec.md status = approved; decisions.md records approval commit 8a8f454."
+    },
+    {
+      "id": "TS-AC2",
+      "criterion": "Captain-only flows require identified consenting user with role = captain.",
+      "status": "passed",
+      "evidence": "tests/test_captain_team_flow.py covers unknown user, no consent, non-captain denial; CaptainService._resolve_captain gates manual report methods."
+    },
+    {
+      "id": "TS-AC3",
+      "criterion": "Own-team list and participant selection are always scoped by captain team_id.",
+      "status": "passed",
+      "evidence": "tests/test_captain_team_flow.py::test_captain_can_view_only_own_team; tests/test_captain_boundaries.py::test_forged_other_team_participant_id_is_rejected."
+    },
+    {
+      "id": "TS-AC4",
+      "criterion": "Forged selected participant IDs outside captain team are rejected server-side.",
+      "status": "passed",
+      "evidence": "tests/test_captain_boundaries.py::test_forged_other_team_participant_id_is_rejected."
+    },
+    {
+      "id": "TS-AC5",
+      "criterion": "Dropped participants cannot receive captain manual reports.",
+      "status": "passed",
+      "evidence": "tests/test_captain_boundaries.py::test_dropped_participant_manual_report_is_rejected."
+    },
+    {
+      "id": "TS-AC6",
+      "criterion": "Duplicate participant/week reports are rejected.",
+      "status": "passed",
+      "evidence": "tests/test_captain_manual_report_flow.py::test_captain_manual_report_rejects_duplicate_before_final_save."
+    },
+    {
+      "id": "TS-AC7",
+      "criterion": "Captain manual reports cannot be finalized after weekly deadline.",
+      "status": "passed",
+      "evidence": "tests/test_captain_manual_report_flow.py::test_captain_manual_report_rejects_late_before_final_save."
+    },
+    {
+      "id": "TS-AC8",
+      "criterion": "Green/blue captain reports require valid selected planned step IDs.",
+      "status": "passed",
+      "evidence": "tests/test_captain_manual_report_flow.py::test_captain_manual_report_revalidates_invalid_steps_before_final_save and ::test_captain_blue_manual_report_requires_valid_steps."
+    },
+    {
+      "id": "TS-AC9",
+      "criterion": "Red captain reports do not create weekly_report_steps.",
+      "status": "passed",
+      "evidence": "tests/test_captain_manual_report_flow.py::test_captain_red_manual_report_does_not_require_steps."
+    },
+    {
+      "id": "TS-AC10",
+      "criterion": "Green closes selected planned steps; blue creates partial relations without closing them.",
+      "status": "passed",
+      "evidence": "tests/test_captain_manual_report_flow.py green and blue finalization tests."
+    },
+    {
+      "id": "TS-AC11",
+      "criterion": "Final weekly report rows store selected participant as report subject and captain as submitter.",
+      "status": "passed",
+      "evidence": "tests/test_captain_manual_report_flow.py green and blue finalization tests assert participant_id = P001 and submitted_by_id = C001."
+    },
+    {
+      "id": "TS-AC12",
+      "criterion": "SQLite stores only temporary captain draft state and is cleared after successful final save.",
+      "status": "passed",
+      "evidence": "tests/test_weekly_report_draft_repository.py captain draft tests; tests/test_captain_manual_report_flow.py finalization tests assert draft cleared."
+    },
+    {
+      "id": "TS-AC13",
+      "criterion": "Technical errors route only through admin error chat.",
+      "status": "not_verifiable",
+      "evidence": "Verified for local unknown-user and missing-data paths via tests/test_captain_team_flow.py and tests/test_boundaries.py. Real adapter exceptions from live Google Sheets/SQLite require explicit fault injection or live integration checks."
+    },
+    {
+      "id": "TS-AC14",
+      "criterion": "No out-of-scope infrastructure or features are added.",
+      "status": "passed",
+      "evidence": "tests/test_captain_boundaries.py::test_captain_flow_does_not_import_out_of_scope_runtime_dependencies; no runtime dependencies in pyproject.toml."
+    },
+    {
+      "id": "TS-AC15",
+      "criterion": "Full local pytest suite passes.",
+      "status": "passed",
+      "evidence": ".venv/bin/python -m pytest -q -> 210 passed in 10.99s."
+    }
+  ],
+  "findings": [],
+  "deferredToPostDeploy": [
+    {
+      "criterion": "US-AC16 / TS-AC13: real Google Sheets or SQLite adapter failures route technical details only to admin error chat and do not expose details to users.",
+      "reason": "Pre-deploy uses fake/local boundaries and does not exercise live Google Sheets or production SQLite failure modes.",
+      "verificationCondition": "A test/staging Telegram bot is wired to the live adapters with safe test data and controlled adapter failure or fault injection is available.",
+      "verificationSteps": "Trigger a controlled Google Sheets write/read failure and a controlled SQLite failure during a captain manual report flow. Verify the participant/captain sees only safe copy, admin error chat receives technical context without secrets, and no partial final weekly report is accepted as a completed business fact."
+    },
+    {
+      "criterion": "Live Telegram UX: captain opens team and manual report flow through actual bot buttons/callbacks.",
+      "reason": "This feature slice is local service/fake-boundary based and does not add live Telegram SDK handlers or deploy.",
+      "verificationCondition": "Post-deploy test bot with captain and participant fixtures exists.",
+      "verificationSteps": "Log in as a captain in Telegram, open '👥 Моя команда', start '➕ Внести отчёт за участника', choose own-team participant, submit green/blue/red report before deadline, and verify the Google Sheets row has submitted_by_role = captain."
+    }
+  ],
+  "noDeployPerformed": true
+}
