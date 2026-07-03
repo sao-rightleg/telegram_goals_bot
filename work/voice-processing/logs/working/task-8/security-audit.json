@@ -1,0 +1,117 @@
+{
+  "task": 8,
+  "title": "Security Audit",
+  "feature": "voice-processing",
+  "status": "completed",
+  "auditor": "main agent",
+  "created_at": "2026-07-03",
+  "scope": {
+    "files_reviewed": [
+      "app/services/voice_messages.py",
+      "app/services/weekly_reports.py",
+      "app/services/insights.py",
+      "app/storage/paths.py",
+      "app/services/notifications.py",
+      "app/storage/sqlite.py",
+      "app/storage/weekly_report_drafts.py",
+      "app/storage/insight_drafts.py",
+      "app/bot/clients.py",
+      "app/bot/messages.py",
+      "tests/test_voice_processing_service.py",
+      "tests/test_voice_processing_boundaries.py",
+      "tests/test_storage_paths.py",
+      "tests/test_boundaries.py"
+    ],
+    "spec_files_reviewed": [
+      "work/voice-processing/user-spec.md",
+      "work/voice-processing/tech-spec.md",
+      ".claude/skills/project-knowledge/references/requirements.md",
+      ".claude/skills/project-knowledge/references/patterns.md",
+      ".claude/skills/project-knowledge/references/deployment.md"
+    ]
+  },
+  "summary": {
+    "overall_result": "issues_found",
+    "blocking_findings_count": 1,
+    "non_blocking_findings_count": 0,
+    "security_posture_notes": [
+      "Voice duration is checked before download for the upper-bound 600 second MVP limit.",
+      "Audio paths are assembled through StoragePathPolicy safe fragments; traversal, absolute fragments, public URL fragments, and nested fragments are rejected.",
+      "Voice-processing technical errors route through NotificationCategory.TECHNICAL_ERROR, which uses only the error bot/admin error chat.",
+      "Admin error text includes operational context but does not include transcription text, Telegram file id, tokens, or local audio path.",
+      "SQLite queries use parameter binding for draft/message/attachment operations.",
+      "No live Telegram, Google, OpenAI, Whisper, aiogram, gspread, Docker, Redis, Celery, or PostgreSQL dependency was added for this feature."
+    ]
+  },
+  "findings": [
+    {
+      "id": "SA-001",
+      "severity": "medium",
+      "blocking": true,
+      "category": "sensitive_data_retention",
+      "title": "Failed voice processing can leave an untracked local audio file after download succeeds",
+      "affected_files": [
+        {
+          "path": "app/services/voice_messages.py",
+          "line": 78
+        },
+        {
+          "path": "app/services/voice_messages.py",
+          "line": 97
+        },
+        {
+          "path": "app/storage/sqlite.py",
+          "line": 77
+        }
+      ],
+      "description": "VoiceMessageService downloads audio before transcription. If download succeeds but transcription or draft append fails, the catch block notifies admin and preserves the draft, but it does not persist a failed draft_attachments row and does not delete the local audio file. Because draft_attachments is the only technical table designed to track audio path/status/error metadata, failed audio files can become orphaned local sensitive data that future cleanup cannot reliably discover.",
+      "attack_or_failure_scenario": "A transient transcription provider outage occurs after Telegram audio has been saved under data/audio. The participant receives retry copy and continues with text, but the failed audio file remains on disk without SQLite metadata. Repeated failures can accumulate private voice files outside the expected retention/tracking boundary.",
+      "recommendation": "When local_file_path is known and later processing fails, either insert a draft_attachments row with transcription_status='failed' and an error_message, or delete the just-downloaded local file before returning the retry response. Keep failed attempts out of draft_messages so no user-visible text is added.",
+      "related_spec": "work/voice-processing/tech-spec.md says failures should record failed technical attachment state when possible and preserve drafts."
+    }
+  ],
+  "checked_controls": {
+    "path_traversal_protection": "pass",
+    "public_url_audio_path_protection": "pass",
+    "secret_handling": "pass",
+    "live_credential_usage": "pass",
+    "admin_only_error_routing": "pass",
+    "transcription_text_not_in_admin_errors": "pass",
+    "sqlite_business_storage_boundary": "pass",
+    "failed_audio_retention_tracking": "fail",
+    "dependency_vulnerability_surface": "pass"
+  },
+  "dependency_review": {
+    "project_runtime_dependencies": [],
+    "dev_dependencies": [
+      "pytest>=8,<9"
+    ],
+    "installed_packages_observed": [
+      "pytest==8.4.2",
+      "setuptools==59.6.0",
+      "telegram-goals-bot==0.1.0"
+    ],
+    "result": "No new runtime dependency or live SDK was introduced by voice-processing. No npm audit applies because this is a Python project with an empty runtime dependency list in pyproject.toml."
+  },
+  "acceptance_check": {
+    "security_audit_report_exists": true,
+    "report_valid_json": true,
+    "blocking_findings_absent_or_listed": true
+  },
+  "verification": {
+    "commands": [
+      {
+        "command": ".venv/bin/python -m json.tool work/voice-processing/logs/working/task-8/security-audit.json",
+        "result": "pass"
+      },
+      {
+        "command": "rg -n \"(TOKEN|API_KEY|SECRET|PASSWORD|BEGIN PRIVATE|openai|whisper|aiogram|gspread)\" app tests work/voice-processing .gitignore pyproject.toml",
+        "result": "reviewed; matches are config redaction constants, env var names, tests, and forbidden-import assertions, not committed secret values"
+      },
+      {
+        "command": "find . -maxdepth 3 -type f -name '*.env' -o -name '*.key' -o -name 'credentials.json' -o -name '*.sqlite3'",
+        "result": "no generated secret/audio/sqlite artifacts found in repository scan"
+      }
+    ]
+  }
+}
