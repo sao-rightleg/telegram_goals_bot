@@ -1,0 +1,98 @@
+{
+  "task": 7,
+  "title": "Security Audit",
+  "status": "passed_with_low_risk_notes",
+  "auditor": "main agent",
+  "created_at": "2026-07-03",
+  "scope": [
+    "app/services/captains.py",
+    "app/services/notifications.py",
+    "app/sheets/gateway.py",
+    "app/storage/weekly_report_drafts.py",
+    "tests/test_captain_team_flow.py",
+    "tests/test_captain_manual_report_flow.py",
+    "tests/test_captain_boundaries.py",
+    "pyproject.toml"
+  ],
+  "summary": {
+    "critical_findings": 0,
+    "high_findings": 0,
+    "medium_findings": 0,
+    "low_findings": 1,
+    "blocking_findings": 0
+  },
+  "checks": {
+    "authorization": {
+      "status": "pass",
+      "notes": [
+        "Captain flows require identified Telegram user, consent, role = captain, and non-empty team_id.",
+        "Manual report target participant is reloaded by participant_id and checked against captain team_id on start, status selection, step selection, text append, and finalization."
+      ]
+    },
+    "callback_tampering": {
+      "status": "pass",
+      "notes": [
+        "Forged other-team selected participant IDs are rejected server-side.",
+        "Forbidden responses do not include other-team participant names, team IDs, or participant IDs."
+      ]
+    },
+    "business_rule_bypass": {
+      "status": "pass",
+      "notes": [
+        "Dropped participants, duplicates, late finalization, and invalid or closed green steps are rejected before final weekly report writes.",
+        "Rejected attempts create no weekly_reports rows, weekly_report_steps rows, or planned step closure side effects in covered tests."
+      ]
+    },
+    "data_exposure": {
+      "status": "pass",
+      "notes": [
+        "User-facing denial copy is generic.",
+        "Missing data and unknown user technical details route through NotificationRouter as TECHNICAL_ERROR to admin error bot only."
+      ]
+    },
+    "secrets": {
+      "status": "pass",
+      "notes": [
+        "No production secrets or credentials were introduced by captain-flows.",
+        "Search hits for token/credential strings are existing configuration code, tests with dummy values, and documentation references."
+      ]
+    },
+    "sql_injection": {
+      "status": "pass",
+      "notes": [
+        "WeeklyReportDraftRepository uses parameterized sqlite3 statements.",
+        "CaptainService does not build SQL directly."
+      ]
+    },
+    "dependencies": {
+      "status": "pass",
+      "notes": [
+        "pyproject.toml has no runtime dependencies and only pytest as a dev dependency.",
+        "No live SDK, deploy, Google, Telegram, OpenAI, Redis, Celery, Docker, or PDF runtime dependency was added by captain-flows."
+      ]
+    }
+  },
+  "findings": [
+    {
+      "id": "SA-001",
+      "severity": "low",
+      "category": "security_monitoring",
+      "location": "app/services/captains.py",
+      "description": "Forbidden captain manual report attempts, such as forged other-team participant IDs, are safely denied but not sent to admin error chat.",
+      "impact": "This does not expose data or allow unauthorized writes. It may reduce visibility into repeated callback tampering attempts during production operations.",
+      "recommendation": "If production abuse monitoring becomes necessary, add rate-limited operational/security notifications for repeated forbidden selections without including participant report text or secrets.",
+      "blocking": false
+    }
+  ],
+  "verification": {
+    "commands_reviewed": [
+      "rg -n \"token|secret|password|api[_-]?key|credentials|BEGIN (RSA|OPENSSH|PRIVATE)|telegram[_-]?bot\" app tests work/captain-flows -S",
+      ".venv/bin/python -m pytest tests/test_captain_boundaries.py tests/test_boundaries.py -q",
+      ".venv/bin/python -m pytest -q"
+    ],
+    "known_latest_test_results": {
+      "captain_boundary_smoke": "13 passed",
+      "full_suite": "210 passed"
+    }
+  }
+}
