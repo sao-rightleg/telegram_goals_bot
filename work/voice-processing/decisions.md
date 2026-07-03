@@ -53,3 +53,24 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `.venv/bin/python -m pytest tests/test_boundaries.py tests/test_weekly_report_messages.py tests/test_insight_messages.py tests/test_voice_processing_messages.py -q` → 21 passed
 - `.venv/bin/python -m pytest -q` → 164 passed
 - `git diff --check` → OK
+
+## Task 2: Draft attachment repository operations
+
+**Status:** Done
+**Commit:** 7839662
+**Agent:** main agent
+**Summary:** Added weekly report and insight draft repository operations for accepted voice transcriptions, storing technical attachment metadata and ordered `voice_transcription` draft messages. Saved insight cleanup now deletes voice attachment rows together with draft messages so personal transcription text is purged after save.
+**Deviations:** Formal reviewer subagents were not run because the current tool policy requires explicit user permission for delegation; local TDD, smoke, and full-suite verification were completed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run → subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_weekly_report_draft_repository.py::test_append_voice_transcription_preserves_order tests/test_weekly_report_draft_repository.py::test_append_voice_attachment_stores_metadata tests/test_insight_draft_repository.py::test_append_voice_transcription_preserves_order tests/test_insight_draft_repository.py::test_saved_insight_draft_purges_voice_transcription_text -q` → 4 passed
+- `.venv/bin/python -m pytest tests/test_weekly_report_draft_repository.py tests/test_insight_draft_repository.py tests/test_sqlite_schema.py -q` → 23 passed
+- `.venv/bin/python -m pytest -q` → 168 passed
+- `git diff --check` → OK
