@@ -190,3 +190,19 @@ Review details — in JSON files via links. QA report — in logs/working/.
 
 **Verification:**
 - `.venv/bin/python -m json.tool work/voice-processing/logs/working/task-8/security-audit.json` → valid JSON
+
+## Task 9: Test Audit
+
+**Status:** Done
+**Commit:** 5a34352
+**Agent:** main agent
+**Summary:** Completed full-feature test audit for voice-processing unit, integration, and boundary tests. The report lists 2 blocking test gaps: missing saved mixed voice insight display regression and missing failed-downloaded-audio retention/metadata regression.
+**Deviations:** None.
+
+**Reviews:**
+
+*Round 1:*
+- test-reviewer: Not applicable → Task 9 is the test audit report.
+
+**Verification:**
+- `.venv/bin/python -m json.tool work/voice-processing/logs/working/task-9/test-audit.json` → valid JSON
