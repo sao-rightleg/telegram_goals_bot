@@ -37,6 +37,10 @@ class WeeklyReportDraft:
     updated_at: str
     expires_at: str | None = None
     voice_attachments: tuple[WeeklyReportVoiceAttachment, ...] = ()
+    flow_source: str = "participant_bot"
+    submitted_by_id: str | None = None
+    submitted_by_role: str = "participant"
+    selected_participant_id: str | None = None
 
 
 class WeeklyReportDraftRepository:
@@ -140,6 +144,114 @@ class WeeklyReportDraftRepository:
                     telegram_id,
                     participant_id,
                     week_number,
+                    draft_id,
+                    occurred_at,
+                    occurred_at,
+                    expires_at,
+                ),
+            )
+
+    def create_captain_manual_draft(
+        self,
+        *,
+        draft_id: str,
+        telegram_id: int,
+        captain_participant_id: str,
+        target_participant_id: str,
+        team_id: str,
+        goal_id: str,
+        week_number: int,
+        occurred_at: str,
+        expires_at: str | None = None,
+    ) -> None:
+        self.clear_draft(telegram_id)
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO draft_sessions (
+                    draft_id,
+                    draft_type,
+                    participant_id,
+                    telegram_id,
+                    flow_source,
+                    status,
+                    created_at,
+                    updated_at,
+                    expires_at
+                )
+                VALUES (?, 'captain_manual_report', ?, ?, 'captain_manual', 'active', ?, ?, ?)
+                """,
+                (draft_id, target_participant_id, telegram_id, occurred_at, occurred_at, expires_at),
+            )
+            connection.execute(
+                """
+                INSERT INTO draft_reports (
+                    draft_id,
+                    participant_id,
+                    team_id,
+                    goal_id,
+                    week_number,
+                    flow_source,
+                    status_code,
+                    status_symbol,
+                    submitted_by_id,
+                    submitted_by_role,
+                    selected_step_ids,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, 'captain_manual', ?, ?, ?, 'captain', NULL, ?, ?)
+                """,
+                (
+                    draft_id,
+                    target_participant_id,
+                    team_id,
+                    goal_id,
+                    week_number,
+                    _UNSELECTED_STATUS_CODE,
+                    _UNSELECTED_STATUS_SYMBOL,
+                    captain_participant_id,
+                    occurred_at,
+                    occurred_at,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO dialog_states (
+                    telegram_id,
+                    participant_id,
+                    role,
+                    flow,
+                    step,
+                    week_number,
+                    selected_status,
+                    selected_participant_id,
+                    selected_step_ids,
+                    draft_id,
+                    started_at,
+                    updated_at,
+                    expires_at
+                )
+                VALUES (?, ?, 'captain', 'captain_manual_report', 'draft_started', ?, NULL, ?, NULL, ?, ?, ?, ?)
+                ON CONFLICT(telegram_id) DO UPDATE SET
+                    participant_id = excluded.participant_id,
+                    role = excluded.role,
+                    flow = excluded.flow,
+                    step = excluded.step,
+                    week_number = excluded.week_number,
+                    selected_status = excluded.selected_status,
+                    selected_participant_id = excluded.selected_participant_id,
+                    selected_step_ids = excluded.selected_step_ids,
+                    draft_id = excluded.draft_id,
+                    started_at = excluded.started_at,
+                    updated_at = excluded.updated_at,
+                    expires_at = excluded.expires_at
+                """,
+                (
+                    telegram_id,
+                    captain_participant_id,
+                    week_number,
+                    target_participant_id,
                     draft_id,
                     occurred_at,
                     occurred_at,
@@ -332,6 +444,10 @@ class WeeklyReportDraftRepository:
                     reports.status_code,
                     reports.status_symbol,
                     reports.selected_step_ids,
+                    reports.flow_source,
+                    reports.submitted_by_id,
+                    reports.submitted_by_role,
+                    dialog.selected_participant_id,
                     sessions.created_at,
                     reports.updated_at,
                     sessions.expires_at
@@ -340,8 +456,8 @@ class WeeklyReportDraftRepository:
                 JOIN draft_reports AS reports ON reports.draft_id = sessions.draft_id
                 WHERE
                     dialog.telegram_id = ?
-                    AND dialog.flow = 'weekly_report'
-                    AND sessions.draft_type = 'weekly_report'
+                    AND dialog.flow IN ('weekly_report', 'captain_manual_report')
+                    AND sessions.draft_type IN ('weekly_report', 'captain_manual_report')
                     AND sessions.status = 'active'
                 """,
                 (telegram_id,),
@@ -398,6 +514,10 @@ class WeeklyReportDraftRepository:
                 )
                 for attachment in attachment_rows
             ),
+            flow_source=str(row["flow_source"]),
+            submitted_by_id=str(row["submitted_by_id"]),
+            submitted_by_role=str(row["submitted_by_role"]),
+            selected_participant_id=row["selected_participant_id"],
         )
 
     def clear_draft(self, telegram_id: int) -> None:
@@ -413,7 +533,7 @@ class WeeklyReportDraftRepository:
                 """
                 SELECT draft_id
                 FROM dialog_states
-                WHERE telegram_id = ? AND flow = 'weekly_report'
+                WHERE telegram_id = ? AND flow IN ('weekly_report', 'captain_manual_report')
                 """,
                 (telegram_id,),
             ).fetchone()

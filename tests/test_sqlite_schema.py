@@ -82,6 +82,63 @@ def test_draft_sessions_owns_draft_id(tmp_path: Path) -> None:
             )
 
 
+def test_captain_manual_report_values_are_allowed(tmp_path: Path) -> None:
+    db_path = tmp_path / "state.sqlite3"
+    initialize_schema(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO draft_sessions (
+                draft_id, draft_type, participant_id, telegram_id, flow_source, status,
+                created_at, updated_at
+            )
+            VALUES (
+                'captain-draft-1', 'captain_manual_report', 'P001', 2001,
+                'captain_manual', 'active',
+                '2026-07-01T10:00:00+05:00', '2026-07-01T10:00:00+05:00'
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO draft_reports (
+                draft_id, participant_id, team_id, goal_id, week_number, flow_source,
+                status_code, status_symbol, submitted_by_id, submitted_by_role,
+                created_at, updated_at
+            )
+            VALUES (
+                'captain-draft-1', 'P001', 'T001', 'G001', 4, 'captain_manual',
+                'gray', '⬜', 'C001', 'captain',
+                '2026-07-01T10:00:00+05:00', '2026-07-01T10:00:00+05:00'
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO dialog_states (
+                telegram_id, participant_id, role, flow, step, week_number,
+                selected_participant_id, draft_id, started_at, updated_at
+            )
+            VALUES (
+                2001, 'C001', 'captain', 'captain_manual_report', 'draft_started', 4,
+                'P001', 'captain-draft-1',
+                '2026-07-01T10:00:00+05:00', '2026-07-01T10:00:00+05:00'
+            )
+            """
+        )
+
+        row = connection.execute(
+            """
+            SELECT dialog_states.flow, dialog_states.selected_participant_id, draft_reports.submitted_by_role
+            FROM dialog_states
+            JOIN draft_reports ON draft_reports.draft_id = dialog_states.draft_id
+            """
+        ).fetchone()
+
+    assert row == ("captain_manual_report", "P001", "captain")
+
+
 def test_scheduler_and_reminders_have_idempotency_constraints(tmp_path: Path) -> None:
     db_path = tmp_path / "state.sqlite3"
     initialize_schema(db_path)

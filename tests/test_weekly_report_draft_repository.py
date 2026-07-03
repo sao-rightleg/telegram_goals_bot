@@ -36,6 +36,55 @@ def test_create_weekly_report_draft_writes_technical_state(tmp_path: Path) -> No
     assert draft.status_symbol is None
     assert draft.selected_step_ids == ()
     assert draft.report_text == ""
+    assert draft.flow_source == "participant_bot"
+    assert draft.submitted_by_id == "P001"
+    assert draft.submitted_by_role == "participant"
+    assert draft.selected_participant_id is None
+
+
+def test_create_captain_manual_report_draft_writes_selected_participant_state(tmp_path: Path) -> None:
+    db_path = tmp_path / "state.sqlite3"
+    initialize_schema(db_path)
+    repository = WeeklyReportDraftRepository(db_path)
+
+    repository.create_captain_manual_draft(
+        draft_id="captain-draft-1",
+        telegram_id=2001,
+        captain_participant_id="C001",
+        target_participant_id="P001",
+        team_id="T001",
+        goal_id="G001",
+        week_number=4,
+        occurred_at=NOW,
+    )
+
+    draft = repository.get_active_draft(2001)
+    assert draft is not None
+    assert draft.draft_id == "captain-draft-1"
+    assert draft.telegram_id == 2001
+    assert draft.participant_id == "P001"
+    assert draft.selected_participant_id == "P001"
+    assert draft.team_id == "T001"
+    assert draft.goal_id == "G001"
+    assert draft.week_number == 4
+    assert draft.flow_source == "captain_manual"
+    assert draft.submitted_by_id == "C001"
+    assert draft.submitted_by_role == "captain"
+
+    with sqlite3.connect(db_path) as connection:
+        session = connection.execute(
+            "SELECT draft_type, participant_id, telegram_id, flow_source FROM draft_sessions"
+        ).fetchone()
+        report = connection.execute(
+            "SELECT participant_id, submitted_by_id, submitted_by_role, flow_source FROM draft_reports"
+        ).fetchone()
+        dialog = connection.execute(
+            "SELECT participant_id, role, flow, selected_participant_id, draft_id FROM dialog_states"
+        ).fetchone()
+
+    assert session == ("captain_manual_report", "P001", 2001, "captain_manual")
+    assert report == ("P001", "C001", "captain", "captain_manual")
+    assert dialog == ("C001", "captain", "captain_manual_report", "P001", "captain-draft-1")
 
 
 def test_append_text_messages_preserves_order(tmp_path: Path) -> None:
@@ -157,6 +206,32 @@ def test_clear_draft_removes_technical_state(tmp_path: Path) -> None:
     repository.clear_draft(1001)
 
     assert repository.get_active_draft(1001) is None
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM dialog_states").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM draft_sessions").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM draft_reports").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM draft_messages").fetchone()[0] == 0
+
+
+def test_captain_manual_report_draft_clears_like_weekly_report_draft(tmp_path: Path) -> None:
+    db_path = tmp_path / "state.sqlite3"
+    initialize_schema(db_path)
+    repository = WeeklyReportDraftRepository(db_path)
+    repository.create_captain_manual_draft(
+        draft_id="captain-draft-1",
+        telegram_id=2001,
+        captain_participant_id="C001",
+        target_participant_id="P001",
+        team_id="T001",
+        goal_id="G001",
+        week_number=4,
+        occurred_at=NOW,
+    )
+    repository.append_text_message(2001, "Текст капитана", occurred_at=NOW)
+
+    repository.clear_draft(2001)
+
+    assert repository.get_active_draft(2001) is None
     with sqlite3.connect(db_path) as connection:
         assert connection.execute("SELECT COUNT(*) FROM dialog_states").fetchone()[0] == 0
         assert connection.execute("SELECT COUNT(*) FROM draft_sessions").fetchone()[0] == 0
