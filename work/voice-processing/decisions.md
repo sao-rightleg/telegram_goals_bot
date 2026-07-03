@@ -116,3 +116,24 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `.venv/bin/python -m pytest tests/test_weekly_report_finalize.py tests/test_weekly_report_boundaries.py tests/test_voice_processing_service.py -q` → 23 passed
 - `.venv/bin/python -m pytest -q` → 176 passed
 - `git diff --check` → OK
+
+## Task 5: Insight voice integration
+
+**Status:** Done
+**Commit:** b281f94
+**Agent:** main agent
+**Summary:** Connected insight voice handling through an optional `VoiceMessageService` dependency while keeping final business writes in `InsightService`. Final insight rows now include ordered insight text plus `transcription_text`, `audio_file_path`, and `audio_deleted_at` from accepted draft voice attachments, with weekly report/status data left unchanged.
+**Deviations:** Formal reviewer subagents were not run because the current tool policy requires explicit user permission for delegation. The legacy `reject_voice_message` method remains as a fallback when the voice dependency is not wired, while the new insight voice entrypoint uses `add_voice_message`.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run → subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_insight_add_flow.py::test_voice_insight_final_save_includes_transcription_and_audio_path tests/test_insight_add_flow.py::test_mixed_text_and_voice_insight_preserves_order tests/test_insight_boundaries.py::test_voice_insight_does_not_change_weekly_status_or_progress tests/test_insight_draft_repository.py::test_saved_insight_draft_purges_voice_transcription_text -q` → 4 passed
+- `.venv/bin/python -m pytest tests/test_insight_add_flow.py tests/test_insight_boundaries.py tests/test_voice_processing_service.py -q` → 25 passed
+- `.venv/bin/python -m pytest -q` → 179 passed
+- `git diff --check` → OK
