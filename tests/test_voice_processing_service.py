@@ -120,6 +120,25 @@ def test_transcription_failure_preserves_draft_and_notifies_admin(tmp_path: Path
     assert "Расшифрованный" not in error_bot.sent_messages[0].text
 
 
+def test_transcription_failure_deletes_downloaded_audio_without_draft_message(tmp_path: Path) -> None:
+    service, _downloader, _transcriber, weekly_drafts, _insight_drafts, _error_bot = _service(
+        tmp_path,
+        transcriber=FailingSpeechTranscriber(),
+    )
+    _create_weekly_draft(weekly_drafts)
+
+    response = service.handle_voice(_voice_input(telegram_message_id=599))
+
+    failed_audio_path = Path("data/audio/2026/week_04/T001/P001/voice_1001_599.ogg")
+    draft = weekly_drafts.get_active_draft(USER.telegram_id)
+    assert response.text == VOICE_PROCESSING_FAILED_TEXT
+    assert response.accepted is False
+    assert failed_audio_path.exists() is False
+    assert draft is not None
+    assert draft.report_text == ""
+    assert draft.voice_attachments == ()
+
+
 def _service(
     tmp_path: Path,
     *,
@@ -185,12 +204,12 @@ def _create_insight_draft(repository: InsightDraftRepository) -> None:
     )
 
 
-def _voice_input(*, duration_seconds: int = 42) -> VoiceMessageInput:
+def _voice_input(*, duration_seconds: int = 42, telegram_message_id: int = 501) -> VoiceMessageInput:
     return VoiceMessageInput(
         user=USER,
         telegram_file_id="telegram-file-1",
         duration_seconds=duration_seconds,
-        telegram_message_id=501,
+        telegram_message_id=telegram_message_id,
         now=NOW,
     )
 

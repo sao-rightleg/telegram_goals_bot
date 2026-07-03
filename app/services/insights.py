@@ -428,7 +428,7 @@ def _bounded_page_index(page_index: int, *, total_count: int, page_size: int) ->
 
 
 def _insight_item_from_row(row: SheetRow) -> InsightListItem:
-    text = str(row.get("transcription_text") or row.get("insight_text") or "")
+    text = str(row.get("insight_text") or row.get("transcription_text") or "")
     return InsightListItem(
         insight_id=_string_value(row.get("insight_id")),
         insight_date=str(row.get("insight_date") or ""),

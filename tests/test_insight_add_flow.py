@@ -132,10 +132,18 @@ def test_mixed_text_and_voice_insight_preserves_order(tmp_path: Path) -> None:
     service.set_title_and_save(USER, "Смешанный инсайт", now=LATER)
 
     row = gateway.list_insights()[0]
+    full_text = service.get_full_text(USER, insight_id=str(row["insight_id"]), now=LATER)
+    list_response = service.list_insights(USER, page_index=0, now=LATER)
     assert row["insight_text"] == "Первое\nГолосом второе\nТретье"
     assert row["transcription_text"] == "Голосом второе"
     assert row["audio_file_path"] == "data/audio/2026/week_04/personal_insights/P001/voice_1001_502.ogg"
     assert row["audio_deleted_at"] == ""
+    assert "Первое" in full_text.text
+    assert "Голосом второе" in full_text.text
+    assert "Третье" in full_text.text
+    assert "Первое" in list_response.text
+    assert "Голосом второе" in list_response.text
+    assert "Третье" in list_response.text
 
 
 def test_missing_active_goal_blocks_save_with_custom_copy(tmp_path: Path) -> None:

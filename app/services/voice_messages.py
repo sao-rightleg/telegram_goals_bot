@@ -75,6 +75,7 @@ class VoiceMessageService:
             team_slug=draft.team_id if flow == "weekly_report" else "personal_insights",
         )
 
+        local_file_path: Path | None = None
         try:
             local_file_path = self.file_downloader.download_file(
                 TelegramFileDownload(
@@ -95,6 +96,8 @@ class VoiceMessageService:
                 transcription_text=transcription.text,
             )
         except Exception as error:
+            if local_file_path is not None:
+                local_file_path.unlink(missing_ok=True)
             self._notify_failure(
                 request=request,
                 flow=flow,
