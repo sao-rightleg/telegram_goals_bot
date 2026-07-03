@@ -5,9 +5,18 @@ from app.bot.menus import (
     build_role_menu,
 )
 from app.bot.messages import (
+    CAPTAIN_DROPPED_PARTICIPANT_TEXT,
+    CAPTAIN_EMPTY_REPORT_TEXT,
+    CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT,
+    CAPTAIN_MANUAL_REPORT_DUPLICATE_TEXT,
+    CAPTAIN_MANUAL_REPORT_LATE_TEXT,
+    CAPTAIN_MANUAL_REPORT_SUCCESS_TEXT,
+    CAPTAIN_NO_TEAM_MEMBERS_TEXT,
+    CAPTAIN_TEAM_TITLE_TEXT,
     CONSENT_ACCEPT_BUTTON,
     CONSENT_TEXT,
     UNKNOWN_USER_TEXT,
+    format_captain_team_member_line,
     format_goal_view,
     format_missing_data_message,
     format_progress_view,
@@ -108,3 +117,30 @@ def test_missing_data_message_hides_internal_fields() -> None:
     assert "team_id" not in text
     assert "goal_id" not in text
     assert "token" not in text.lower()
+
+
+def test_captain_manual_report_messages_are_safe() -> None:
+    texts = (
+        CAPTAIN_TEAM_TITLE_TEXT,
+        CAPTAIN_NO_TEAM_MEMBERS_TEXT,
+        CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT,
+        CAPTAIN_DROPPED_PARTICIPANT_TEXT,
+        CAPTAIN_MANUAL_REPORT_DUPLICATE_TEXT,
+        CAPTAIN_MANUAL_REPORT_LATE_TEXT,
+        CAPTAIN_EMPTY_REPORT_TEXT,
+        CAPTAIN_MANUAL_REPORT_SUCCESS_TEXT,
+        format_captain_team_member_line(
+            {
+                "participant_id": "P001",
+                "full_name": "Анна Иванова",
+                "team_id": "T001",
+                "telegram_id": 1001,
+            }
+        ),
+    )
+
+    joined = "\n".join(texts)
+    assert "Анна Иванова" in joined
+    assert "капитан" in joined.lower()
+    for forbidden_fragment in ("P001", "T001", "team_id", "participant_id", "telegram_id", "token", "callback"):
+        assert forbidden_fragment not in joined

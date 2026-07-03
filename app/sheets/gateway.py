@@ -13,6 +13,12 @@ class SheetsGateway(Protocol):
     def find_participant_by_telegram_id(self, telegram_id: int) -> SheetRow | None:
         """Find a participant business row by Telegram ID."""
 
+    def get_participant(self, participant_id: str) -> SheetRow | None:
+        """Find a participant business row by stable participant ID."""
+
+    def list_participants_by_team(self, team_id: str) -> list[SheetRow]:
+        """Return participant rows scoped to one team."""
+
     def update_participant_consent(
         self,
         participant_id: str,
@@ -94,6 +100,15 @@ class FakeSheetsGateway:
             if row.get("telegram_id") == telegram_id:
                 return dict(row)
         return None
+
+    def get_participant(self, participant_id: str) -> SheetRow | None:
+        for row in self._participants:
+            if row.get("participant_id") == participant_id:
+                return dict(row)
+        return None
+
+    def list_participants_by_team(self, team_id: str) -> list[SheetRow]:
+        return [dict(row) for row in self._participants if row.get("team_id") == team_id]
 
     def update_participant_consent(
         self,

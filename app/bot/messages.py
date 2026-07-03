@@ -40,6 +40,15 @@ WEEKLY_REPORT_GREEN_SUCCESS_TEXT = "Принято. Победа недели с
 WEEKLY_REPORT_BLUE_SUCCESS_TEXT = "Принято. Частичная победа сохранена."
 WEEKLY_REPORT_RED_SUCCESS_TEXT = "Принято. Отчёт за неделю сохранён."
 
+CAPTAIN_TEAM_TITLE_TEXT = "Твоя команда:"
+CAPTAIN_NO_TEAM_MEMBERS_TEXT = "В твоей команде пока нет участников для отчёта."
+CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT = "Этот участник не из твоей команды."
+CAPTAIN_DROPPED_PARTICIPANT_TEXT = "За выбывшего участника нельзя внести отчёт."
+CAPTAIN_MANUAL_REPORT_DUPLICATE_TEXT = "Отчёт за этого участника уже принят на этой неделе."
+CAPTAIN_MANUAL_REPORT_LATE_TEXT = "Дедлайн недели уже прошёл. Капитанский отчёт не может изменить статус."
+CAPTAIN_EMPTY_REPORT_TEXT = "Отправь текст отчёта за участника, потом нажми «✅ Готово»."
+CAPTAIN_MANUAL_REPORT_SUCCESS_TEXT = "Капитанский отчёт сохранён."
+
 INSIGHT_ADD_BUTTON = "➕ Добавить инсайт"
 INSIGHT_LIST_BUTTON = "📜 Посмотреть инсайты"
 INSIGHT_CANCEL_BUTTON = "Отмена"
@@ -95,6 +104,13 @@ def get_weekly_report_success_text(status: WeeklyReportStatus) -> str:
     if status is WeeklyReportStatus.BLUE:
         return WEEKLY_REPORT_BLUE_SUCCESS_TEXT
     return WEEKLY_REPORT_RED_SUCCESS_TEXT
+
+
+def format_captain_team_member_line(participant: dict[str, object]) -> str:
+    name = participant.get("full_name") or participant.get("display_name") or participant.get("name")
+    if isinstance(name, str) and name.strip():
+        return f"• {name.strip()}"
+    return "• Участник без имени"
 
 
 def make_insight_title_fallback(text: str, *, limit: int = 100) -> str:

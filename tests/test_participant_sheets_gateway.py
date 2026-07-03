@@ -33,6 +33,42 @@ def test_find_participant_by_unknown_telegram_id_returns_none() -> None:
     assert gateway.find_participant_by_telegram_id(404) is None
 
 
+def test_get_participant_returns_copy_by_id() -> None:
+    gateway = FakeSheetsGateway(
+        participants=[
+            {"participant_id": "P001", "telegram_id": 1001, "full_name": "Participant One"},
+            {"participant_id": "P002", "telegram_id": 1002, "full_name": "Participant Two"},
+        ]
+    )
+
+    row = gateway.get_participant("P002")
+
+    assert row == {"participant_id": "P002", "telegram_id": 1002, "full_name": "Participant Two"}
+    assert gateway.get_participant("P404") is None
+    assert row is not None
+    row["full_name"] = "Mutated"
+    assert gateway.get_participant("P002")["full_name"] == "Participant Two"
+
+
+def test_list_participants_by_team_returns_copies() -> None:
+    gateway = FakeSheetsGateway(
+        participants=[
+            {"participant_id": "P001", "team_id": "T001", "full_name": "Participant One"},
+            {"participant_id": "P002", "team_id": "T002", "full_name": "Participant Two"},
+            {"participant_id": "P003", "team_id": "T001", "full_name": "Participant Three"},
+        ]
+    )
+
+    rows = gateway.list_participants_by_team("T001")
+
+    assert rows == [
+        {"participant_id": "P001", "team_id": "T001", "full_name": "Participant One"},
+        {"participant_id": "P003", "team_id": "T001", "full_name": "Participant Three"},
+    ]
+    rows[0]["full_name"] = "Mutated"
+    assert gateway.list_participants_by_team("T001")[0]["full_name"] == "Participant One"
+
+
 def test_update_participant_consent_updates_only_matching_participant() -> None:
     gateway = FakeSheetsGateway(
         participants=[
