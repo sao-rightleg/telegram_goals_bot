@@ -1,0 +1,96 @@
+{
+  "task": 8,
+  "title": "Test Audit",
+  "status": "passed",
+  "auditor": "main agent",
+  "created_at": "2026-07-03",
+  "scope": [
+    "tests/test_captain_team_flow.py",
+    "tests/test_captain_manual_report_flow.py",
+    "tests/test_captain_boundaries.py",
+    "tests/test_weekly_report_draft_repository.py",
+    "tests/test_participant_sheets_gateway.py"
+  ],
+  "summary": {
+    "critical_findings": 0,
+    "high_findings": 0,
+    "medium_findings": 0,
+    "low_findings": 0,
+    "blocking_findings": 0,
+    "task_required": false
+  },
+  "coverage_map": {
+    "captain_team_view": {
+      "status": "covered",
+      "tests": [
+        "test_captain_can_view_only_own_team",
+        "test_non_captain_cannot_view_team",
+        "test_captain_without_team_routes_missing_data_to_admin",
+        "test_unknown_user_keeps_existing_unknown_user_behavior",
+        "test_captain_without_consent_gets_consent_prompt_without_team_data"
+      ],
+      "notes": "Covers identity, consent, role denial, own-team scoping, missing team admin notification, unknown user behavior, and no visible other-team data."
+    },
+    "captain_manual_report_happy_paths": {
+      "status": "covered",
+      "tests": [
+        "test_captain_green_manual_report_saves_report_steps_and_submitter",
+        "test_captain_blue_manual_report_writes_partial_relations_without_closing_steps",
+        "test_captain_red_manual_report_does_not_require_steps"
+      ],
+      "notes": "Covers final weekly report rows, selected participant subject, captain submitter metadata, flow_source, step relations, and planned step closure semantics."
+    },
+    "captain_manual_report_negative_paths": {
+      "status": "covered",
+      "tests": [
+        "test_captain_manual_report_requires_text_before_finalize",
+        "test_captain_manual_report_rejects_duplicate_before_final_save",
+        "test_captain_manual_report_rejects_late_before_final_save",
+        "test_captain_manual_report_revalidates_invalid_steps_before_final_save",
+        "test_captain_blue_manual_report_requires_valid_steps"
+      ],
+      "notes": "Covers empty text, duplicate guard, deadline guard, invalid step selection, closed green step rejection, and draft preservation on rejected finalization."
+    },
+    "captain_boundary_regressions": {
+      "status": "covered",
+      "tests": [
+        "test_forged_other_team_participant_id_is_rejected",
+        "test_dropped_participant_manual_report_is_rejected",
+        "test_duplicate_report_attempt_creates_no_new_report_or_step_relation",
+        "test_captain_manual_report_after_deadline_is_rejected",
+        "test_invalid_or_closed_step_selection_is_rejected",
+        "test_captain_flow_does_not_import_out_of_scope_runtime_dependencies"
+      ],
+      "notes": "Covers callback tampering, no forbidden response leakage, dropped target denial, no final facts on rejected attempts, and dependency boundaries."
+    },
+    "storage_and_sheets_boundaries": {
+      "status": "covered",
+      "tests": [
+        "test_create_captain_manual_report_draft_writes_selected_participant_state",
+        "test_captain_manual_report_draft_clears_like_weekly_report_draft",
+        "test_get_participant_returns_copy_by_id",
+        "test_list_participants_by_team_returns_copies"
+      ],
+      "notes": "Covers SQLite captain draft metadata and defensive fake Sheets row copying."
+    }
+  },
+  "quality_assessment": {
+    "behavior_oriented_assertions": "pass",
+    "mocking_strategy": "pass",
+    "test_isolation": "pass",
+    "edge_case_coverage": "pass",
+    "acceptance_criteria_mapping": "pass",
+    "redundancy": "acceptable",
+    "pyramid_fit": "pass"
+  },
+  "findings": [],
+  "verification": {
+    "known_latest_test_results": {
+      "captain_manual_report_flow": "8 passed",
+      "captain_boundaries": "6 passed",
+      "captain_boundary_smoke": "13 passed",
+      "full_suite": "210 passed"
+    },
+    "blocking_findings_absent": true
+  }
+}
