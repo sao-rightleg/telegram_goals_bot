@@ -226,7 +226,7 @@ phase3_integration:
 # ============================================================================
 phase4_completion:
   userspec_file: "work/captain-flows/user-spec.md"  # work/{feature}/user-spec.md
-  status: "created"  # pending | created | approved
+  status: "approved"  # pending | created | approved
 
 # ============================================================================
 # Decision Rules
