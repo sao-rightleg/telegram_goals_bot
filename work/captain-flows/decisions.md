@@ -186,3 +186,19 @@ Review details — in JSON files via links. QA report — in logs/working/.
 
 **Verification:**
 - `.venv/bin/python -m json.tool work/captain-flows/logs/working/task-7/security-audit.json` → valid JSON
+
+## Task 8: Test Audit
+
+**Status:** Done
+**Commit:** e69aec9
+**Agent:** main agent
+**Summary:** Completed a structured test audit for captain team view, manual report flow, storage boundary tests, and captain boundary regressions. The audit found no blocking, critical, high, medium, or low findings; tests are behavior-oriented and use fake Sheets plus temporary SQLite appropriately.
+**Deviations:** None.
+
+**Reviews:**
+
+*Round 1:*
+- test-audit: OK → [logs/working/task-8/test-audit.json]
+
+**Verification:**
+- `.venv/bin/python -m json.tool work/captain-flows/logs/working/task-8/test-audit.json` → valid JSON
