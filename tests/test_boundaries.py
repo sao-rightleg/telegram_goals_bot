@@ -1,7 +1,7 @@
 import ast
 from pathlib import Path
 
-from app.bot.clients import BotPurpose, FakeBotClient
+from app.bot.clients import BotPurpose, FakeBotClient, FakeTelegramFileDownloader, TelegramFileDownload
 from app.reports.generator import FakeReportGenerator, ReportRequest, ReportType
 from app.services.notifications import (
     NotificationCategory,
@@ -103,6 +103,21 @@ def test_report_and_speech_boundaries_are_importable() -> None:
 
     assert report.file_path == Path("reports/pdf/2026/week_03/T001/T001.pdf")
     assert transcription.text == "transcribed"
+
+
+def test_fake_telegram_file_downloader_writes_requested_local_file(tmp_path: Path) -> None:
+    downloader = FakeTelegramFileDownloader()
+    destination = tmp_path / "data" / "audio" / "voice.ogg"
+
+    result = downloader.download_file(
+        TelegramFileDownload(telegram_file_id="telegram-file-1", destination_path=destination)
+    )
+
+    assert result == destination
+    assert destination.read_bytes() == b"fake telegram voice file: telegram-file-1"
+    assert downloader.downloads == [
+        TelegramFileDownload(telegram_file_id="telegram-file-1", destination_path=destination)
+    ]
 
 
 def test_boundary_modules_do_not_import_live_sdks() -> None:

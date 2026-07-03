@@ -18,6 +18,11 @@ CONSENT_ACCEPT_BUTTON = "✅ Согласен"
 MISSING_DATA_TEXT = "Данные пока не заполнены. Свяжитесь со своим капитаном."
 NOT_AVAILABLE_TEXT = "Раздел будет доступен позже."
 
+VOICE_ACCEPTED_TEXT = "Голосовое принято и расшифровано."
+VOICE_TOO_LONG_TEXT = "Голосовое длиннее 10 минут. Отправь, пожалуйста, более короткое голосовое или текст."
+VOICE_PROCESSING_FAILED_TEXT = "Не удалось распознать голосовое. Надиктуй ещё раз или напиши текстом для верности."
+VOICE_NO_ACTIVE_DRAFT_TEXT = "Сначала начни отчёт или инсайт, потом отправь голосовое."
+
 WEEKLY_REPORT_GREEN_BUTTON = "🟩 Победа есть"
 WEEKLY_REPORT_BLUE_BUTTON = "🟦 Частично"
 WEEKLY_REPORT_RED_BUTTON = "🟥 Победы нет"
