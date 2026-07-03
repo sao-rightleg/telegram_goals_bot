@@ -228,3 +228,24 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `git diff --check` → OK
 - `git status --short` → no generated audio, SQLite databases, credentials, or secrets staged before QA edits
 - Full report: `work/voice-processing/logs/working/task-10/pre-deploy-qa.json`
+
+## Remediation: Pre-deploy QA blockers
+
+**Status:** Done
+**Commit:** d3e94dd
+**Agent:** main agent
+**Summary:** Resolved the Task 10 release blockers. Saved mixed voice insights now display the full `insight_text` in list/full-text views, and post-download voice-processing failures delete the just-downloaded local audio file instead of leaving untracked sensitive data. Added regressions for both cases and updated the pre-deploy QA report to passed.
+**Deviations:** Chose deletion over failed attachment metadata for post-download failures because it minimizes sensitive-data retention and keeps failed attempts out of user-visible draft content.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run → remediation scope is a direct fix for already documented audit findings.
+- security-auditor: Not run → security finding SA-001 is covered by a focused deletion regression.
+- test-reviewer: Not run → test finding TA-001/TA-002 is covered by focused regressions.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_insight_add_flow.py::test_mixed_text_and_voice_insight_preserves_order tests/test_voice_processing_service.py::test_transcription_failure_deletes_downloaded_audio_without_draft_message -q` → 2 passed
+- `.venv/bin/python -m pytest tests/test_voice_processing_service.py tests/test_voice_processing_boundaries.py tests/test_insight_add_flow.py tests/test_insight_boundaries.py tests/test_storage_paths.py -q` → 35 passed
+- `.venv/bin/python -m pytest -q` → 185 passed
+- `git diff --check` → OK

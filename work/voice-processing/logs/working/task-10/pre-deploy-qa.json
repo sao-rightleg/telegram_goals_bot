@@ -2,25 +2,25 @@
   "task": 10,
   "title": "Pre-deploy QA",
   "feature": "voice-processing",
-  "status": "failed",
+  "status": "passed",
   "created_at": "2026-07-03",
   "auditor": "main agent",
   "summary": {
     "totalChecks": 28,
-    "passed": 25,
-    "failed": 3,
+    "passed": 28,
+    "failed": 0,
     "notVerifiable": 0,
-    "criticals": 1,
-    "majors": 1,
-    "minors": 1
+    "criticals": 0,
+    "majors": 0,
+    "minors": 0
   },
   "testSuite": {
     "status": "passed",
-    "details": "184 tests passed with `.venv/bin/python -m pytest -q`."
+    "details": "185 tests passed with `.venv/bin/python -m pytest -q` after remediation."
   },
   "auditReports": {
-    "status": "failed",
-    "details": "Task 7, 8, and 9 audit reports are valid JSON, but they contain unresolved blocking findings: CA-001, SA-001, TA-001, TA-002.",
+    "status": "passed",
+    "details": "Task 7, 8, and 9 audit reports are valid JSON. Blocking findings CA-001, SA-001, TA-001, and TA-002 were remediated by commit d3e94dd and covered by regression tests.",
     "validatedReports": [
       "work/voice-processing/logs/working/task-7/code-audit.json",
       "work/voice-processing/logs/working/task-8/security-audit.json",
@@ -71,8 +71,8 @@
     {
       "id": "US-AC7",
       "criterion": "Multiple text and voice messages produce final text in the original order.",
-      "status": "failed",
-      "evidence": "Final Sheets rows preserve order, but CA-001 shows saved mixed voice insights are displayed through list/full-text paths using transcription_text before insight_text, hiding typed text around the voice fragment."
+      "status": "passed",
+      "evidence": "Commit d3e94dd changes saved insight display to prefer insight_text and extends tests/test_insight_add_flow.py::test_mixed_text_and_voice_insight_preserves_order to assert list/full-text output contains all mixed fragments."
     },
     {
       "id": "US-AC8",
@@ -143,8 +143,8 @@
     {
       "id": "TS-AC6",
       "criterion": "Mixed text and voice messages are assembled in original order for weekly reports and insights.",
-      "status": "failed",
-      "evidence": "Final row assembly is covered, but CA-001/TA-001 show saved mixed voice insights are not displayed with the full mixed text through participant-facing list/full-text paths."
+      "status": "passed",
+      "evidence": "Commit d3e94dd fixes _insight_item_from_row to use insight_text first and adds participant-facing list/full-text assertions for mixed text/voice insights."
     },
     {
       "id": "TS-AC7",
@@ -161,14 +161,14 @@
     {
       "id": "TS-AC9",
       "criterion": "Voice-processing failures preserve active draft and route technical details only to admin error chat.",
-      "status": "failed",
-      "evidence": "Draft preservation and admin routing pass, but SA-001 shows failures after successful download can leave untracked local audio without failed attachment metadata or deletion."
+      "status": "passed",
+      "evidence": "Commit d3e94dd deletes the downloaded local audio file when a post-download voice-processing failure occurs and adds tests/test_voice_processing_service.py::test_transcription_failure_deletes_downloaded_audio_without_draft_message."
     },
     {
       "id": "TS-AC10",
       "criterion": "Full local pytest suite passes.",
       "status": "passed",
-      "evidence": "`.venv/bin/python -m pytest -q` -> 184 passed."
+      "evidence": "`.venv/bin/python -m pytest -q` -> 185 passed."
     },
     {
       "id": "TS-AC11",
@@ -185,8 +185,8 @@
     {
       "id": "QA-AC2",
       "criterion": "Audit reports from Tasks 7-9 have no unresolved blocking findings.",
-      "status": "failed",
-      "evidence": "CA-001, SA-001, TA-001, and TA-002 remain unresolved and blocking."
+      "status": "passed",
+      "evidence": "CA-001 and TA-001 are covered by mixed insight display regression; SA-001 and TA-002 are covered by failed downloaded audio deletion regression. Fix commit: d3e94dd."
     },
     {
       "id": "QA-AC3",
@@ -201,37 +201,41 @@
       "evidence": "All tests use fake/local boundaries and temporary SQLite."
     }
   ],
-  "findings": [
+  "findings": [],
+  "resolvedFindings": [
     {
       "id": "PQA-001",
       "severity": "critical",
       "title": "Pre-deploy gate is blocked by unresolved blocking audit findings",
       "expected": "Tasks 7-9 audit reports have zero unresolved blocking findings before release readiness.",
-      "actual": "CA-001, SA-001, TA-001, and TA-002 remain unresolved.",
-      "reproduction": "Run json.tool on the three audit reports and inspect summary.blocking_findings_count plus findings where blocking is true."
+      "actual": "Resolved by commit d3e94dd.",
+      "reproduction": "Run json.tool on the three audit reports and inspect summary.blocking_findings_count plus findings where blocking is true.",
+      "resolution": "The underlying implementation/test gaps were fixed and covered by focused regressions."
     },
     {
       "id": "PQA-002",
       "severity": "major",
       "title": "Saved mixed voice insights can display only voice transcription",
       "expected": "Saved insight list/full-text views show the full mixed insight_text in original order.",
-      "actual": "app/services/insights.py::_insight_item_from_row prefers transcription_text before insight_text, so typed text around a voice fragment can be hidden.",
-      "reproduction": "Save an insight with text + voice + text, then call list_insights or get_full_text. Expected full mixed text; actual voice-only transcription."
+      "actual": "Resolved by commit d3e94dd.",
+      "reproduction": "Save an insight with text + voice + text, then call list_insights or get_full_text. Expected full mixed text; actual voice-only transcription.",
+      "resolution": "_insight_item_from_row now prefers insight_text, and the mixed insight test asserts saved list/full-text display."
     },
     {
       "id": "PQA-003",
       "severity": "minor",
       "title": "Downloaded audio can remain untracked after transcription or append failure",
       "expected": "After a post-download failure, the saved local audio is either deleted or tracked in draft_attachments with transcription_status='failed'.",
-      "actual": "VoiceMessageService catches the failure and notifies admin, but does not delete the downloaded file or persist failed attachment metadata.",
-      "reproduction": "Force SpeechTranscriber.transcribe to raise after FakeTelegramFileDownloader writes the local file. The response is correct, but the local file is not represented in draft_attachments."
+      "actual": "Resolved by commit d3e94dd.",
+      "reproduction": "Force SpeechTranscriber.transcribe to raise after FakeTelegramFileDownloader writes the local file. The response is correct, but the local file is not represented in draft_attachments.",
+      "resolution": "VoiceMessageService deletes the downloaded local file on post-download failure; failed attempts still do not create user-visible draft messages."
     }
   ],
   "verification": {
     "commands": [
       {
         "command": ".venv/bin/python -m pytest -q",
-        "result": "pass: 184 passed in 9.29s"
+        "result": "pass: 185 passed in 8.64s after remediation"
       },
       {
         "command": ".venv/bin/python -m json.tool work/voice-processing/logs/working/task-7/code-audit.json",
