@@ -1,0 +1,71 @@
+{
+  "task": 6,
+  "title": "Code Audit",
+  "status": "passed_with_non_blocking_findings",
+  "auditor": "main agent",
+  "created_at": "2026-07-03",
+  "scope": [
+    "app/services/captains.py",
+    "app/storage/weekly_report_drafts.py",
+    "app/sheets/gateway.py",
+    "app/bot/messages.py",
+    "tests/test_captain_team_flow.py",
+    "tests/test_captain_manual_report_flow.py",
+    "tests/test_captain_boundaries.py"
+  ],
+  "summary": {
+    "blocking_findings": 0,
+    "major_findings": 0,
+    "minor_findings": 2,
+    "notes": [
+      "Captain and target participant identities are kept separate in draft creation and final weekly report rows.",
+      "Captain manual finalization revalidates team ownership, dropped status, deadline, duplicate report, active goal, and selected steps before writing final facts.",
+      "Google Sheets remains the final business storage and SQLite is used only for draft/dialog state."
+    ]
+  },
+  "findings": [
+    {
+      "id": "CA-001",
+      "severity": "minor",
+      "category": "maintainability",
+      "location": "app/services/captains.py",
+      "description": "CaptainService duplicates several participant WeeklyReportService helpers for status prompts, report IDs, step relation writes, and final row construction.",
+      "impact": "The duplication is acceptable for this MVP slice because captain submitter and target participant semantics are different, but future weekly report changes must be applied in both services.",
+      "recommendation": "After captain-flows stabilizes, consider extracting shared pure helpers for weekly report row construction and step relation construction without merging captain authorization into participant flows.",
+      "blocking": false
+    },
+    {
+      "id": "CA-002",
+      "severity": "minor",
+      "category": "maintainability",
+      "location": "app/services/captains.py",
+      "description": "show_team performs its own captain resolution while manual report methods use _resolve_captain.",
+      "impact": "Behavior is covered by tests and currently consistent, but a future change to captain identity or consent checks would need edits in two paths.",
+      "recommendation": "In a cleanup task, reuse _resolve_captain from show_team to keep captain identity gates in one method.",
+      "blocking": false
+    }
+  ],
+  "review_dimensions": {
+    "architecture": "pass",
+    "separation_of_concerns": "pass",
+    "readability_maintainability": "pass_with_minor_findings",
+    "error_handling": "pass",
+    "type_safety": "pass",
+    "testing": "pass",
+    "dependencies": "pass",
+    "security": "pass",
+    "performance": "pass",
+    "cross_file_consistency": "pass",
+    "resource_management": "pass"
+  },
+  "verification": {
+    "tests_reviewed": [
+      "tests/test_captain_team_flow.py",
+      "tests/test_captain_manual_report_flow.py",
+      "tests/test_captain_boundaries.py",
+      "tests/test_weekly_report_finalize.py",
+      "tests/test_weekly_report_boundaries.py"
+    ],
+    "blocking_findings_absent": true
+  }
+}
