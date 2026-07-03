@@ -1,0 +1,125 @@
+{
+  "task": 7,
+  "title": "Code Audit",
+  "feature": "voice-processing",
+  "status": "completed",
+  "auditor": "main agent",
+  "created_at": "2026-07-03",
+  "scope": {
+    "source_files_reviewed": [
+      "app/services/voice_messages.py",
+      "app/services/weekly_reports.py",
+      "app/services/insights.py",
+      "app/storage/weekly_report_drafts.py",
+      "app/storage/insight_drafts.py",
+      "app/bot/clients.py",
+      "app/bot/messages.py",
+      "app/speech/transcription.py",
+      "app/storage/paths.py"
+    ],
+    "test_files_reviewed": [
+      "tests/test_voice_processing_messages.py",
+      "tests/test_voice_processing_service.py",
+      "tests/test_voice_processing_boundaries.py",
+      "tests/test_weekly_report_draft_repository.py",
+      "tests/test_insight_draft_repository.py",
+      "tests/test_weekly_report_finalize.py",
+      "tests/test_weekly_report_boundaries.py",
+      "tests/test_insight_add_flow.py",
+      "tests/test_insight_boundaries.py",
+      "tests/test_storage_paths.py",
+      "tests/test_boundaries.py"
+    ],
+    "spec_files_reviewed": [
+      "work/voice-processing/user-spec.md",
+      "work/voice-processing/tech-spec.md",
+      "work/voice-processing/decisions.md",
+      ".claude/skills/project-knowledge/references/patterns.md",
+      ".claude/skills/project-knowledge/references/architecture.md"
+    ]
+  },
+  "summary": {
+    "overall_result": "issues_found",
+    "blocking_findings_count": 1,
+    "non_blocking_findings_count": 1,
+    "positive_notes": [
+      "Voice processing remains an input capability and does not duplicate weekly report or insight finalization writes.",
+      "Duration validation happens before download/transcription/draft mutation.",
+      "Local audio paths are built through StoragePathPolicy and covered by unsafe-fragment regressions.",
+      "Weekly report deadline, duplicate, selected-step, and insight progress-isolation guards remain in the owning flow services.",
+      "No new live Telegram, Google, OpenAI, Whisper, Docker, Redis, Celery, or PostgreSQL dependencies were introduced."
+    ]
+  },
+  "findings": [
+    {
+      "id": "CA-001",
+      "severity": "major",
+      "blocking": true,
+      "category": "behavioral_regression",
+      "title": "Saved voice insights display only voice transcription instead of the full mixed insight text",
+      "affected_files": [
+        {
+          "path": "app/services/insights.py",
+          "line": 231
+        },
+        {
+          "path": "app/services/insights.py",
+          "line": 260
+        }
+      ],
+      "description": "Insight finalization stores the full mixed text in insight_text and voice-only text in transcription_text, which is correct. However list_insights/get_full_text build display items through _insight_item_from_row, which currently prefers transcription_text over insight_text. For a mixed text plus voice insight, the saved row is correct but the participant-facing list/full-text view will show only the voice-only fragment and omit surrounding typed text.",
+      "evidence": "Task 5 added final save tests for row fields, but no regression opens a saved voice insight through list_insights or get_full_text after final save. The implementation path at app/services/insights.py:231 calls format_full_insight_text(_insight_item_from_row(row)); _insight_item_from_row reads transcription_text before insight_text.",
+      "recommendation": "Change _insight_item_from_row to use insight_text as the participant-facing full text and preview. Keep transcription_text as a business/audit column, not the preferred display body. Add a regression that saves mixed text plus voice, then calls get_full_text and verifies the full mixed insight text is shown."
+    },
+    {
+      "id": "CA-002",
+      "severity": "minor",
+      "blocking": false,
+      "category": "spec_consistency",
+      "title": "Voice failure path does not persist failed draft attachment metadata when the local audio path is already known",
+      "affected_files": [
+        {
+          "path": "app/services/voice_messages.py",
+          "line": 78
+        },
+        {
+          "path": "app/storage/weekly_report_drafts.py",
+          "line": 240
+        },
+        {
+          "path": "app/storage/insight_drafts.py",
+          "line": 182
+        }
+      ],
+      "description": "The tech spec says download/save/transcription failures should record failed technical attachment state when possible. The current repositories expose only append_voice_transcription for success rows, and VoiceMessageService catches failures after download/transcription without storing a failed draft_attachments row. This preserves drafts and routes admin notifications correctly, but loses failure metadata that the schema was designed to hold.",
+      "evidence": "draft_attachments supports transcription_status = failed and error_message, but both repository methods insert only transcription_status = success. VoiceMessageService catches exceptions at app/services/voice_messages.py:97 and notifies admin without a repository call to persist failed metadata.",
+      "recommendation": "If failed attachment observability is still required, add repository methods for failed attachment rows and call them when destination_path/local_file_path is known. Keep this separate from draft_messages so failed voice attempts do not add user-visible text."
+    }
+  ],
+  "dimension_results": {
+    "architectural_patterns": "pass_with_findings",
+    "separation_of_concerns": "pass",
+    "readability_maintainability": "pass",
+    "error_handling_logging": "pass_with_findings",
+    "type_safety": "pass",
+    "testing_coverage": "pass_with_findings",
+    "dependencies_management": "pass",
+    "security_considerations": "pass",
+    "performance_implications": "pass",
+    "cross_file_consistency": "pass_with_findings",
+    "resource_management": "pass"
+  },
+  "acceptance_check": {
+    "code_audit_report_exists": true,
+    "report_valid_json": true,
+    "blocking_findings_absent_or_listed": true
+  },
+  "verification": {
+    "commands": [
+      {
+        "command": ".venv/bin/python -m json.tool work/voice-processing/logs/working/task-7/code-audit.json",
+        "result": "pass"
+      }
+    ]
+  }
+}
