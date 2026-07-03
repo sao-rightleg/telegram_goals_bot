@@ -51,3 +51,22 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `rg -n "TODO|placeholder|Task N|path/to|tests/test_api|localhost:3000|src/|\\{feature\\}|Criterion 1|Criterion 2" work/captain-flows/tasks` → no template leftovers
 - `find work/captain-flows/tasks -maxdepth 1 -type f | sort` → tasks 1-9 present
 - referenced existing context files check → OK
+
+## Task 1: Captain messages and sheets boundary
+
+**Status:** Done
+**Commit:** 604f23b
+**Agent:** main agent
+**Summary:** Added captain-safe Russian copy for team/manual report states and extended the Sheets gateway with participant-by-id and team-scoped participant reads. Added focused tests for copy safety and defensive fake gateway row copies.
+**Deviations:** Formal reviewer subagents were not run because the current tool policy requires explicit user permission for delegation; smoke verification passed locally.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run → subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run → subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_participant_messages.py::test_captain_manual_report_messages_are_safe tests/test_participant_sheets_gateway.py::test_get_participant_returns_copy_by_id tests/test_participant_sheets_gateway.py::test_list_participants_by_team_returns_copies -q` → 3 passed
+- `.venv/bin/python -m pytest tests/test_participant_messages.py tests/test_participant_sheets_gateway.py -q` → 18 passed
