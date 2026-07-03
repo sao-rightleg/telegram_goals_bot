@@ -154,3 +154,19 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `.venv/bin/python -m pytest tests/test_captain_boundaries.py tests/test_boundaries.py -q` → 13 passed
 - `.venv/bin/python -m pytest -q` → 210 passed
 - `git diff --check` → OK
+
+## Task 6: Code Audit
+
+**Status:** Done
+**Commit:** c454eb0
+**Agent:** main agent
+**Summary:** Completed a structured code audit for captain-flows source and tests. The audit found no blocking or major findings and recorded two minor maintainability observations around helper duplication and captain resolution reuse.
+**Deviations:** None.
+
+**Reviews:**
+
+*Round 1:*
+- code-audit: 0 blocking, 0 major, 2 minor → [logs/working/task-6/code-audit.json]
+
+**Verification:**
+- `.venv/bin/python -m json.tool work/captain-flows/logs/working/task-6/code-audit.json` → valid JSON
