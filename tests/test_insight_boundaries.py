@@ -1,5 +1,6 @@
 import ast
 import sqlite3
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -9,6 +10,7 @@ from app.bot.messages import INSIGHT_MISSING_TEXT, INSIGHT_SUCCESS_TEXT, INSIGHT
 from app.services.insights import InsightService
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.services.participant_models import TelegramUserContext
+from app.services.voice_messages import VoiceMessageInput, VoiceMessageResult
 from app.sheets.gateway import FakeSheetsGateway
 from app.storage.insight_drafts import InsightDraftRepository
 from app.storage.sqlite import BUSINESS_PRIMARY_TABLES, initialize_schema, list_tables
@@ -85,6 +87,57 @@ def test_insight_save_does_not_change_weekly_progress(tmp_path: Path) -> None:
     assert gateway.list_weekly_report_steps() == before_report_steps
     assert len(gateway.list_insights()) == 1
     assert list_tables(db_path).isdisjoint(BUSINESS_PRIMARY_TABLES)
+
+
+def test_voice_insight_does_not_change_weekly_status_or_progress(tmp_path: Path) -> None:
+    service, gateway, _main_bot, _error_bot, db_path = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        goals=[_goal("G001", "P001")],
+        planned_steps=[
+            _step("S001", "P001", "G001", "open"),
+            _step("S002", "P001", "G001", "closed"),
+        ],
+        weekly_reports=[
+            {
+                "weekly_report_id": "WR001",
+                "participant_id": "P001",
+                "week_number": 3,
+                "status_code": "green",
+                "score": 1,
+            }
+        ],
+        weekly_report_steps=[
+            {
+                "weekly_report_step_id": "WRS001",
+                "weekly_report_id": "WR001",
+                "step_id": "S002",
+                "relation_status": "closed",
+            }
+        ],
+    )
+    drafts = InsightDraftRepository(db_path)
+    service = replace(service, drafts=drafts, voice_messages=AcceptingVoiceService(drafts=drafts))
+    before_steps = gateway.list_planned_steps("P001", "G001")
+    before_reports = gateway.list_weekly_reports()
+    before_report_steps = gateway.list_weekly_report_steps()
+
+    service.start_add(PARTICIPANT, now=NOW)
+    voice_response = service.add_voice_message(
+        PARTICIPANT,
+        telegram_file_id="telegram-file-1",
+        duration_seconds=42,
+        now=NOW,
+        telegram_message_id=501,
+    )
+    save_response = service.set_title_and_save(PARTICIPANT, "Планирование", now=LATER)
+
+    assert voice_response.text == "Голосовое принято и расшифровано."
+    assert save_response.text == INSIGHT_SUCCESS_TEXT
+    assert gateway.list_planned_steps("P001", "G001") == before_steps
+    assert gateway.list_weekly_reports() == before_reports
+    assert gateway.list_weekly_report_steps() == before_report_steps
+    assert len(gateway.list_insights()) == 1
 
 
 def test_voice_message_creates_no_audio_or_transcription_state(tmp_path: Path) -> None:
@@ -264,3 +317,20 @@ def _import_roots(path: Path) -> set[str]:
         if isinstance(node, ast.ImportFrom) and node.module
     )
     return imports
+
+
+class AcceptingVoiceService:
+    def __init__(self, drafts: InsightDraftRepository) -> None:
+        self._drafts = drafts
+
+    def handle_voice(self, request: VoiceMessageInput) -> VoiceMessageResult:
+        self._drafts.append_voice_transcription(
+            request.user.telegram_id,
+            telegram_file_id=request.telegram_file_id,
+            local_file_path=Path("data/audio/2026/week_04/personal_insights/P001/voice_1001_501.ogg"),
+            duration_seconds=request.duration_seconds,
+            transcription_text="Голосовой инсайт",
+            occurred_at=request.now.isoformat(),
+            telegram_message_id=request.telegram_message_id,
+        )
+        return VoiceMessageResult(text="Голосовое принято и расшифровано.", accepted=True)

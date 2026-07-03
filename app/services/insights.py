@@ -30,6 +30,7 @@ from app.scheduler.calendar import current_challenge_week_number
 from app.services.notifications import NotificationCategory, NotificationRouter
 from app.services.insight_models import InsightListItem, InsightPage
 from app.services.participant_models import FlowResponse, TelegramUserContext
+from app.services.voice_messages import VoiceMessageInput, VoiceMessageService
 from app.sheets.gateway import SheetRow, SheetsGateway
 from app.storage.insight_drafts import InsightDraftRepository
 
@@ -40,6 +41,7 @@ class InsightService:
     main_bot: BotClient
     notification_router: NotificationRouter
     drafts: InsightDraftRepository
+    voice_messages: VoiceMessageService | None = None
 
     def show_menu(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
         context = self._resolve_participant(user, now=now)
@@ -89,6 +91,34 @@ class InsightService:
             telegram_message_id=telegram_message_id,
         )
         return self._send(user, text="Текст добавлен. Можно отправить ещё или нажать ✅ Готово.")
+
+    def add_voice_message(
+        self,
+        user: TelegramUserContext,
+        *,
+        telegram_file_id: str,
+        duration_seconds: int,
+        now: datetime,
+        telegram_message_id: int | None = None,
+    ) -> FlowResponse:
+        context = self._resolve_context(user, now=now)
+        if isinstance(context, FlowResponse):
+            return context
+        if self.drafts.get_active_draft(user.telegram_id) is None:
+            raise KeyError(f"Active insight draft not found for telegram_id={user.telegram_id}")
+        if self.voice_messages is None:
+            return self.reject_voice_message(user, now=now)
+
+        result = self.voice_messages.handle_voice(
+            VoiceMessageInput(
+                user=user,
+                telegram_file_id=telegram_file_id,
+                duration_seconds=duration_seconds,
+                telegram_message_id=telegram_message_id,
+                now=now,
+            )
+        )
+        return self._send(user, text=result.text)
 
     def request_title(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
         context = self._resolve_context(user, now=now)
@@ -228,8 +258,8 @@ class InsightService:
                 "insight_title": title,
                 "insight_date": now.astimezone().date().isoformat(),
                 "insight_text": draft.insight_text,
-                "transcription_text": "",
-                "audio_file_path": "",
+                "transcription_text": _voice_transcription_text(draft),
+                "audio_file_path": _voice_audio_file_path(draft),
                 "audio_deleted_at": "",
                 "created_by_id": participant_id,
                 "created_by_role": _created_by_role(participant),
@@ -333,6 +363,16 @@ def _role(participant: SheetRow) -> str:
 
 def _menu_text(menu_items: tuple) -> str:
     return "\n".join(item.label for item in menu_items)
+
+
+def _voice_transcription_text(draft) -> str:
+    return "\n".join(
+        attachment.transcription_text for attachment in draft.voice_attachments if attachment.transcription_text
+    )
+
+
+def _voice_audio_file_path(draft) -> str:
+    return "\n".join(attachment.local_file_path for attachment in draft.voice_attachments)
 
 
 def _consent_is_given(participant: SheetRow) -> bool:

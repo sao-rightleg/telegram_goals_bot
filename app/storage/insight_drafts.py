@@ -11,6 +11,13 @@ _INSIGHT_SCOPE = "current_week"
 
 
 @dataclass(frozen=True)
+class InsightVoiceAttachment:
+    local_file_path: str
+    transcription_text: str
+    duration_seconds: int
+
+
+@dataclass(frozen=True)
 class InsightDraft:
     draft_id: str
     telegram_id: int
@@ -26,6 +33,7 @@ class InsightDraft:
     saved_insight_id: str | None = None
     saved_at: str | None = None
     expires_at: str | None = None
+    voice_attachments: tuple[InsightVoiceAttachment, ...] = ()
 
 
 class InsightDraftRepository:
@@ -322,9 +330,11 @@ class InsightDraftRepository:
             if row is None:
                 return None
 
-            message_rows = self._message_rows(connection, str(row["draft_id"]))
+            draft_id = str(row["draft_id"])
+            message_rows = self._message_rows(connection, draft_id)
+            attachment_rows = self._attachment_rows(connection, draft_id)
 
-        return _draft_from_row(row, message_rows)
+        return _draft_from_row(row, message_rows, attachment_rows)
 
     def get_recent_saved_draft(self, telegram_id: int) -> InsightDraft | None:
         with self._connect() as connection:
@@ -358,9 +368,11 @@ class InsightDraftRepository:
             if row is None:
                 return None
 
-            message_rows = self._message_rows(connection, str(row["draft_id"]))
+            draft_id = str(row["draft_id"])
+            message_rows = self._message_rows(connection, draft_id)
+            attachment_rows = self._attachment_rows(connection, draft_id)
 
-        return _draft_from_row(row, message_rows)
+        return _draft_from_row(row, message_rows, attachment_rows)
 
     def clear_draft(self, telegram_id: int) -> None:
         draft_id = self._get_dialog_draft_id(telegram_id)
@@ -394,6 +406,17 @@ class InsightDraftRepository:
             (draft_id,),
         ).fetchall()
 
+    def _attachment_rows(self, connection: sqlite3.Connection, draft_id: str) -> list[sqlite3.Row]:
+        return connection.execute(
+            """
+            SELECT local_file_path, transcription_text, duration_seconds
+            FROM draft_attachments
+            WHERE draft_id = ? AND transcription_status = 'success'
+            ORDER BY draft_attachment_id
+            """,
+            (draft_id,),
+        ).fetchall()
+
     def _touch(
         self,
         connection: sqlite3.Connection,
@@ -421,7 +444,11 @@ class InsightDraftRepository:
         return connection
 
 
-def _draft_from_row(row: sqlite3.Row, message_rows: list[sqlite3.Row]) -> InsightDraft:
+def _draft_from_row(
+    row: sqlite3.Row,
+    message_rows: list[sqlite3.Row],
+    attachment_rows: list[sqlite3.Row],
+) -> InsightDraft:
     return InsightDraft(
         draft_id=str(row["draft_id"]),
         telegram_id=int(row["telegram_id"]),
@@ -437,4 +464,12 @@ def _draft_from_row(row: sqlite3.Row, message_rows: list[sqlite3.Row]) -> Insigh
         saved_insight_id=row["saved_insight_id"],
         saved_at=row["saved_at"],
         expires_at=row["expires_at"],
+        voice_attachments=tuple(
+            InsightVoiceAttachment(
+                local_file_path=str(attachment["local_file_path"]),
+                transcription_text=str(attachment["transcription_text"] or ""),
+                duration_seconds=int(attachment["duration_seconds"]),
+            )
+            for attachment in attachment_rows
+        ),
     )

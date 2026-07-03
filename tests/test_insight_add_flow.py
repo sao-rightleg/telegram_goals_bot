@@ -1,4 +1,5 @@
 from datetime import datetime
+from dataclasses import replace
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -15,6 +16,7 @@ from app.bot.messages import (
     INSIGHT_TITLE_PROMPT_TEXT,
     INSIGHT_TITLE_TOO_LONG_TEXT,
     INSIGHT_VOICE_NOT_AVAILABLE_TEXT,
+    VOICE_ACCEPTED_TEXT,
     UNKNOWN_USER_TEXT,
     build_insight_menu_buttons,
 )
@@ -23,6 +25,7 @@ from app.services.insights import InsightService
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.services.participant_flows import ParticipantFlowService
 from app.services.participant_models import TelegramUserContext
+from app.services.voice_messages import StoredVoiceAttachment, VoiceMessageInput, VoiceMessageResult
 from app.sheets.gateway import FakeSheetsGateway
 from app.storage.dialog_state import DialogStateRepository
 from app.storage.insight_drafts import InsightDraftRepository
@@ -77,6 +80,62 @@ def test_current_week_text_insight_is_saved_to_sheets(tmp_path: Path) -> None:
     assert insights[0]["created_by_id"] == "P001"
     assert insights[0]["created_by_role"] == "participant"
     assert drafts.get_active_draft(1001) is None
+
+
+def test_voice_insight_final_save_includes_transcription_and_audio_path(tmp_path: Path) -> None:
+    service, gateway, _main_bot, _error_bot, _notification_bot, drafts = _build_insight_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        goals=[_goal("G001", "P001")],
+    )
+
+    service.start_add(USER, now=NOW)
+    drafts.append_voice_transcription(
+        USER.telegram_id,
+        telegram_file_id="telegram-file-1",
+        local_file_path=Path("data/audio/2026/week_04/personal_insights/P001/voice_1001_501.ogg"),
+        duration_seconds=42,
+        transcription_text="Голосовой инсайт",
+        occurred_at=NOW.isoformat(),
+        telegram_message_id=501,
+    )
+    response = service.set_title_and_save(USER, "Голосовой заголовок", now=LATER)
+
+    row = gateway.list_insights()[0]
+    assert response.text == INSIGHT_SUCCESS_TEXT
+    assert row["insight_text"] == "Голосовой инсайт"
+    assert row["transcription_text"] == "Голосовой инсайт"
+    assert row["audio_file_path"] == "data/audio/2026/week_04/personal_insights/P001/voice_1001_501.ogg"
+    assert row["audio_deleted_at"] == ""
+    assert drafts.get_active_draft(1001) is None
+
+
+def test_mixed_text_and_voice_insight_preserves_order(tmp_path: Path) -> None:
+    service, gateway, _main_bot, _error_bot, _notification_bot, drafts = _build_insight_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        goals=[_goal("G001", "P001")],
+    )
+
+    service.start_add(USER, now=NOW)
+    service.add_text_message(USER, "Первое", now=NOW, telegram_message_id=501)
+    drafts.append_voice_transcription(
+        USER.telegram_id,
+        telegram_file_id="telegram-file-1",
+        local_file_path=Path("data/audio/2026/week_04/personal_insights/P001/voice_1001_502.ogg"),
+        duration_seconds=42,
+        transcription_text="Голосом второе",
+        occurred_at=LATER.isoformat(),
+        telegram_message_id=502,
+    )
+    service.add_text_message(USER, "Третье", now=LATER, telegram_message_id=503)
+    service.set_title_and_save(USER, "Смешанный инсайт", now=LATER)
+
+    row = gateway.list_insights()[0]
+    assert row["insight_text"] == "Первое\nГолосом второе\nТретье"
+    assert row["transcription_text"] == "Голосом второе"
+    assert row["audio_file_path"] == "data/audio/2026/week_04/personal_insights/P001/voice_1001_502.ogg"
+    assert row["audio_deleted_at"] == ""
 
 
 def test_missing_active_goal_blocks_save_with_custom_copy(tmp_path: Path) -> None:
@@ -260,16 +319,25 @@ def test_non_consenting_user_cannot_add_list_or_open_insights(tmp_path: Path) ->
     assert len(gateway.list_insights()) == 1
 
 
-def test_voice_message_is_rejected_without_voice_state(tmp_path: Path) -> None:
+def test_voice_message_appends_to_insight_draft(tmp_path: Path) -> None:
     service, gateway, _main_bot, _error_bot, _notification_bot, _drafts = _build_insight_service(
         tmp_path,
         participants=[_participant("P001", 1001)],
         goals=[_goal("G001", "P001")],
     )
+    service = replace(service, voice_messages=AcceptingVoiceService(drafts=_drafts))
+    service.start_add(USER, now=NOW)
 
-    response = service.reject_voice_message(USER, now=NOW)
+    response = service.add_voice_message(
+        USER,
+        telegram_file_id="telegram-file-1",
+        duration_seconds=42,
+        now=NOW,
+        telegram_message_id=501,
+    )
 
-    assert response.text == INSIGHT_VOICE_NOT_AVAILABLE_TEXT
+    assert response.text == VOICE_ACCEPTED_TEXT
+    assert _drafts.get_active_draft(1001).insight_text == "Голосовой инсайт"
     assert gateway.list_insights() == []
 
 
@@ -365,3 +433,28 @@ def _goal(goal_id: str, participant_id: str) -> dict[str, object]:
 
 def _iso(value: datetime) -> str:
     return value.isoformat()
+
+
+class AcceptingVoiceService:
+    def __init__(self, drafts: InsightDraftRepository) -> None:
+        self._drafts = drafts
+
+    def handle_voice(self, request: VoiceMessageInput) -> VoiceMessageResult:
+        self._drafts.append_voice_transcription(
+            request.user.telegram_id,
+            telegram_file_id=request.telegram_file_id,
+            local_file_path=Path("data/audio/2026/week_04/personal_insights/P001/voice_1001_501.ogg"),
+            duration_seconds=request.duration_seconds,
+            transcription_text="Голосовой инсайт",
+            occurred_at=request.now.isoformat(),
+            telegram_message_id=request.telegram_message_id,
+        )
+        return VoiceMessageResult(
+            text=VOICE_ACCEPTED_TEXT,
+            accepted=True,
+            attachment=StoredVoiceAttachment(
+                local_file_path=Path("data/audio/2026/week_04/personal_insights/P001/voice_1001_501.ogg"),
+                transcription_text="Голосовой инсайт",
+                duration_seconds=request.duration_seconds,
+            ),
+        )
