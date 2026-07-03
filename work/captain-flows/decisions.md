@@ -202,3 +202,24 @@ Review details — in JSON files via links. QA report — in logs/working/.
 
 **Verification:**
 - `.venv/bin/python -m json.tool work/captain-flows/logs/working/task-8/test-audit.json` → valid JSON
+
+## Task 9: Pre-deploy QA
+
+**Status:** Done
+**Commit:** 365a35d
+**Agent:** main agent
+**Summary:** Pre-deploy QA passed for captain-flows. Full local suite passed, audit reports are valid JSON, user-spec and tech-spec acceptance criteria were checked with evidence, and no deploy or live environment action was performed.
+**Deviations:** None.
+
+**Reviews:**
+
+*Round 1:*
+- pre-deploy-qa: passed, 37 checks passed, 0 failed, 2 deferred to post-deploy → [logs/working/task-9/pre-deploy-qa.json]
+
+**Verification:**
+- `.venv/bin/python -m pytest -q` → 210 passed
+- `.venv/bin/python -m json.tool work/captain-flows/logs/working/task-6/code-audit.json` → valid JSON
+- `.venv/bin/python -m json.tool work/captain-flows/logs/working/task-7/security-audit.json` → valid JSON
+- `.venv/bin/python -m json.tool work/captain-flows/logs/working/task-8/test-audit.json` → valid JSON
+- `.venv/bin/python -m json.tool work/captain-flows/logs/working/task-9/pre-deploy-qa.json` → valid JSON
+- `git status --short` before QA report write → no generated SQLite databases, credentials, secrets, audio, or PDFs staged
