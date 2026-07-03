@@ -32,3 +32,22 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - Manual check → OK
 
 -->
+
+## Task Decomposition
+
+**Status:** Done
+**Commit:** f7df45c
+**Agent:** main agent
+**Summary:** Created 9 task files from the approved captain-flows tech-spec: 5 implementation/regression tasks, 3 audit tasks, and 1 pre-deploy QA task. Local structural validation confirmed task frontmatter, dependencies, waves, skills, reviewers, context paths, and verify commands match the approved tech-spec.
+**Deviations:** Formal task-validator and reality-checker subagents were not run because the current tool policy requires explicit user permission for delegation; main-agent validation was performed instead.
+
+**Reviews:**
+
+*Round 1:*
+- task-validator: Not run → subagent delegation not explicitly requested for this task execution.
+- reality-checker: Not run → subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `rg -n "TODO|placeholder|Task N|path/to|tests/test_api|localhost:3000|src/|\\{feature\\}|Criterion 1|Criterion 2" work/captain-flows/tasks` → no template leftovers
+- `find work/captain-flows/tasks -maxdepth 1 -type f | sort` → tasks 1-9 present
+- referenced existing context files check → OK
