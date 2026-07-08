@@ -29,6 +29,11 @@ Product decisions in `docs/02_open_questions.md` are resolved and must be follow
 - Participants cannot edit previous weeks.
 - Late reports after Sunday 23:59 Yekaterinburg time do not change weekly status.
 - Do not use yellow late status.
+- Scheduler sends weekly reminders only to active consenting participants without a current-week weekly report.
+- Sunday 18:00 scheduler reminder is text-only and must not start weekly report status selection.
+- At Sunday 23:59 Yekaterinburg time, week close creates official `gray` / `⬜` weekly report facts in Google Sheets for active participants without final reports, including active participants without consent and participants with unfinished drafts.
+- Week close must be idempotent: reruns must not duplicate weekly reports and must continue after partial Google Sheets write failures.
+- After week close, participants are not notified about `⬜`; captains and trackers receive one team-scoped aggregated silent-participant notification with names only.
 - Insights are stored separately and do not replace weekly progress.
 - Main route has 6 planned steps and a 6-cell progress bar.
 - Main progress percentage is calculated only from planned steps.

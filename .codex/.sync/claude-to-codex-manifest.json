@@ -83,18 +83,18 @@
     {
       "adapter": "project-skill",
       "adapter_version": "1",
-      "input_set_hash": "ab95da6a16c474a7de81b0d7724c3ec6bfcd1099afdff6249459af456d70136a",
+      "input_set_hash": "61e7dcb59825e00b73b69b9dfece64de7d4ebbc06224071c373fa5b9c113153b",
       "outputs": [
         {
-          "output_sha256": "652b8163159c78b8adae255c7daf67095a97730d0e05411541a15b0fbaed073b",
-          "source_sha256": "ab95da6a16c474a7de81b0d7724c3ec6bfcd1099afdff6249459af456d70136a",
+          "output_sha256": "53d17016985486f1e9ea1e71b1b4c0d544ef49dafc8476a2121249ce831409da",
+          "source_sha256": "61e7dcb59825e00b73b69b9dfece64de7d4ebbc06224071c373fa5b9c113153b",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/references/architecture.md"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/references/architecture.md",
       "transformer_version": "1",
-      "updated_at": "2026-07-03T12:03:17Z"
+      "updated_at": "2026-07-08T14:55:29Z"
     },
     {
       "adapter": "project-skill",
@@ -115,18 +115,18 @@
     {
       "adapter": "project-skill",
       "adapter_version": "1",
-      "input_set_hash": "202d37bb58fd4581b9b94397eb5e146de28405a55324c4c540535c952c91f089",
+      "input_set_hash": "497343731f87c44f09336b8a93d650a3332d04257cefcbd46867091201dd1852",
       "outputs": [
         {
-          "output_sha256": "231f97a90cdbd27ac6170baed0d4cecf4019736bbe6d0995c5044c7330b92b41",
-          "source_sha256": "202d37bb58fd4581b9b94397eb5e146de28405a55324c4c540535c952c91f089",
+          "output_sha256": "36121248e68b5e4283c1b0b98f749e7d7cdc5a27ad73e27b33559828f1cf88a7",
+          "source_sha256": "497343731f87c44f09336b8a93d650a3332d04257cefcbd46867091201dd1852",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/references/patterns.md"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/references/patterns.md",
       "transformer_version": "1",
-      "updated_at": "2026-07-03T12:03:17Z"
+      "updated_at": "2026-07-08T14:55:29Z"
     },
     {
       "adapter": "project-skill",
@@ -147,18 +147,18 @@
     {
       "adapter": "project-skill",
       "adapter_version": "1",
-      "input_set_hash": "c1f10277a05346f645e71a9af1db50ab252bdb60b8ea58fa9cc1bca97325cc26",
+      "input_set_hash": "ef78c2cdbfc4256fbf54233b7f79d45dfa6e57b3cb21978ec25e81138e7b218e",
       "outputs": [
         {
-          "output_sha256": "6c090eb6754beb77b898a1e70eb922ecc79ff05896a2c62331b75809385fa6ab",
-          "source_sha256": "c1f10277a05346f645e71a9af1db50ab252bdb60b8ea58fa9cc1bca97325cc26",
+          "output_sha256": "836c95a81f19e80e6830c1d097ce9080e4c767bbb1b30d2a4c8e18cbdf138409",
+          "source_sha256": "ef78c2cdbfc4256fbf54233b7f79d45dfa6e57b3cb21978ec25e81138e7b218e",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/references/requirements.md"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/references/requirements.md",
       "transformer_version": "1",
-      "updated_at": "2026-07-03T12:03:17Z"
+      "updated_at": "2026-07-08T14:55:29Z"
     },
     {
       "adapter": "project-skill",

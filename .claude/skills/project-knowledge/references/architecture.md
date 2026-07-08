@@ -63,7 +63,7 @@ SQLite stores technical state only:
 
 SQLite must not become the only source for final business facts.
 
-Current SQLite repositories are limited to dialog state, weekly report drafts, insight drafts, and temporary voice attachment/message state. Voice transcriptions are stored in draft state only until the owning weekly-report or insight flow finalizes. Saved insight drafts purge full personal text and voice attachment rows from SQLite after successful Sheets save; Google Sheets remains the final store for insight text and voice transcription text.
+Current SQLite repositories cover dialog state, weekly report drafts, insight drafts, temporary voice attachment/message state, and scheduler technical state. Voice transcriptions are stored in draft state only until the owning weekly-report or insight flow finalizes. Saved insight drafts purge full personal text and voice attachment rows from SQLite after successful Sheets save; Google Sheets remains the final store for insight text and voice transcription text.
 
 ## Implemented Flow Slices
 
@@ -73,6 +73,7 @@ Current SQLite repositories are limited to dialog state, weekly report drafts, i
 - Insight flow: current-week insight draft repository, add/list/full-text services, optional title handling, participant-scoped pagination, safe callback handling, multiple insights per participant/week, final Sheets save, and post-save SQLite text cleanup.
 - Voice processing input: weekly-report and insight draft flows accept voice messages up to 600 seconds, download audio through a Telegram file boundary, store audio under the local non-public audio path policy, transcribe through the speech boundary, append ordered `voice_transcription` draft messages, and write final transcription/audio path fields through the owning finalization service. Voice processing does not own final Google Sheets writes and cannot bypass weekly deadline, duplicate, selected-step, or insight progress-isolation rules.
 - Captain flows: captain service resolves Telegram identity, consent, `role = captain`, and captain `team_id`; own-team view lists only rows from the captain's team and avoids internal ID leakage. Captain manual reports reuse weekly report draft state with `flow_source = captain_manual`, selected participant state, and captain submitter metadata. Final manual reports write normal `weekly_reports` and `weekly_report_steps` business facts for the selected participant, revalidate own-team ownership, dropped status, duplicate report, deadline, active goal, selected status, selected steps, and non-empty text before save, and clear draft state after success.
+- Scheduler deadline execution: scheduler service sends approved participant reminders through the main bot for active consenting participants without a current-week report, records retry/job state in SQLite, skips already-successful reminder sends on rerun, and sanitizes scheduler admin errors before sending them through the error bot. Week close creates official `gray` / `⬜` Google Sheets weekly report rows for active participants without final reports, preserves unfinished SQLite drafts, is idempotent across reruns and partial Sheets failures, and sends team-scoped aggregated silent-participant notifications through the notification bot to captain/tracker recipients.
 
 ## Bot Separation
 
