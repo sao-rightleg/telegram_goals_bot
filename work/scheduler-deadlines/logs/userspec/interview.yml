@@ -1,0 +1,410 @@
+# Interview Plan for Feature Planning
+#
+# Tracks progress of adaptive discovery interview for a new feature/bug/refactoring.
+# Updated after EACH user response with scoring, values, and remaining gaps.
+#
+# Scoring: 0-100% (how well we understand this aspect)
+# Status: pending → partial → complete
+# Required: true = must reach threshold, false = cover if relevant
+
+# ============================================================================
+# Interview Metadata (Session Recovery)
+# ============================================================================
+interview_metadata:
+  started: "2026-07-08 15:44:30"  # Timestamp (YYYY-MM-DD HH:MM:SS)
+  last_updated: "2026-07-08 16:11:55"
+  status: "in_progress"  # not_started | in_progress | completed
+  can_resume: true
+  current_question_num: 6
+  feature_size: "M"  # S | M | L
+
+# ============================================================================
+# Conversation History (for session recovery)
+# ============================================================================
+# Preserves complete Q&A. Update after EVERY user response.
+#
+conversation_history:
+  - question_num: 1
+    timestamp: "2026-07-08 15:44:30"
+    topic: "feature scope, silent notifications, testing strategy"
+    agent_question: |
+      1. Подтверждаешь имя фичи `scheduler-deadlines` и такой scope: напоминания + дедлайн + silent participants + week close, без PDF/report generation в этой фиче?
+
+      2. Silent participant после дедлайна: система должна сразу записывать `⬜` weekly report в Google Sheets за каждого активного участника без отчёта, или только помечать/уведомлять, а запись `⬜` делать уже в report generation?
+
+      3. Кого уведомляем по silent participants: капитана команды и трекера команды по каждому участнику отдельно, или одним агрегированным сообщением со списком молчащих по команде?
+
+      4. Для проверки в разработке достаточно локальных pytest/fake boundaries + ручной smoke через вызов scheduler service, или в этой фиче уже нужен тестовый Telegram bot / test Google Sheets smoke?
+    user_answer: |
+      1 подтверждаю
+      2 не понял вопроса
+      3 капитана и треккера одним аггрегированным сообщением о молчащих
+      4 не знаю, а ты как думаешь ?
+    summary: "Feature name and scope confirmed. Silent participant notifications should be one aggregated message to the captain and tracker. Need clarify when gray no-answer facts are written. Testing strategy requires recommendation."
+  - question_num: 2
+    timestamp: "2026-07-08 15:48:22"
+    topic: "gray persistence, reminder recipients, unfinished drafts, notification copy"
+    agent_question: |
+      1. Подтверждаешь вариант 1: при week close scheduler пишет `⬜` в Google Sheets за всех активных участников без отчёта?
+
+      2. Напоминания отправляем всем активным участникам с consent, у кого ещё нет отчёта за неделю. Выбывшим не отправляем. Верно?
+
+      3. Если участник начал черновик отчёта до дедлайна, но не нажал `✅ Готово` до 23:59: считаем его silent и ставим `⬜`, а черновик оставляем как технический draft/историю или очищаем?
+
+      4. Текст агрегированного сообщения капитану/трекеру предлагаю такой:
+      `Нет отчёта за неделю {week_number}: {N} участник(ов).`
+      Дальше список:
+      `- {name}`
+      Нормально, или нужно сразу добавлять телефон/username/прогресс?
+    user_answer: |
+      1 согласен
+      2 верно
+      3 верно, черновик оставляем
+      4 согласен
+    summary: "Week close should create official gray no-answer rows in Google Sheets for active participants without finalized weekly reports. Reminders target active consenting participants without reports and exclude dropped participants. Unfinished drafts remain as technical draft/history after deadline. Silent notifications use short aggregated message with participant names."
+  - question_num: 3
+    timestamp: "2026-07-08 15:58:38"
+    topic: "Sunday 18:00 reminder behavior and per-participant retry"
+    agent_question: |
+      1. В воскресенье 18:00 сообщение должно просто запускать обычный weekly report flow с кнопками `🟩/🟦/🟥`, или это только текстовое напоминание без кнопок?
+
+      2. Если scheduler не смог отправить напоминание одному участнику, но остальным отправил: продолжаем job, пишем failed в `reminder_log`, отправляем admin error, но не валим всю задачу. Согласен?
+
+      3. Если при week close Google Sheets write упал на середине: при повторном запуске scheduler должен дописать только недостающие `⬜` и не создавать дубликаты. Согласен?
+
+      4. После week close нужно ли отправлять участнику сообщение “Дедлайн прошёл, неделя отмечена как ⬜”, или участнику ничего не отправляем, а уведомляем только капитана/трекера? Моя рекомендация: участнику не отправлять, чтобы не плодить лишние сообщения; он уже получил 22:30 и 23:00.
+    user_answer: |
+      1 у нас дедлайн в восрксенье до скольки указан ?
+
+      [Agent answered: дедлайн воскресенье 23:59 по Екатеринбургу; 18:00 финальный чек-ин, 22:30 напоминание, 23:00 последнее напоминание, 23:59 жёсткий дедлайн.]
+
+      1 значит в воскресенье в 18-00 только напоминание что дедлайн вот-вот
+      2 верно, но стараемся отправить заново именно этому участнику
+      3 вопрос оборван
+      4 да
+    summary: "Sunday 18:00 is only a deadline-is-soon reminder, not report-flow launch. Failed reminder delivery for one participant must not fail the whole job; system should keep retry specifically for that participant. User agreed with not sending a separate participant message after week close; only captain/tracker are notified. Week close partial-write behavior needs to be re-asked."
+  - question_num: 4
+    timestamp: "2026-07-08 16:02:14"
+    topic: "idempotent week close after partial Google Sheets failure"
+    agent_question: |
+      Если в воскресенье 23:59 scheduler закрывает неделю и создаёт `⬜` в Google Sheets, может случиться частичный сбой: например, из 40 молчащих участников он успел записать `⬜` для 25, а потом Google Sheets API упал.
+
+      Моё предложение: повторный запуск week close должен быть идемпотентным:
+      - проверить, у кого `weekly_report` за эту неделю уже есть;
+      - не трогать эти записи;
+      - дописать `⬜` только тем активным участникам, у кого отчёта всё ещё нет;
+      - не создавать дубликаты;
+      - отправить admin error о сбое.
+
+      Подтверждаешь?
+
+      И ещё один уточняющий вопрос по retry напоминаний: сколько раз пробуем переотправить одному участнику после сбоя? Моя рекомендация для MVP: 3 попытки с сохранением failed/skipped в SQLite, без бесконечных retry.
+    user_answer: |
+      что значит идемпотентным
+
+      [Agent explained: repeated week close must not duplicate existing reports; it only fills missing gray reports after partial failures.]
+
+      согласен
+    summary: "User agreed that week close must be idempotent after explanation: repeated runs should skip existing weekly reports, create only missing gray no-answer rows, avoid duplicates, and notify admin about failures. Reminder retry limit remains unanswered."
+  - question_num: 5
+    timestamp: "2026-07-08 16:08:30"
+    topic: "reminder retry policy"
+    agent_question: |
+      Для одного участника, которому не удалось отправить напоминание, делаем до **3 попыток**. Если после 3 попыток не отправилось:
+      - пишем failed/skipped в SQLite;
+      - отправляем admin error;
+      - не блокируем отправку другим участникам;
+      - следующая плановая рассылка всё равно снова попробует отправить, если участник всё ещё без отчёта.
+
+      Подходит?
+    user_answer: |
+      да
+    summary: "Reminder retry policy confirmed: up to 3 attempts per failed participant per reminder job; after exhaustion record failed/skipped in SQLite and notify admin, without blocking other participants. Later planned reminders can try again if the participant still has no report."
+  - question_num: 6
+    timestamp: "2026-07-08 16:11:55"
+    topic: "consent, missing notification recipients, silent details, late draft behavior"
+    agent_question: |
+      1. Если у участника `consent_given = false`, напоминания ему не отправляем. Но если он активный и не сдал отчёт, при week close ставим ему `⬜` или пропускаем? Моя рекомендация: ставим `⬜`, потому что он активный участник недели, но бот не может писать ему до согласия.
+
+      2. Если у команды нет капитана или у трекера нет Telegram chat id, week close всё равно создаёт `⬜`, но silent notification для этого получателя пропускается, а admin получает error. Согласен?
+
+      3. Нужно ли в silent notification капитану/трекеру включать только имена молчащих, или ещё статус черновика: например `Иван Иванов — начал черновик, не завершил`? Моя рекомендация: только имена в MVP, черновики не раскрывать в уведомлении.
+
+      4. После 23:59 участник с незавершённым черновиком при попытке нажать `✅ Готово` получит уже существующее сообщение `Дедлайн недели уже прошёл. Отчёт не может изменить статус.` Черновик остаётся. Подходит?
+    user_answer: |
+      1 2 3 4 - подходит
+    summary: "Confirmed: non-consenting active participants do not receive reminders but receive official gray no-answer rows at week close if no finalized report exists. Missing captain/tracker chat id does not block week close; notification for that recipient is skipped and admin receives error. Silent notification lists only participant names, not draft state. Late draft finalization returns the existing deadline message and keeps the draft."
+# Format:
+# - question_num: 1
+#   timestamp: "2025-11-12 15:20:33"
+#   topic: "user_problem"
+#   agent_question: |
+#     [Full question text]
+#   user_answer: |
+#     [Full answer text]
+#   summary: "Brief summary"
+
+# ============================================================================
+# Phase 1: High-Level Feature Understanding
+# ============================================================================
+# Interview Cycle 1 scope
+phase1_feature_overview:
+
+  feature_name:
+    score: 95
+    status: "complete"
+    value: "scheduler-deadlines"
+    gaps: ""
+    required: true
+
+  feature_description:
+    score: 85
+    status: "complete"
+    value: "Implement scheduler/deadline execution for weekly reminders, Sunday hard deadline, silent participant handling, and week closing. Scope excludes PDF/report generation."
+    gaps: ""
+    required: true
+
+  work_type:
+    score: 95
+    status: "complete"
+    value: "feature"
+    gaps: ""
+    required: true
+
+  user_problem:
+    score: 90
+    status: "complete"
+    value: "The bot needs automatic weekly operations so participants are reminded, the deadline is enforced, and silent participants are surfaced without manual tracking."
+    gaps: ""
+    required: true
+
+  target_users:
+    score: 85
+    status: "complete"
+    value: "Active consenting participants without reports receive reminders. Captains and trackers receive aggregated silent participant notifications for their teams. Dropped participants are excluded from reminders."
+    gaps: ""
+    required: false
+
+  success_criteria:
+    score: 85
+    status: "complete"
+    value: "Reminders are sent on approved schedule only to active consenting participants without finalized weekly reports; duplicate reminders are avoided; week close creates official gray no-answer rows in Google Sheets for active participants without reports; unfinished drafts remain as technical state; captains and trackers receive one aggregated silent participant message per team."
+    gaps: ""
+    required: true
+
+  constraints:
+    score: 85
+    status: "complete"
+    value: "Use Asia/Yekaterinburg timezone, Sunday 23:59 hard deadline, no yellow late status, no status changes after deadline, Google Sheets remains business storage, SQLite stores technical scheduler/job state, no PDF/report generation in this feature."
+    gaps: ""
+    required: true
+
+  testing_strategy:
+    score: 85
+    status: "complete"
+    value: "Recommended: local pytest with fake Sheets and fake bot/notification boundaries, plus manual smoke by invoking scheduler service/job runner. Live test Telegram bot and test Google Sheets smoke should be deferred to deployment/pre-deploy integration unless this feature introduces live adapters."
+    gaps: ""
+    required: true
+
+# ============================================================================
+# Phase 2: User Experience & Scenarios
+# ============================================================================
+# Interview Cycle 2 scope (together with Phase 3)
+phase2_user_experience:
+
+  user_stories:
+    score: 70
+    status: "partial"
+    value: "Participants receive weekly reminders until they submit a report. Sunday 18:00 is a text reminder that the deadline is close, not a report-flow launch. After week close, silent participants do not receive an extra message. Captains and trackers receive aggregated silent participant lists after week close."
+    gaps: "Need cover exact retry behavior and week close/report handoff."
+    required: true
+
+  acceptance_criteria:
+    score: 90
+    status: "complete"
+    value: "Week close creates missing gray no-answer rows for active participants without reports, including active non-consenting participants. Re-running week close skips participants who already have a weekly report and creates only missing gray rows. Silent participant notifications are aggregated for captain and tracker. Reminders exclude dropped participants, non-consenting participants, and participants who already reported. Failed reminder sends retry up to 3 times per participant."
+    gaps: ""
+    required: true
+
+  edge_cases:
+    score: 90
+    status: "complete"
+    value: "Unfinished drafts at deadline still produce gray no-answer rows and remain in SQLite. Active non-consenting participants are not reminded but become gray at week close if no report exists. Missing captain/tracker chat id does not block gray rows; admin gets error. Dropped participants are excluded from reminders and gray creation. Repeated week close does not duplicate reports."
+    gaps: ""
+    required: true
+
+  error_scenarios:
+    score: 90
+    status: "complete"
+    value: "If reminder sending fails for one participant, the scheduler continues the job for other participants, retries that specific participant up to 3 times, records failed/skipped in SQLite after exhaustion, and notifies admin. Later planned reminders can try again if the participant still has no report. If Google Sheets write fails during week close, repeated week close skips existing weekly reports and creates only missing gray no-answer rows."
+    gaps: ""
+    required: true
+
+  verification_strategy:
+    score: 85
+    status: "complete"
+    value: "Verify with local pytest using fake Sheets, fake bots, fake notification router, and SQLite temp database. Manual smoke can invoke scheduler service/job-runner methods with controlled now timestamps. Live Telegram/test Google Sheets smoke is deferred to pre-deploy/deployment integration."
+    gaps: ""
+    required: true
+
+  ui_ux_requirements:
+    score: 85
+    status: "complete"
+    value: "Sunday 18:00 reminder should be short text that the deadline is near. After week close, do not send an extra participant-facing message. Silent participant notification text: `Нет отчёта за неделю {week_number}: {N} участник(ов).` followed by participant names. Keep copy short and practical."
+    gaps: ""
+    required: false
+
+  risks:
+    score: 85
+    status: "complete"
+    value: "Main risks: duplicate gray rows or duplicate reminders after job retry, data leaks in silent participant notifications, failed participant-level sends blocking the whole job, and Google Sheets partial writes. Mitigations: idempotent week close, reminder log/idempotency keys, participant-level retry cap, role-scoped aggregated notifications, and admin errors."
+    gaps: ""
+    required: true
+
+  technical_decisions:
+    score: 0
+    status: "pending"
+    value: ""
+    gaps: "Key decisions (what we do/don't, why)"
+    required: false
+
+  deploy_approach:
+    score: 80
+    status: "complete"
+    value: "No production deploy in this feature. Keep local/fake-boundary implementation. Future production deploy remains systemd on VPS via GitHub CI/CD only with explicit approval."
+    gaps: ""
+    required: false
+
+  manual_user_actions:
+    score: 80
+    status: "complete"
+    value: "No new user-provided secrets in chat. Future live setup will require environment/configuration for bot tokens, Google credentials, and recipient chat ids through `.env` or GitHub Actions secrets."
+    gaps: ""
+    required: false
+
+# ============================================================================
+# Phase 3: Integration & Technical Context
+# ============================================================================
+# Interview Cycle 2 scope (together with Phase 2)
+phase3_integration:
+
+  integration_points:
+    score: 90
+    status: "complete"
+    value: "Scheduler will use `app/scheduler/calendar.py`, SQLite scheduler/reminder tables from `app/storage/sqlite.py`, `SheetsGateway` for participant/report facts, existing bot client boundaries, and `NotificationRouter` for participant reminders, operational notifications, and admin errors. Code research recorded missing Sheets queries and retry-state design needs in `work/scheduler-deadlines/code-research.md`."
+    gaps: ""
+    required: true
+
+  dependencies:
+    score: 85
+    status: "complete"
+    value: "Depends on existing participant data, consent, dropped status, team/captain/tracker data, weekly report duplicate detection, notification routing, scheduler calendar constants, and SQLite technical state."
+    gaps: ""
+    required: false
+
+  technical_constraints:
+    score: 85
+    status: "complete"
+    value: "Must keep Google Sheets as final business storage and SQLite as technical state only. Must not introduce Docker, Redis, Celery, PostgreSQL, or live deploy in this feature. Must isolate participant-level send failures and prevent cross-team data leakage."
+    gaps: ""
+    required: false
+
+  data_requirements:
+    score: 90
+    status: "complete"
+    value: "Scheduler reads active participants, consent, dropped status, teams, captains, trackers, recipient chat ids, and existing weekly reports from Google Sheets. Week close writes gray no-answer weekly reports to Google Sheets. Scheduler job state, job runs, reminder log, retry state, errors, and unfinished drafts stay in SQLite."
+    gaps: ""
+    required: false
+
+  migration_needs:
+    score: 75
+    status: "complete"
+    value: "No migration of existing business data expected. Tech-spec may add or refine SQLite technical tables/repositories for scheduler retry state if current schema is insufficient."
+    gaps: ""
+    required: false
+
+# ============================================================================
+# Phase 4: Completion
+# ============================================================================
+phase4_completion:
+  userspec_file: "work/scheduler-deadlines/user-spec.md"  # work/{feature}/user-spec.md
+  status: "created"  # pending | created | approved
+
+# ============================================================================
+# Decision Rules
+# ============================================================================
+decision_rules:
+
+  required_threshold: 85
+  optional_threshold: 50
+
+  # Stop criteria (BOTH must be true to exit a cycle)
+  stop_criteria:
+    - "All required items in current cycle scope score >= 85%"
+    - "Structural: every required item has non-empty value, no TBD, gaps empty or conscious limitations"
+
+  priority_order:
+    - "Required items with score < 85% (lowest score first)"
+    - "Optional items mentioned by user in context"
+    - "Other optional items if user seems knowledgeable"
+
+  question_strategy:
+    - "3-4 questions per batch about different gaps"
+    - "Run as many batches as needed — batch size is NOT cycle limit"
+    - "Propose solutions based on PK, not just ask questions"
+    - "Challenge with substance: counterexamples, code references, unexplored scenarios"
+    - "After each response: update scores, values, gaps, conversation_history, save"
+
+# ============================================================================
+# Interview Progress
+# ============================================================================
+progress:
+  current_phase: "phase1_feature_overview"
+  questions_asked: 6
+  last_question: "Confirm consent, missing recipients, silent notification content, and late draft behavior."
+  total_required_score: 90
+  total_optional_score: 80
+  completion_estimate: "90%"
+  user_detail_level: "brief"  # brief | moderate | detailed
+
+# ============================================================================
+# Notes
+# ============================================================================
+notes: |
+  Free-form notes:
+  - Important insights
+  - Areas of uncertainty
+  - Pivot points
+  - Scope changes
+
+# ============================================================================
+# USAGE INSTRUCTIONS
+# ============================================================================
+#
+# 1. INIT: Created by init-feature-folder.sh at work/{feature}/logs/userspec/interview.yml
+#    Set metadata.started, metadata.status: in_progress
+#
+# 2. INITIAL SCORING: After user's free-form description, score ALL items
+#    Detailed 80-95%, brief 50-70%, vague 20-40%, not mentioned 0%
+#
+# 3. INTERVIEW LOOP (save after EVERY response):
+#    a) Find required items with score < 85% in current cycle scope
+#    b) Ask 3-4 questions about different gaps
+#    c) Propose solutions based on PK
+#    d) User answers
+#    e) Update: conversation_history, scores, values, gaps, metadata
+#    f) Save immediately
+#    g) Check stop criteria (score >= 85% AND structural: value filled, no TBD, gaps resolved)
+#    h) Not done → repeat. Done → next cycle.
+#
+# 4. CYCLES:
+#    Cycle 1: phase1_feature_overview items
+#    Cycle 2: phase2_user_experience + phase3_integration items
+#    Cycle 3: ALL items still below threshold (cleanup pass)
+#
+# 5. RESUME: If metadata.status is "in_progress"
+#    Load, show conversation summary, resume from current state
+#
+# 6. COMPLETION: After user approves user-spec.md
+#    Set phase4_completion.status: approved
+#    Set metadata.status: completed
