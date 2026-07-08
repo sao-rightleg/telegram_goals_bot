@@ -7,6 +7,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Protocol
 
+from app.reports.models import TeamReportData
+from app.reports.pdf import LocalPdfRenderer
 from app.storage.paths import StoragePathPolicy
 
 
@@ -23,6 +25,7 @@ class ReportRequest:
     week_number: int
     team_id: str
     year: int = 2026
+    team_report: TeamReportData | None = None
 
 
 @dataclass(frozen=True)
@@ -35,6 +38,23 @@ class GeneratedReport:
 class ReportGenerator(Protocol):
     def generate_team_report(self, request: ReportRequest) -> GeneratedReport:
         """Generate a report through a concrete report implementation."""
+
+
+@dataclass(frozen=True)
+class LocalReportGenerator:
+    pdf_renderer: LocalPdfRenderer
+
+    def generate_team_report(self, request: ReportRequest) -> GeneratedReport:
+        if request.report_type is ReportType.PDF_TEAM_REPORT:
+            if request.team_report is None:
+                raise ValueError("team_report is required for PDF team reports")
+            rendered = self.pdf_renderer.render_team_report(request.team_report, year=request.year)
+            return GeneratedReport(report_type=request.report_type, file_path=rendered.file_path)
+        return GeneratedReport(
+            report_type=request.report_type,
+            file_path=None,
+            text=f"Report {request.report_type.value} for {request.team_id}",
+        )
 
 
 @dataclass(frozen=True)
