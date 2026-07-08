@@ -295,3 +295,24 @@ Review details — in JSON files via links. QA report — in logs/working/.
 **Verification:**
 - `.venv/bin/python -m json.tool work/reports-flow/logs/working/task-13/test-audit.json` -> valid JSON
 - `test -f work/reports-flow/logs/working/task-13/test-audit.json` -> OK
+
+## Task 14: Pre-deploy QA
+
+**Status:** Done
+**Commit:** 975353f
+**Agent:** main agent
+**Summary:** Pre-deploy QA passed. Full local suite is green with 296 tests, 36 acceptance criteria passed, and no critical/major/minor findings were recorded.
+**Deviations:** Formal QA subagent was not run because delegation was not explicitly requested for this execution; main-agent QA report was written in the required JSON path.
+
+**Reviews:**
+
+*Round 1:*
+- pre-deploy-qa: OK -> [logs/working/task-14/pre-deploy-qa.json]
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_reports_messages.py tests/test_reports_generation.py -q` -> 11 passed
+- `.venv/bin/python -m pytest tests/test_reports_delivery.py -q` -> 12 passed
+- `.venv/bin/python -m pytest tests/test_reports_repository.py tests/test_sqlite_schema.py -q` -> 15 passed
+- `.venv/bin/python -m pytest tests/test_reports_boundaries.py -q` -> 6 passed
+- `.venv/bin/python -m pytest` -> 296 passed
+- artifact scans for generated PDFs, SQLite DBs, credentials, keys, and secrets -> none found
