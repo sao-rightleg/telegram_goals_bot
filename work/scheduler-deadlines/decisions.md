@@ -117,6 +117,22 @@ Agent reports on completed tasks. Each entry is written by the agent that execut
 - `.venv/bin/python -m pytest tests/test_scheduler_foundation.py tests/test_scheduler_deadlines.py tests/test_weekly_report_finalize.py tests/test_weekly_report_boundaries.py -v` -> 40 passed
 - `.venv/bin/python -m pytest tests/test_scheduler_foundation.py tests/test_scheduler_deadlines.py tests/test_weekly_report_finalize.py tests/test_weekly_report_boundaries.py` -> 40 passed
 
+## Task 8: Code Audit
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Completed a full-feature code audit and wrote `work/scheduler-deadlines/logs/working/task-8/code-audit.json`. The audit found one major reminder idempotency issue and one minor admin-error best-effort concern.
+**Deviations:** None.
+
+**Reviews:**
+
+*Round 1:*
+- local audit: 2 findings -> `work/scheduler-deadlines/logs/working/task-8/code-audit.json`
+
+**Verification:**
+- `.venv/bin/python -m json.tool work/scheduler-deadlines/logs/working/task-8/code-audit.json` -> valid JSON
+
 <!-- Entries are added by agents as tasks are completed.
 
 Format is strict — use only these sections, do not add others.
