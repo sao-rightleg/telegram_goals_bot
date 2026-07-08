@@ -1,0 +1,200 @@
+{
+  "status": "passed",
+  "summary": {
+    "totalChecks": 36,
+    "passed": 36,
+    "failed": 0,
+    "notVerifiable": 0,
+    "criticals": 0,
+    "majors": 0,
+    "minors": 0
+  },
+  "testSuite": {
+    "status": "passed",
+    "details": "Full local suite passed: 296 passed in 12.55s"
+  },
+  "acceptanceCriteria": [
+    {
+      "criterion": "Short Telegram team summary is generated for each team for the selected week.",
+      "status": "passed",
+      "evidence": "tests/test_reports_messages.py and tests/test_reports_service.py"
+    },
+    {
+      "criterion": "Short Telegram team summary contains week, team, captain, active/dropped counts, victory percent, progress bar and percent.",
+      "status": "passed",
+      "evidence": "tests/test_reports_messages.py::test_team_summary_text_contains_required_fields"
+    },
+    {
+      "criterion": "PDF team report is generated for each team and saved under local non-public reports/pdf path policy.",
+      "status": "passed",
+      "evidence": "tests/test_reports_pdf.py::test_pdf_renderer_writes_team_report_under_storage_path_policy"
+    },
+    {
+      "criterion": "PDF report includes summary, status distribution, risk/dropped participants, and participant sections.",
+      "status": "passed",
+      "evidence": "tests/test_reports_pdf.py and tests/test_reports_generation.py"
+    },
+    {
+      "criterion": "Participant section includes identity, weekly status, progress, goal, steps, report text, transcription, and insights.",
+      "status": "passed",
+      "evidence": "tests/test_reports_generation.py::test_aggregation_builds_team_report_from_final_sheets_rows"
+    },
+    {
+      "criterion": "Dropped participants remain visible but are excluded from active victory percentage.",
+      "status": "passed",
+      "evidence": "tests/test_reports_generation.py::test_weekly_victory_percent_excludes_dropped_participants"
+    },
+    {
+      "criterion": "green, blue, red, gray use approved score rules and yellow late status is not used.",
+      "status": "passed",
+      "evidence": "app/reports/aggregation.py STATUS_SCORES and tests/test_reports_generation.py"
+    },
+    {
+      "criterion": "Main progress percent is based on planned steps and insights do not affect progress/status.",
+      "status": "passed",
+      "evidence": "tests/test_reports_generation.py::test_insights_do_not_change_progress_or_status"
+    },
+    {
+      "criterion": "Reports use Google Sheets final facts and do not read unfinished SQLite drafts as report content.",
+      "status": "passed",
+      "evidence": "tests/test_reports_boundaries.py::test_report_generation_ignores_unfinished_sqlite_drafts"
+    },
+    {
+      "criterion": "Deleted original audio does not break reports; transcription_text is used.",
+      "status": "passed",
+      "evidence": "tests/test_reports_boundaries.py::test_deleted_audio_file_path_does_not_break_reports"
+    },
+    {
+      "criterion": "Captain receives only own team Telegram summary and PDF.",
+      "status": "passed",
+      "evidence": "tests/test_reports_delivery.py::test_captain_plan_contains_only_own_team_summary_and_pdf"
+    },
+    {
+      "criterion": "Captain does not receive other teams, full summary, or group comparison.",
+      "status": "passed",
+      "evidence": "tests/test_reports_delivery.py and tests/test_reports_boundaries.py"
+    },
+    {
+      "criterion": "Tracker receives only assigned reports by gender/team scope.",
+      "status": "passed",
+      "evidence": "tests/test_reports_delivery.py::test_tracker_plan_contains_only_assigned_team_reports"
+    },
+    {
+      "criterion": "Ivan Larkin male scope and Maria female scope are supported by tracker gender_scope routing.",
+      "status": "passed",
+      "evidence": "tests/test_reports_delivery.py tracker male/female scope coverage"
+    },
+    {
+      "criterion": "Tracker does not receive group comparison.",
+      "status": "passed",
+      "evidence": "tests/test_reports_delivery.py::test_captains_and_trackers_never_receive_group_comparison"
+    },
+    {
+      "criterion": "Admin receives all team reports, PDFs, full summary, group comparison, and errors.",
+      "status": "passed",
+      "evidence": "tests/test_reports_delivery.py::test_admin_plan_contains_all_reports_full_summary_and_comparison and failure tests"
+    },
+    {
+      "criterion": "Alexander Sitnikov receives all reports, PDFs, full summary, and group comparison.",
+      "status": "passed",
+      "evidence": "tests/test_reports_delivery.py::test_sitnikov_plan_contains_all_reports_full_summary_and_comparison"
+    },
+    {
+      "criterion": "Group comparison is sent only to admin and Alexander Sitnikov.",
+      "status": "passed",
+      "evidence": "tests/test_reports_boundaries.py::test_captain_and_tracker_outputs_do_not_include_group_comparison"
+    },
+    {
+      "criterion": "Missing recipient chat id does not block other recipients and notifies admin.",
+      "status": "passed",
+      "evidence": "tests/test_reports_delivery.py::test_missing_chat_id_notifies_admin_and_continues"
+    },
+    {
+      "criterion": "Send failure for one recipient does not block others and notifies admin.",
+      "status": "passed",
+      "evidence": "tests/test_reports_delivery.py::test_send_failure_notifies_admin_records_failure_and_continues"
+    },
+    {
+      "criterion": "PDF generation failure for one team is reported and does not break other teams.",
+      "status": "passed",
+      "evidence": "tests/test_reports_service.py::test_pdf_generation_failure_notifies_admin_and_continues_other_teams"
+    },
+    {
+      "criterion": "Rerun for the same week does not duplicate already successful deliveries.",
+      "status": "passed",
+      "evidence": "tests/test_reports_boundaries.py::test_report_rerun_does_not_duplicate_successful_delivery_items"
+    },
+    {
+      "criterion": "Report generation/send status is stored as technical state; final business facts remain in Sheets.",
+      "status": "passed",
+      "evidence": "tests/test_reports_repository.py and tests/test_sqlite_schema.py"
+    },
+    {
+      "criterion": "Generated PDFs, SQLite DBs, logs, credentials, and secrets are not committed.",
+      "status": "passed",
+      "evidence": "artifact scans returned no tracked PDF/SQLite/credential/secret files"
+    },
+    {
+      "criterion": "Feature does not add Docker, Redis, Celery, PostgreSQL, web admin panel, public leaderboard, or production deploy.",
+      "status": "passed",
+      "evidence": "git diff/file review; no deploy/runtime dependency files added"
+    },
+    {
+      "criterion": "Report aggregation reads final Google Sheets rows through SheetsGateway.",
+      "status": "passed",
+      "evidence": "app/reports/aggregation.py and tests/test_reports_sheets_gateway.py"
+    },
+    {
+      "criterion": "SQLite report state uses technical table names and does not create business-primary report_runs table.",
+      "status": "passed",
+      "evidence": "tests/test_sqlite_schema.py::test_report_tables_are_technical_not_business_primary"
+    },
+    {
+      "criterion": "PDF renderer writes local non-public files under StoragePathPolicy.pdf_path.",
+      "status": "passed",
+      "evidence": "tests/test_reports_pdf.py::test_pdf_renderer_writes_team_report_under_storage_path_policy"
+    },
+    {
+      "criterion": "Bot document delivery is represented in bot boundary and fake client.",
+      "status": "passed",
+      "evidence": "tests/test_reports_delivery_boundary.py::test_fake_bot_client_records_document_sends"
+    },
+    {
+      "criterion": "NotificationCategory.REPORT_DELIVERY uses notification bot only.",
+      "status": "passed",
+      "evidence": "tests/test_reports_delivery_boundary.py::test_report_document_delivery_does_not_use_main_or_error_bot"
+    },
+    {
+      "criterion": "Recipient planner enforces captain, tracker, admin, and Sitnikov scopes.",
+      "status": "passed",
+      "evidence": "tests/test_reports_delivery.py"
+    },
+    {
+      "criterion": "Group comparison cannot be delivered to captains or trackers.",
+      "status": "passed",
+      "evidence": "tests/test_reports_boundaries.py"
+    },
+    {
+      "criterion": "Report delivery is idempotent per recipient/report item.",
+      "status": "passed",
+      "evidence": "tests/test_reports_delivery.py::test_delivery_skips_already_successful_items"
+    },
+    {
+      "criterion": "Admin errors are sanitized and do not include secrets or raw personal report text.",
+      "status": "passed",
+      "evidence": "tests/test_reports_boundaries.py::test_admin_error_messages_do_not_include_report_body_or_secrets"
+    },
+    {
+      "criterion": "Existing foundation, participant, weekly report, captain, insight, voice, and scheduler tests remain green.",
+      "status": "passed",
+      "evidence": ".venv/bin/python -m pytest -> 296 passed"
+    },
+    {
+      "criterion": "No runtime dependency, deploy config, live adapter, generated PDF, SQLite DB, credential, or secret is committed.",
+      "status": "passed",
+      "evidence": "artifact scans returned no tracked forbidden files; no dependency/deploy files changed"
+    }
+  ],
+  "findings": [],
+  "deferredToPostDeploy": []
+}
