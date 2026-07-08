@@ -9,7 +9,7 @@ feature_dir: work/reports-flow
 execution_plan: work/reports-flow/logs/execution-plan.md
 team_name: reports-flow
 
-last_completed_wave: 3
+last_completed_wave: 4
 total_waves: 8
 
 # Format: task_number: status (planned | in_progress | done)
@@ -26,7 +26,7 @@ tasks:
   5: done
   6: done
   7: done
-  8: planned
+  8: done
   9: planned
   10: planned
   11: planned
@@ -34,4 +34,4 @@ tasks:
   13: planned
   14: planned
 
-next_wave: 4
+next_wave: 5

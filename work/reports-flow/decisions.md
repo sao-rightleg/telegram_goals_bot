@@ -186,3 +186,22 @@ Review details — in JSON files via links. QA report — in logs/working/.
 **Verification:**
 - `.venv/bin/python -m pytest tests/test_reports_delivery.py -q` -> 6 passed
 - `.venv/bin/python -m pytest` -> 278 passed
+
+## Task 8: Report Delivery Service
+
+**Status:** Done
+**Commit:** d16805f
+**Agent:** main agent
+**Summary:** Added report delivery service that sends text and documents through notification bot, checks recipient/report idempotency, records delivery outcomes, and sends sanitized admin technical errors for missing chat ids or send failures. Delivery failures are isolated so unrelated items continue.
+**Deviations:** Formal reviewer subagents were not run because delegation was not explicitly requested for this execution; local tests and full suite passed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run -> subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_reports_delivery.py -q` -> 12 passed
+- `.venv/bin/python -m pytest` -> 284 passed
