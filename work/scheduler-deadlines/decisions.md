@@ -133,6 +133,22 @@ Agent reports on completed tasks. Each entry is written by the agent that execut
 **Verification:**
 - `.venv/bin/python -m json.tool work/scheduler-deadlines/logs/working/task-8/code-audit.json` -> valid JSON
 
+## Task 9: Security Audit
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Completed a full-feature security audit and wrote `work/scheduler-deadlines/logs/working/task-9/security-audit.json`. The audit found one medium risk: raw adapter exception text is persisted and sent in admin errors.
+**Deviations:** None.
+
+**Reviews:**
+
+*Round 1:*
+- local security audit: 1 finding -> `work/scheduler-deadlines/logs/working/task-9/security-audit.json`
+
+**Verification:**
+- `.venv/bin/python -m json.tool work/scheduler-deadlines/logs/working/task-9/security-audit.json` -> valid JSON
+
 <!-- Entries are added by agents as tasks are completed.
 
 Format is strict — use only these sections, do not add others.
