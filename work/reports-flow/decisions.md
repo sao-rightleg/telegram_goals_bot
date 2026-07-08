@@ -225,3 +225,22 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `.venv/bin/python -m pytest tests/test_reports_service.py -q` -> 6 passed
 - `.venv/bin/python -m pytest tests/test_reports_service.py tests/test_reports_delivery.py tests/test_reports_generation.py tests/test_reports_pdf.py tests/test_reports_sheets_gateway.py -q` -> 34 passed
 - `.venv/bin/python -m pytest` -> 290 passed
+
+## Task 10: Reports Boundary and Regression Coverage
+
+**Status:** Done
+**Commit:** 2b9e404
+**Agent:** main agent
+**Summary:** Added report boundary regressions for group comparison privacy, sanitized admin errors, rerun idempotency, generated artifact safety, deleted audio paths, and exclusion of unfinished drafts. No application behavior changes were needed.
+**Deviations:** Formal reviewer subagents were not run because delegation was not explicitly requested for this execution; local tests and full suite passed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run -> subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_reports_generation.py tests/test_reports_delivery.py tests/test_reports_service.py tests/test_reports_boundaries.py -q` -> 30 passed
+- `.venv/bin/python -m pytest` -> 296 passed
