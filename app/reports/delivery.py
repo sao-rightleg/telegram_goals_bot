@@ -6,7 +6,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.reports.models import AllTeamsReportData, ReportDeliveryItem, ReportRecipient, ReportType, TeamReportData
+from app.services.notifications import (
+    NotificationCategory,
+    NotificationRouter,
+    Recipient as NotificationRecipient,
+    RecipientType,
+)
 from app.sheets.gateway import SheetRow
+from app.storage.reports import ReportStateRepository
 
 
 @dataclass(frozen=True)
@@ -220,3 +227,127 @@ def _tracker_can_receive_team(tracker: SheetRow, team: SheetRow) -> bool:
         return True
     scope = tracker.get("gender_scope")
     return scope == "all" or (scope is not None and scope == team.get("gender"))
+
+
+@dataclass(frozen=True)
+class ReportDeliveryService:
+    repository: ReportStateRepository
+    notification_router: NotificationRouter
+
+    def deliver_plan(
+        self,
+        *,
+        week_number: int,
+        plan: ReportDeliveryPlan,
+        sent_at: str,
+    ) -> "ReportRunResult":
+        from app.reports.models import ReportRunResult
+
+        sent_count = 0
+        skipped_count = 0
+        failed_count = 0
+
+        for problem in plan.problems:
+            failed_count += 1
+            self._notify_admin(
+                "report_delivery_problem",
+                (
+                    f"report_delivery_problem reason={problem.reason} "
+                    f"recipient_type={problem.recipient_type} "
+                    f"recipient_id={problem.recipient_id} scope_id={problem.scope_id}"
+                ),
+            )
+
+        for item in plan.items:
+            if self.repository.has_successful_delivery(
+                week_number=week_number,
+                report_type=item.report_type.value,
+                scope_id=item.scope_id,
+                recipient_type=item.recipient.recipient_type,
+                recipient_id=item.recipient.recipient_id,
+            ):
+                skipped_count += 1
+                continue
+
+            try:
+                self._send_item(item)
+            except Exception as exc:  # noqa: BLE001 - boundary isolates Telegram failures.
+                failed_count += 1
+                self.repository.record_delivery_attempt(
+                    week_number=week_number,
+                    report_type=item.report_type.value,
+                    scope_id=item.scope_id,
+                    recipient_type=item.recipient.recipient_type,
+                    recipient_id=item.recipient.recipient_id,
+                    chat_id=item.recipient.chat_id,
+                    status="failed",
+                    sent_at=sent_at,
+                    file_path=str(item.file_path) if item.file_path else None,
+                    error_message=_safe_admin_error(str(exc)),
+                )
+                self._notify_admin(
+                    "report_delivery_failed",
+                    (
+                        "report_delivery_failed "
+                        f"report_type={item.report_type.value} scope_id={item.scope_id} "
+                        f"recipient_type={item.recipient.recipient_type} "
+                        f"recipient_id={item.recipient.recipient_id} "
+                        f"error={_safe_admin_error(str(exc))}"
+                    ),
+                )
+                continue
+
+            sent_count += 1
+            self.repository.record_delivery_attempt(
+                week_number=week_number,
+                report_type=item.report_type.value,
+                scope_id=item.scope_id,
+                recipient_type=item.recipient.recipient_type,
+                recipient_id=item.recipient.recipient_id,
+                chat_id=item.recipient.chat_id,
+                status="sent",
+                sent_at=sent_at,
+                file_path=str(item.file_path) if item.file_path else None,
+            )
+
+        return ReportRunResult(
+            generated_count=len(plan.items),
+            sent_count=sent_count,
+            skipped_count=skipped_count,
+            failed_count=failed_count,
+        )
+
+    def _send_item(self, item: ReportDeliveryItem) -> None:
+        recipient = NotificationRecipient(
+            recipient_type=RecipientType(item.recipient.recipient_type),
+            chat_id=item.recipient.chat_id,
+        )
+        if item.file_path is not None:
+            self.notification_router.send_document(
+                category=NotificationCategory.REPORT_DELIVERY,
+                file_path=item.file_path,
+                caption=None,
+                recipients=[recipient],
+            )
+            return
+
+        self.notification_router.send(
+            category=NotificationCategory.REPORT_DELIVERY,
+            text=item.text or "",
+            recipients=[recipient],
+        )
+
+    def _notify_admin(self, error_type: str, message: str) -> None:
+        self.notification_router.send(
+            category=NotificationCategory.TECHNICAL_ERROR,
+            text=f"{error_type}: {_safe_admin_error(message)}",
+            recipients=[],
+        )
+
+
+def _safe_admin_error(message: str) -> str:
+    compact = " ".join(message.split())
+    compact = compact.replace("token=", "redacted=")
+    if "личный отчёт" in compact:
+        compact = compact.replace("личный отчёт", "personal_report")
+    return compact[:300]
