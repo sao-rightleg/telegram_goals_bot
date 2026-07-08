@@ -1,7 +1,7 @@
 {
   "task": 8,
   "audit_type": "code_quality",
-  "status": "completed",
+  "status": "resolved_after_remediation",
   "scope": [
     "app/scheduler/jobs.py",
     "app/storage/scheduler.py",
@@ -17,8 +17,10 @@
     "tests/test_weekly_report_boundaries.py"
   ],
   "summary": {
-    "overall": "Feature code follows the existing local-boundary architecture: Sheets remains the business fact store, SQLite stores scheduler technical state, and Telegram sends go through NotificationRouter. The main maintainability issue is reminder rerun idempotency: successful reminder state is recorded but not consulted by SchedulerService.run_reminder.",
+    "overall": "Feature code follows the existing local-boundary architecture: Sheets remains the business fact store, SQLite stores scheduler technical state, and Telegram sends go through NotificationRouter. The reminder rerun idempotency finding was remediated; the remaining deferred concern is best-effort handling if admin error delivery itself fails.",
     "finding_count": 2,
+    "resolved_count": 1,
+    "accepted_deferred_count": 1,
     "critical": 0,
     "major": 1,
     "minor": 1
@@ -44,7 +46,11 @@
       ],
       "description": "SchedulerJobRepository exposes has_successful_reminder() and repository tests assert it can prevent duplicate sends, but SchedulerService.run_reminder() never checks that state before sending. A rerun of the same reminder type/week can send a second Telegram reminder to participants that already received the first send.",
       "impact": "Violates the tech-spec requirement that reminder state prevents duplicate successful sends for the same reminder job. It can create noisy participant notifications after scheduler restarts or manual reruns.",
-      "recommendation": "Before _send_reminder_with_retry(), map reminder_type with _reminder_log_type() and skip participants for which repository.has_successful_reminder(participant_id, week_number=week_number, reminder_type=log_type) is true. Add a regression test that running the same reminder twice sends once and reports the second run as skipped."
+      "recommendation": "Before _send_reminder_with_retry(), map reminder_type with _reminder_log_type() and skip participants for which repository.has_successful_reminder(participant_id, week_number=week_number, reminder_type=log_type) is true. Add a regression test that running the same reminder twice sends once and reports the second run as skipped.",
+      "resolution": {
+        "status": "resolved",
+        "summary": "SchedulerService.run_reminder now checks repository.has_successful_reminder before sending and tests cover same-reminder rerun behavior."
+      }
     },
     {
       "id": "CODE-002",
@@ -62,7 +68,11 @@
       ],
       "description": "_notify_admin_error() records an error event and then sends through NotificationRouter. If the error bot raises, the scheduler path that was handling a participant, Sheets, or silent-notification failure will raise too.",
       "impact": "A secondary admin-notification outage could stop a reminder or week-close loop even though the primary failure was intended to be isolated. Current fake tests do not cover error-bot failure.",
-      "recommendation": "Decide whether admin notification is best-effort for scheduler jobs. If yes, catch exceptions around the TECHNICAL_ERROR send after persisting error_events, and add a regression test with a failing error_bot."
+      "recommendation": "Decide whether admin notification is best-effort for scheduler jobs. If yes, catch exceptions around the TECHNICAL_ERROR send after persisting error_events, and add a regression test with a failing error_bot.",
+      "resolution": {
+        "status": "accepted_deferred",
+        "summary": "Admin error delivery failure remains a low-blast-radius operational concern. Raw exception leakage was remediated in this pass; best-effort error-bot failure handling can be handled with the notification adapter hardening work."
+      }
     }
   ],
   "positive_notes": [

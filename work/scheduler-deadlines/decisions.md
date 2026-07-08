@@ -122,7 +122,7 @@ Agent reports on completed tasks. Each entry is written by the agent that execut
 **Status:** Done
 **Commit:** this commit
 **Agent:** main agent
-**Summary:** Completed a full-feature code audit and wrote `work/scheduler-deadlines/logs/working/task-8/code-audit.json`. The audit found one major reminder idempotency issue and one minor admin-error best-effort concern.
+**Summary:** Completed a full-feature code audit and wrote `work/scheduler-deadlines/logs/working/task-8/code-audit.json`. The major reminder idempotency issue was remediated; the remaining minor admin-error delivery concern is accepted as deferred.
 **Deviations:** None.
 
 **Reviews:**
@@ -132,13 +132,14 @@ Agent reports on completed tasks. Each entry is written by the agent that execut
 
 **Verification:**
 - `.venv/bin/python -m json.tool work/scheduler-deadlines/logs/working/task-8/code-audit.json` -> valid JSON
+- `.venv/bin/python -m pytest tests/test_scheduler_deadlines.py tests/test_scheduler_repository.py tests/test_scheduler_messages.py tests/test_scheduler_sheets_gateway.py tests/test_scheduler_foundation.py tests/test_weekly_report_finalize.py tests/test_weekly_report_boundaries.py -q` -> 54 passed
 
 ## Task 9: Security Audit
 
 **Status:** Done
 **Commit:** this commit
 **Agent:** main agent
-**Summary:** Completed a full-feature security audit and wrote `work/scheduler-deadlines/logs/working/task-9/security-audit.json`. The audit found one medium risk: raw adapter exception text is persisted and sent in admin errors.
+**Summary:** Completed a full-feature security audit and wrote `work/scheduler-deadlines/logs/working/task-9/security-audit.json`. The raw adapter exception leakage finding was remediated with sanitized scheduler admin errors and a regression test.
 **Deviations:** None.
 
 **Reviews:**
@@ -148,13 +149,14 @@ Agent reports on completed tasks. Each entry is written by the agent that execut
 
 **Verification:**
 - `.venv/bin/python -m json.tool work/scheduler-deadlines/logs/working/task-9/security-audit.json` -> valid JSON
+- `.venv/bin/python -m pytest tests/test_scheduler_deadlines.py tests/test_scheduler_repository.py tests/test_scheduler_messages.py tests/test_scheduler_sheets_gateway.py tests/test_scheduler_foundation.py tests/test_weekly_report_finalize.py tests/test_weekly_report_boundaries.py -q` -> 54 passed
 
 ## Task 10: Test Audit
 
 **Status:** Done
 **Commit:** this commit
 **Agent:** main agent
-**Summary:** Completed a full-feature test audit and wrote `work/scheduler-deadlines/logs/working/task-10/test-audit.json`. The audit marked test quality as needing improvement because duplicate reminder prevention is covered only at repository level, not through `SchedulerService.run_reminder`.
+**Summary:** Completed a full-feature test audit and wrote `work/scheduler-deadlines/logs/working/task-10/test-audit.json`. The duplicate reminder service-level coverage gap was remediated with a regression test; only a low-severity traceability limitation remains accepted as deferred.
 **Deviations:** None.
 
 **Reviews:**
@@ -164,6 +166,7 @@ Agent reports on completed tasks. Each entry is written by the agent that execut
 
 **Verification:**
 - `.venv/bin/python -m json.tool work/scheduler-deadlines/logs/working/task-10/test-audit.json` -> valid JSON
+- `.venv/bin/python -m pytest tests/test_scheduler_deadlines.py tests/test_scheduler_repository.py tests/test_scheduler_messages.py tests/test_scheduler_sheets_gateway.py tests/test_scheduler_foundation.py tests/test_weekly_report_finalize.py tests/test_weekly_report_boundaries.py -q` -> 54 passed
 
 <!-- Entries are added by agents as tasks are completed.
 

@@ -1,7 +1,7 @@
 {
   "task": 9,
   "audit_type": "security",
-  "status": "completed",
+  "status": "resolved_after_remediation",
   "scope": [
     "work/scheduler-deadlines/user-spec.md",
     "work/scheduler-deadlines/tech-spec.md",
@@ -18,6 +18,7 @@
   "summary": {
     "overall": "Scheduler-deadlines keeps business facts in Sheets, technical scheduler state in SQLite, and sends through role-specific bot boundaries. Silent notifications are team-scoped and tests cover cross-team leakage and draft-state privacy. No production secrets or live chat ids were introduced in the feature slice.",
     "finding_count": 1,
+    "resolved_count": 1,
     "critical": 0,
     "high": 0,
     "medium": 1,
@@ -48,7 +49,11 @@
       ],
       "description": "Scheduler admin errors include str(exc) or a previously captured exception string and persist it to error_events before sending it to the admin error bot. Today the fake adapter only emits synthetic messages, but real Telegram or Google adapters can include request URLs, response bodies, chat ids, file ids, or operational details in exception text.",
       "impact": "A downstream adapter error could leak unnecessary personal or operational data into SQLite and the admin error chat. This is not a direct public disclosure, but it increases blast radius and retention of sensitive diagnostics.",
-      "recommendation": "Normalize scheduler admin errors to safe codes and minimal context, for example error_type, participant_id/team_id, adapter name, and a sanitized failure class. Store raw exception details only in a deliberately protected debug channel if needed, and add tests that token-like strings and URLs are not persisted or sent."
+      "recommendation": "Normalize scheduler admin errors to safe codes and minimal context, for example error_type, participant_id/team_id, adapter name, and a sanitized failure class. Store raw exception details only in a deliberately protected debug channel if needed, and add tests that token-like strings and URLs are not persisted or sent.",
+      "resolution": {
+        "status": "resolved",
+        "summary": "Scheduler admin error messages now omit raw adapter exception text, and a regression test verifies token-like strings, Telegram API URLs, and chat ids are not persisted or sent for reminder_send_failed."
+      }
     }
   ],
   "privacy_review": {

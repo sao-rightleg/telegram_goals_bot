@@ -1,7 +1,7 @@
 {
   "task": 10,
   "audit_type": "test_quality",
-  "status": "needs_improvement",
+  "status": "passed_after_remediation",
   "scope": [
     "tests/test_scheduler_deadlines.py",
     "tests/test_scheduler_repository.py",
@@ -15,8 +15,10 @@
     "work/scheduler-deadlines/tech-spec.md"
   ],
   "summary": {
-    "overall": "Scheduler tests are mostly behavior-focused and cover recipient filtering, retry count, week-close gray creation, partial Sheets failures, draft preservation, silent-notification privacy, and existing weekly report deadline regressions. The key gap is service-level duplicate reminder prevention: repository behavior is tested, but SchedulerService.run_reminder is not tested for rerun idempotency, which allowed the CODE-001 implementation defect.",
+    "overall": "Scheduler tests are behavior-focused and cover recipient filtering, retry count, reminder rerun idempotency, week-close gray creation, partial Sheets failures, draft preservation, silent-notification privacy, and existing weekly report deadline regressions. The original service-level duplicate reminder gap was remediated with a regression test.",
     "finding_count": 2,
+    "resolved_count": 1,
+    "accepted_deferred_count": 1,
     "critical": 0,
     "high": 1,
     "medium": 0,
@@ -52,9 +54,10 @@
     {
       "behavior": "Reminder rerun idempotency after a successful send",
       "tests": [
-        "tests/test_scheduler_repository.py::test_successful_reminder_lookup_prevents_duplicate_send"
+        "tests/test_scheduler_repository.py::test_successful_reminder_lookup_prevents_duplicate_send",
+        "tests/test_scheduler_deadlines.py::test_reminder_rerun_skips_participants_already_successfully_sent"
       ],
-      "assessment": "gap: repository-only coverage does not exercise SchedulerService.run_reminder"
+      "assessment": "covered after remediation"
     },
     {
       "behavior": "Week close gray report creation and idempotency",
@@ -106,7 +109,11 @@
       ],
       "description": "The repository has a has_successful_reminder test, but SchedulerService.run_reminder is never exercised twice for the same participant/week/reminder type. This means tests pass even when the service records successful reminder state but does not read it.",
       "litmus_test": "Remove or ignore the repository has_successful_reminder call in service code: the current service tests still pass.",
-      "recommended_test": "Add tests/test_scheduler_deadlines.py::test_reminder_rerun_skips_participants_already_successfully_sent. It should run service.run_reminder('wednesday_checkin', now=NOW) twice with one eligible participant, assert only one main-bot message exists, and assert the second result increments skipped_count rather than sent_count."
+      "recommended_test": "Add tests/test_scheduler_deadlines.py::test_reminder_rerun_skips_participants_already_successfully_sent. It should run service.run_reminder('wednesday_checkin', now=NOW) twice with one eligible participant, assert only one main-bot message exists, and assert the second result increments skipped_count rather than sent_count.",
+      "resolution": {
+        "status": "resolved",
+        "summary": "Added tests/test_scheduler_deadlines.py::test_reminder_rerun_skips_participants_already_successfully_sent and implemented service-level skip behavior."
+      }
     },
     {
       "id": "TEST-002",
@@ -121,7 +128,11 @@
       ],
       "description": "test_scheduler_acceptance_criteria_coverage validates local function names through globals(), but external test references with '::' are treated as documentation strings and are not checked for existence.",
       "litmus_test": "Rename an externally referenced test in tests/test_scheduler_foundation.py or tests/test_weekly_report_finalize.py: the coverage matrix still passes.",
-      "recommended_test": "Either keep the matrix as documentation-only and accept this limitation, or resolve external references against pytest collection if the matrix is intended to be executable traceability."
+      "recommended_test": "Either keep the matrix as documentation-only and accept this limitation, or resolve external references against pytest collection if the matrix is intended to be executable traceability.",
+      "resolution": {
+        "status": "accepted_deferred",
+        "summary": "Accepted as a low-severity traceability limitation. Behavioral coverage is enforced by the actual pytest smoke commands in Task 7 and pre-deploy QA."
+      }
     }
   ],
   "verification": {

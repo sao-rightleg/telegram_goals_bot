@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -108,6 +109,47 @@ def test_failed_reminder_after_retry_exhaustion_notifies_admin(tmp_path: Path) -
     assert len(error_bot.sent_messages) == 1
     assert error_bot.sent_messages[0].chat_id == "admin-errors"
     assert "reminder_send_failed" in error_bot.sent_messages[0].text
+
+
+def test_reminder_rerun_skips_participants_already_successfully_sent(tmp_path: Path) -> None:
+    service, _gateway, main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[_participant("P001", 1001, consent=True)],
+    )
+
+    first = service.run_reminder("wednesday_checkin", now=NOW)
+    second = service.run_reminder("wednesday_checkin", now=NOW)
+
+    assert first.sent_count == 1
+    assert second.sent_count == 0
+    assert second.skipped_count == 1
+    assert [message.chat_id for message in main_bot.sent_messages] == ["1001"]
+
+
+def test_admin_error_omits_raw_adapter_exception_details(tmp_path: Path) -> None:
+    db_path = tmp_path / "state.sqlite3"
+    service, _gateway, _main_bot, error_bot = _service(
+        tmp_path,
+        participants=[_participant("P001", 1001, consent=True)],
+        failing_chat_ids={"1001"},
+        failure_message="telegram failed token=SECRET https://api.telegram.org/botSECRET/sendMessage chat_id=1001",
+    )
+
+    service.run_reminder("sunday_2300_reminder", now=NOW)
+
+    assert error_bot.sent_messages[0].text == "reminder_send_failed participant_id=P001"
+    with sqlite3.connect(db_path) as connection:
+        messages = [
+            row[0]
+            for row in connection.execute(
+                "SELECT message FROM error_events WHERE error_type = 'reminder_send_failed'"
+            ).fetchall()
+        ]
+
+    assert messages == ["reminder_send_failed participant_id=P001"]
+    assert all("SECRET" not in message for message in messages)
+    assert all("api.telegram.org" not in message for message in messages)
+    assert all("chat_id=1001" not in message for message in messages)
 
 
 def test_week_close_creates_gray_reports_for_active_missing_participants(tmp_path: Path) -> None:
@@ -397,6 +439,7 @@ def _service(
     weekly_reports: list[dict[str, object]] | None = None,
     goals: list[dict[str, object]] | None = None,
     failing_chat_ids: set[str] | None = None,
+    failure_message: str | None = None,
     gateway: FakeSheetsGateway | None = None,
 ) -> tuple[SchedulerService, FakeSheetsGateway, "FailingBotClient", FakeBotClient]:
     db_path = tmp_path / "state.sqlite3"
@@ -406,7 +449,11 @@ def _service(
         weekly_reports=weekly_reports or [],
         goals=goals or [],
     )
-    main_bot = FailingBotClient(BotPurpose.MAIN, failing_chat_ids=failing_chat_ids or set())
+    main_bot = FailingBotClient(
+        BotPurpose.MAIN,
+        failing_chat_ids=failing_chat_ids or set(),
+        failure_message=failure_message,
+    )
     error_bot = FakeBotClient(BotPurpose.ERROR)
     notification_bot = FakeBotClient(BotPurpose.NOTIFICATION)
     router = NotificationRouter(
@@ -467,13 +514,14 @@ def _service_with_notification_bot(
 class FailingBotClient:
     purpose: BotPurpose
     failing_chat_ids: set[str] = field(default_factory=set)
+    failure_message: str | None = None
     sent_messages: list[OutgoingMessage] = field(default_factory=list)
     attempts_by_chat_id: dict[str, int] = field(default_factory=dict)
 
     def send_message(self, *, chat_id: str, text: str) -> OutgoingMessage:
         self.attempts_by_chat_id[chat_id] = self.attempts_by_chat_id.get(chat_id, 0) + 1
         if chat_id in self.failing_chat_ids:
-            raise RuntimeError(f"send failed for {chat_id}")
+            raise RuntimeError(self.failure_message or f"send failed for {chat_id}")
         message = OutgoingMessage(chat_id=chat_id, text=text)
         self.sent_messages.append(message)
         return message

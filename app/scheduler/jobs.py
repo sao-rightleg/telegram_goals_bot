@@ -55,11 +55,20 @@ class SchedulerService:
             idempotency_key=build_idempotency_key(reminder_type, week_number=week_number),
             started_at=scheduled_for,
         )
+        reminder_log_type = _reminder_log_type(reminder_type)
 
         for participant in self.sheets.list_participants():
             participant_id = _string_value(participant.get("participant_id"))
             team_id = _string_value(participant.get("team_id"))
             if not self._is_reminder_eligible(participant, week_number=week_number):
+                skipped_count += 1
+                continue
+
+            if self.repository.has_successful_reminder(
+                participant_id,
+                week_number=week_number,
+                reminder_type=reminder_log_type,
+            ):
                 skipped_count += 1
                 continue
 
@@ -81,7 +90,7 @@ class SchedulerService:
                 participant_id=participant_id,
                 team_id=team_id,
                 week_number=week_number,
-                reminder_type=_reminder_log_type(reminder_type),
+                reminder_type=reminder_log_type,
                 now=now,
             ):
                 sent_count += 1
@@ -158,7 +167,7 @@ class SchedulerService:
                 failed_count += 1
                 self._notify_admin_error(
                     "week_close_gray_failed",
-                    f"week_close_gray_failed participant_id={participant_id} error={exc}",
+                    f"week_close_gray_failed participant_id={participant_id}",
                     participant_id=participant_id,
                     team_id=team_id,
                     now=now,
@@ -205,7 +214,6 @@ class SchedulerService:
         reminder_type: str,
         now: datetime,
     ) -> bool:
-        last_error = None
         for _attempt in range(self.max_reminder_attempts):
             try:
                 messages = self.notification_router.send(
@@ -225,7 +233,6 @@ class SchedulerService:
                 )
                 return True
             except Exception as exc:  # pragma: no cover - concrete exception type belongs to bot adapter
-                last_error = str(exc)
                 self.repository.record_reminder_attempt(
                     participant_id=participant_id,
                     team_id=team_id,
@@ -233,12 +240,12 @@ class SchedulerService:
                     reminder_type=reminder_type,
                     sent_at=now.isoformat(),
                     status="failed",
-                    error_message=last_error,
+                    error_message=type(exc).__name__,
                 )
 
         self._notify_admin_error(
             "reminder_send_failed",
-            f"reminder_send_failed participant_id={participant_id} error={last_error}",
+            f"reminder_send_failed participant_id={participant_id}",
             participant_id=participant_id,
             team_id=team_id,
             now=now,
@@ -316,7 +323,7 @@ class SchedulerService:
                 except Exception as exc:  # pragma: no cover - concrete exception type belongs to bot adapter
                     self._notify_admin_error(
                         error_label,
-                        f"{error_label} team_id={team_id} error={exc}",
+                        f"{error_label} team_id={team_id}",
                         participant_id="",
                         team_id=team_id,
                         now=now,
