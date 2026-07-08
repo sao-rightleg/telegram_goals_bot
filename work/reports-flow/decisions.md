@@ -244,3 +244,54 @@ Review details — in JSON files via links. QA report — in logs/working/.
 **Verification:**
 - `.venv/bin/python -m pytest tests/test_reports_generation.py tests/test_reports_delivery.py tests/test_reports_service.py tests/test_reports_boundaries.py -q` -> 30 passed
 - `.venv/bin/python -m pytest` -> 296 passed
+
+## Task 11: Code Audit
+
+**Status:** Done
+**Commit:** eae3bca
+**Agent:** main agent
+**Summary:** Completed code audit for reports-flow source and tests. No critical or major blockers were found; one minor maintainability finding was recorded for `ReportService` using a private delivery-service helper.
+**Deviations:** Formal auditor subagent was not run because delegation was not explicitly requested for this execution; main-agent audit report was written in the required JSON path.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewing: 1 minor finding -> [logs/working/task-11/code-audit.json]
+
+**Verification:**
+- `.venv/bin/python -m json.tool work/reports-flow/logs/working/task-11/code-audit.json` -> valid JSON
+- `test -f work/reports-flow/logs/working/task-11/code-audit.json` -> OK
+
+## Task 12: Security Audit
+
+**Status:** Done
+**Commit:** eae3bca
+**Agent:** main agent
+**Summary:** Completed security audit for role-safe routing, group comparison privacy, personal data exposure, generated file safety, sanitized admin errors, and secret leakage. No critical, high, or medium security findings were identified.
+**Deviations:** Formal auditor subagent was not run because delegation was not explicitly requested for this execution; main-agent audit report was written in the required JSON path.
+
+**Reviews:**
+
+*Round 1:*
+- security-auditor: OK -> [logs/working/task-12/security-audit.json]
+
+**Verification:**
+- `.venv/bin/python -m json.tool work/reports-flow/logs/working/task-12/security-audit.json` -> valid JSON
+- `test -f work/reports-flow/logs/working/task-12/security-audit.json` -> OK
+
+## Task 13: Test Audit
+
+**Status:** Done
+**Commit:** eae3bca
+**Agent:** main agent
+**Summary:** Completed test-quality audit for report formatting, gateway reads, SQLite state, aggregation, PDF rendering, delivery routing, idempotency, and privacy boundaries. No blocking test-quality issues were found.
+**Deviations:** Formal auditor subagent was not run because delegation was not explicitly requested for this execution; main-agent audit report was written in the required JSON path.
+
+**Reviews:**
+
+*Round 1:*
+- test-master: OK -> [logs/working/task-13/test-audit.json]
+
+**Verification:**
+- `.venv/bin/python -m json.tool work/reports-flow/logs/working/task-13/test-audit.json` -> valid JSON
+- `test -f work/reports-flow/logs/working/task-13/test-audit.json` -> OK
