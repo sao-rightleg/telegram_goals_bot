@@ -51,3 +51,79 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `find work/reports-flow/tasks -maxdepth 1 -type f -name '*.md' | sort` -> tasks 1-14 present
 - required section scan for `## Context Files`, `## Verification Steps`, and `## Post-completion` -> all task files OK
 - `git diff --cached --check` -> no whitespace errors
+
+## Task 1: Report Models and Text Formatters
+
+**Status:** Done
+**Commit:** 80cc52b
+**Agent:** main agent
+**Summary:** Added adapter-independent report DTOs and Russian text formatters for team summaries, participant sections, full summaries, and group comparison. The formatter layer stays pure and avoids Telegram, Sheets, SQLite, filesystem, chat id, and secret exposure.
+**Deviations:** Formal reviewer subagents were not run because delegation was not explicitly requested for this execution; local tests and full suite passed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run -> subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_reports_messages.py -q` -> 5 passed
+- `.venv/bin/python -m pytest` -> 261 passed
+
+## Task 2: Report Sheets Gateway Reads
+
+**Status:** Done
+**Commit:** 80cc52b
+**Agent:** main agent
+**Summary:** Extended the Sheets gateway boundary and fake implementation with report-oriented reads for goals, all planned steps, weekly reports by week, weekly report step relations, and insights by week. Returned rows preserve copy isolation and existing gateway behavior remains green.
+**Deviations:** Formal reviewer subagents were not run because delegation was not explicitly requested for this execution; local tests and full suite passed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run -> subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_reports_sheets_gateway.py tests/test_scheduler_sheets_gateway.py tests/test_weekly_report_sheets_gateway.py -q` -> 14 passed
+- `.venv/bin/python -m pytest` -> 261 passed
+
+## Task 3: Report SQLite Repository
+
+**Status:** Done
+**Commit:** 80cc52b
+**Agent:** main agent
+**Summary:** Added technical SQLite tables `report_job_runs` and `report_delivery_log` plus a report state repository for job lifecycle and recipient-level delivery idempotency. The business-primary `report_runs` table is not created, and report technical tables remain outside `BUSINESS_PRIMARY_TABLES`.
+**Deviations:** Formal reviewer subagents were not run because delegation was not explicitly requested for this execution; local tests and full suite passed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run -> subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_reports_repository.py tests/test_sqlite_schema.py tests/test_scheduler_repository.py -q` -> 20 passed
+- `.venv/bin/python -m pytest` -> 261 passed
+
+## Task 4: Bot Document Delivery Boundary
+
+**Status:** Done
+**Commit:** 80cc52b
+**Agent:** main agent
+**Summary:** Extended the bot client boundary and fake client with document sends, and added notification router support for document delivery through the notification bot. Existing text routing behavior remains unchanged.
+**Deviations:** Formal reviewer subagents were not run because delegation was not explicitly requested for this execution; local tests and full suite passed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run -> subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_reports_delivery_boundary.py tests/test_voice_processing_service.py tests/test_boundaries.py -q` -> 17 passed
+- `.venv/bin/python -m pytest` -> 261 passed
