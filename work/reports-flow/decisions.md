@@ -127,3 +127,43 @@ Review details — in JSON files via links. QA report — in logs/working/.
 **Verification:**
 - `.venv/bin/python -m pytest tests/test_reports_delivery_boundary.py tests/test_voice_processing_service.py tests/test_boundaries.py -q` -> 17 passed
 - `.venv/bin/python -m pytest` -> 261 passed
+
+## Task 5: Team Report Aggregation
+
+**Status:** Done
+**Commit:** ebce828
+**Agent:** main agent
+**Summary:** Added report aggregation from final Sheets facts into team and all-teams report data, including dropped visibility, active-only victory percent, status distribution, 6-cell progress, report text, transcriptions, and insights. Aggregation reads only the Sheets gateway and does not inspect SQLite drafts or audio files.
+**Deviations:** Formal reviewer subagents were not run because delegation was not explicitly requested for this execution; local tests and full suite passed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run -> subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_reports_generation.py -q` -> 6 passed
+- `.venv/bin/python -m pytest tests/test_reports_generation.py tests/test_reports_pdf.py tests/test_reports_messages.py tests/test_reports_sheets_gateway.py -q` -> 21 passed
+- `.venv/bin/python -m pytest` -> 272 passed
+
+## Task 6: Local PDF Renderer
+
+**Status:** Done
+**Commit:** ebce828
+**Agent:** main agent
+**Summary:** Added a dependency-free local PDF-like renderer using `StoragePathPolicy.pdf_path` and extended the report generator boundary for team PDF generation. The renderer writes non-public local files, includes required team/participant content, and does not open original audio paths.
+**Deviations:** Formal reviewer subagents were not run because delegation was not explicitly requested for this execution; local tests and full suite passed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run -> subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_reports_pdf.py -q` -> 5 passed
+- `.venv/bin/python -m pytest tests/test_reports_generation.py tests/test_reports_pdf.py tests/test_reports_messages.py tests/test_reports_sheets_gateway.py -q` -> 21 passed
+- `.venv/bin/python -m pytest` -> 272 passed
