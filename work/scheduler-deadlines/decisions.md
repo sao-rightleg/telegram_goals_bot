@@ -52,6 +52,22 @@ Agent reports on completed tasks. Each entry is written by the agent that execut
 **Verification:**
 - `.venv/bin/python -m pytest tests/test_scheduler_repository.py tests/test_sqlite_schema.py -q` -> 14 passed
 
+## Task 4: Reminder Job Service
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Added `SchedulerService.run_reminder` with Yekaterinburg week selection, Sheets-based recipient filtering, main-bot participant delivery, SQLite reminder logging, participant-scoped retry, and admin error notification after retry exhaustion.
+**Deviations:** Review subagents were not launched because this environment only permits delegation after an explicit agent request; local tests and diff review were used for this task.
+
+**Reviews:**
+
+*Round 1:*
+- local review: OK
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_scheduler_deadlines.py tests/test_scheduler_repository.py tests/test_scheduler_messages.py -q` -> 13 passed
+
 <!-- Entries are added by agents as tasks are completed.
 
 Format is strict — use only these sections, do not add others.
