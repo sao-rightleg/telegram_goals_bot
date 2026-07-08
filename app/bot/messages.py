@@ -66,9 +66,39 @@ INSIGHT_MISSING_TEXT = "Инсайт не найден."
 INSIGHT_MISSING_ACTIVE_GOAL_TEXT = "Прости, у тебя не зафиксировано активной цели, обратись к капитану"
 INSIGHT_VOICE_NOT_AVAILABLE_TEXT = "Голосовые инсайты будут доступны позже. Сейчас отправь текст."
 
+SCHEDULER_REMINDER_TEXTS = {
+    "monday_reminder": "Новая неделя началась.\n\nПроверь свои шаги и запланируй победу недели.",
+    "wednesday_checkin": "Короткий чек-ап.\n\nКак идёт движение по шагам на этой неделе?",
+    "sunday_1800_checkin": "Дедлайн отчёта сегодня в 23:59 по Екатеринбургу.",
+    "sunday_2230_reminder": (
+        "Напоминание: отчёт за неделю ещё не отправлен.\n\n"
+        "Дедлайн сегодня в 23:59 по Екатеринбургу."
+    ),
+    "sunday_2300_reminder": (
+        "Последнее напоминание.\n\n"
+        "Если отчёт не будет отправлен до 23:59 по Екатеринбургу, "
+        "неделя будет отмечена как ⬜ нет ответа."
+    ),
+}
+
 
 def format_missing_data_message() -> str:
     return MISSING_DATA_TEXT
+
+
+def format_scheduler_reminder_text(reminder_type: str) -> str:
+    return SCHEDULER_REMINDER_TEXTS[reminder_type]
+
+
+def format_silent_participants_notification(
+    *,
+    week_number: int,
+    participants: Sequence[object],
+) -> str:
+    names = [_participant_display_name(participant) for participant in participants]
+    lines = [f"Нет отчёта за неделю {week_number}: {len(names)} участник(ов)."]
+    lines.extend(f"- {name}" for name in names)
+    return "\n".join(lines)
 
 
 def build_insight_menu_buttons() -> tuple[str, str]:
@@ -112,6 +142,19 @@ def format_captain_team_member_line(participant: dict[str, object]) -> str:
     if isinstance(name, str) and name.strip():
         return f"• {name.strip()}"
     return "• Участник без имени"
+
+
+def _participant_display_name(participant: object) -> str:
+    name = getattr(participant, "full_name", None)
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+
+    if isinstance(participant, dict):
+        row_name = participant.get("full_name") or participant.get("display_name") or participant.get("name")
+        if isinstance(row_name, str) and row_name.strip():
+            return row_name.strip()
+
+    return "Участник без имени"
 
 
 def make_insight_title_fallback(text: str, *, limit: int = 100) -> str:
