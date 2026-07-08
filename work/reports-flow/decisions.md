@@ -205,3 +205,23 @@ Review details — in JSON files via links. QA report — in logs/working/.
 **Verification:**
 - `.venv/bin/python -m pytest tests/test_reports_delivery.py -q` -> 12 passed
 - `.venv/bin/python -m pytest` -> 284 passed
+
+## Task 9: Report Orchestration Service
+
+**Status:** Done
+**Commit:** 3210fdb
+**Agent:** main agent
+**Summary:** Added `ReportService.generate_and_send_week`, coordinating job idempotency, Sheets aggregation, Telegram summary formatting, local PDF generation, recipient planning, and delivery. Per-team PDF failures notify admin and allow text delivery to continue, while unrecoverable failures mark the report job failed.
+**Deviations:** Formal reviewer subagents were not run because delegation was not explicitly requested for this execution; local tests and full suite passed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run -> subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_reports_service.py -q` -> 6 passed
+- `.venv/bin/python -m pytest tests/test_reports_service.py tests/test_reports_delivery.py tests/test_reports_generation.py tests/test_reports_pdf.py tests/test_reports_sheets_gateway.py -q` -> 34 passed
+- `.venv/bin/python -m pytest` -> 290 passed
