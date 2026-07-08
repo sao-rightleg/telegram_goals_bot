@@ -326,6 +326,70 @@ def test_silent_notification_does_not_include_draft_state(tmp_path: Path) -> Non
     assert "draft" not in notification_bot.sent_messages[0].text.lower()
 
 
+def test_scheduler_acceptance_criteria_coverage() -> None:
+    covered_by = {
+        "approved schedule in Asia/Yekaterinburg": [
+            "tests/test_scheduler_foundation.py::test_timezone_is_yekaterinburg",
+            "tests/test_scheduler_foundation.py::test_reminder_schedule_matches_product_decisions",
+        ],
+        "reminders go only to active consenting participants without reports": [
+            "test_reminder_sends_only_to_active_consenting_participants_without_report",
+            "test_reminder_skips_dropped_non_consenting_and_already_reported_participants",
+        ],
+        "sunday 18:00 is text-only reminder": [
+            "test_sunday_1800_reminder_does_not_start_report_flow",
+        ],
+        "participant send failure is isolated": [
+            "test_failed_participant_send_retries_three_times_without_blocking_others",
+        ],
+        "failed reminder recipient is retried at most three times and notifies admin": [
+            "test_failed_participant_send_retries_three_times_without_blocking_others",
+            "test_failed_reminder_after_retry_exhaustion_notifies_admin",
+        ],
+        "week close creates gray reports for active missing participants": [
+            "test_week_close_creates_gray_reports_for_active_missing_participants",
+            "test_week_close_includes_non_consenting_active_participants",
+        ],
+        "week close skips dropped and already reported participants": [
+            "test_week_close_skips_dropped_and_already_reported_participants",
+        ],
+        "unfinished draft still receives gray report and remains in sqlite": [
+            "test_week_close_preserves_unfinished_drafts",
+            "tests/test_weekly_report_boundaries.py::test_late_report_never_writes_weekly_report_or_relations",
+        ],
+        "week close is idempotent and recovers from partial sheets failures": [
+            "test_week_close_is_idempotent_on_rerun",
+            "test_week_close_rerun_after_partial_failure_creates_only_missing_gray_rows",
+        ],
+        "week close does not notify participants about gray status": [
+            "test_week_close_sends_aggregated_silent_notification_to_captain_and_tracker",
+        ],
+        "silent notification goes to captain and tracker by team": [
+            "test_week_close_sends_aggregated_silent_notification_to_captain_and_tracker",
+            "test_silent_notifications_are_scoped_to_team",
+        ],
+        "silent notification does not disclose drafts or other teams": [
+            "test_silent_notifications_are_scoped_to_team",
+            "test_silent_notification_does_not_include_draft_state",
+        ],
+        "missing captain or tracker chat id does not block week close and notifies admin": [
+            "test_missing_captain_or_tracker_chat_id_notifies_admin_without_blocking_week_close",
+        ],
+        "late draft finalization keeps existing deadline behavior": [
+            "tests/test_weekly_report_finalize.py::test_finalize_rejects_late_report_without_final_facts",
+            "tests/test_weekly_report_boundaries.py::test_late_report_never_writes_weekly_report_or_relations",
+        ],
+    }
+    local_tests = {name for name, value in globals().items() if name.startswith("test_") and callable(value)}
+
+    assert all(requirement for requirement in covered_by)
+    assert all(test_names for test_names in covered_by.values())
+    for test_names in covered_by.values():
+        for test_name in test_names:
+            if "::" not in test_name:
+                assert test_name in local_tests
+
+
 def _service(
     tmp_path: Path,
     *,

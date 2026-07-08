@@ -100,6 +100,23 @@ Agent reports on completed tasks. Each entry is written by the agent that execut
 **Verification:**
 - `.venv/bin/python -m pytest tests/test_scheduler_deadlines.py tests/test_scheduler_messages.py tests/test_scheduler_sheets_gateway.py tests/test_scheduler_repository.py -q` -> 27 passed
 
+## Task 7: Scheduler Boundary and Regression Coverage
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Added an acceptance-criteria coverage matrix for scheduler deadlines and verified the scheduler, SQLite-adjacent, weekly report finalization, and deadline boundary regression suite. Existing late/duplicate weekly report behavior remains unchanged.
+**Deviations:** Review subagents were not launched because this environment only permits delegation after an explicit agent request; local test review and smoke verification were used for this task.
+
+**Reviews:**
+
+*Round 1:*
+- local review: OK
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_scheduler_foundation.py tests/test_scheduler_deadlines.py tests/test_weekly_report_finalize.py tests/test_weekly_report_boundaries.py -v` -> 40 passed
+- `.venv/bin/python -m pytest tests/test_scheduler_foundation.py tests/test_scheduler_deadlines.py tests/test_weekly_report_finalize.py tests/test_weekly_report_boundaries.py` -> 40 passed
+
 <!-- Entries are added by agents as tasks are completed.
 
 Format is strict — use only these sections, do not add others.
