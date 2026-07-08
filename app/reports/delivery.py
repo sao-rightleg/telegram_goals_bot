@@ -165,21 +165,32 @@ class ReportDeliveryPlanner:
         )
         if recipient is None:
             return
-        items.extend(
-            [
-                ReportDeliveryItem(
-                    report_type=ReportType.TELEGRAM_TEAM_SUMMARY,
+        items.append(
+            ReportDeliveryItem(
+                report_type=ReportType.TELEGRAM_TEAM_SUMMARY,
+                scope_id=team.team_id,
+                recipient=recipient,
+                text=self.team_summary_texts[team.team_id],
+            )
+        )
+        pdf_path = self.team_pdf_paths.get(team.team_id)
+        if pdf_path is None:
+            problems.append(
+                ReportDeliveryProblem(
+                    reason="missing_pdf",
+                    recipient_type=recipient_type,
+                    recipient_id=recipient_id,
                     scope_id=team.team_id,
-                    recipient=recipient,
-                    text=self.team_summary_texts[team.team_id],
-                ),
-                ReportDeliveryItem(
-                    report_type=ReportType.PDF_TEAM_REPORT,
-                    scope_id=team.team_id,
-                    recipient=recipient,
-                    file_path=self.team_pdf_paths[team.team_id],
-                ),
-            ]
+                )
+            )
+            return
+        items.append(
+            ReportDeliveryItem(
+                report_type=ReportType.PDF_TEAM_REPORT,
+                scope_id=team.team_id,
+                recipient=recipient,
+                file_path=pdf_path,
+            )
         )
 
     def _recipient_or_problem(

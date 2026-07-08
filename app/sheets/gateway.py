@@ -28,6 +28,9 @@ class SheetsGateway(Protocol):
     def get_tracker(self, tracker_id: str) -> SheetRow | None:
         """Return one tracker row by stable tracker ID."""
 
+    def list_trackers(self) -> list[SheetRow]:
+        """Return tracker rows for report recipient planning."""
+
     def update_participant_consent(
         self,
         participant_id: str,
@@ -149,6 +152,9 @@ class FakeSheetsGateway:
             if row.get("tracker_id") == tracker_id:
                 return dict(row)
         return None
+
+    def list_trackers(self) -> list[SheetRow]:
+        return [dict(row) for row in self._trackers]
 
     def update_participant_consent(
         self,
