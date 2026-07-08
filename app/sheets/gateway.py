@@ -10,6 +10,9 @@ SheetRow = dict[str, object]
 
 
 class SheetsGateway(Protocol):
+    def list_participants(self) -> list[SheetRow]:
+        """Return all participant rows for scheduler selection."""
+
     def find_participant_by_telegram_id(self, telegram_id: int) -> SheetRow | None:
         """Find a participant business row by Telegram ID."""
 
@@ -18,6 +21,12 @@ class SheetsGateway(Protocol):
 
     def list_participants_by_team(self, team_id: str) -> list[SheetRow]:
         """Return participant rows scoped to one team."""
+
+    def list_teams(self) -> list[SheetRow]:
+        """Return team rows used to resolve captain/tracker recipients."""
+
+    def get_tracker(self, tracker_id: str) -> SheetRow | None:
+        """Return one tracker row by stable tracker ID."""
 
     def update_participant_consent(
         self,
@@ -82,6 +91,8 @@ class FakeSheetsGateway:
         self,
         *,
         participants: Iterable[SheetRow] = (),
+        teams: Iterable[SheetRow] = (),
+        trackers: Iterable[SheetRow] = (),
         goals: Iterable[SheetRow] = (),
         planned_steps: Iterable[SheetRow] = (),
         weekly_reports: Iterable[SheetRow] = (),
@@ -89,11 +100,16 @@ class FakeSheetsGateway:
         insights: Iterable[SheetRow] = (),
     ) -> None:
         self._participants = _copy_rows(participants)
+        self._teams = _copy_rows(teams)
+        self._trackers = _copy_rows(trackers)
         self._goals = _copy_rows(goals)
         self._planned_steps = _copy_rows(planned_steps)
         self._weekly_reports = _copy_rows(weekly_reports)
         self._weekly_report_steps = _copy_rows(weekly_report_steps)
         self._insights = _copy_rows(insights)
+
+    def list_participants(self) -> list[SheetRow]:
+        return [dict(row) for row in self._participants]
 
     def find_participant_by_telegram_id(self, telegram_id: int) -> SheetRow | None:
         for row in self._participants:
@@ -109,6 +125,15 @@ class FakeSheetsGateway:
 
     def list_participants_by_team(self, team_id: str) -> list[SheetRow]:
         return [dict(row) for row in self._participants if row.get("team_id") == team_id]
+
+    def list_teams(self) -> list[SheetRow]:
+        return [dict(row) for row in self._teams]
+
+    def get_tracker(self, tracker_id: str) -> SheetRow | None:
+        for row in self._trackers:
+            if row.get("tracker_id") == tracker_id:
+                return dict(row)
+        return None
 
     def update_participant_consent(
         self,

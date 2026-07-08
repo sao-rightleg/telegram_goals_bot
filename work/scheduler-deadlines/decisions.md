@@ -20,6 +20,22 @@ Agent reports on completed tasks. Each entry is written by the agent that execut
 **Verification:**
 - `.venv/bin/python -m pytest tests/test_scheduler_messages.py tests/test_weekly_report_messages.py -q` -> 8 passed
 
+## Task 2: Scheduler Sheets Gateway Queries
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Extended the Sheets gateway protocol and fake implementation with scheduler participant, team, and tracker read paths. New fake rows are copied on read so scheduler tests cannot mutate internal gateway state.
+**Deviations:** Review subagents were not launched because this environment only permits delegation after an explicit agent request; local tests and diff review were used for this task.
+
+**Reviews:**
+
+*Round 1:*
+- local review: OK
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_scheduler_sheets_gateway.py tests/test_participant_sheets_gateway.py tests/test_weekly_report_sheets_gateway.py -q` -> 18 passed
+
 <!-- Entries are added by agents as tasks are completed.
 
 Format is strict — use only these sections, do not add others.
