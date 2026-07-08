@@ -167,3 +167,22 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - `.venv/bin/python -m pytest tests/test_reports_pdf.py -q` -> 5 passed
 - `.venv/bin/python -m pytest tests/test_reports_generation.py tests/test_reports_pdf.py tests/test_reports_messages.py tests/test_reports_sheets_gateway.py -q` -> 21 passed
 - `.venv/bin/python -m pytest` -> 272 passed
+
+## Task 7: Recipient Planning
+
+**Status:** Done
+**Commit:** 2d38847
+**Agent:** main agent
+**Summary:** Added role-safe report recipient planning for captains, trackers, admin, and Sitnikov. The planner creates delivery items for authorized scopes only, keeps group comparison admin/Sitnikov-only, and records missing chat ids as plan problems instead of sendable items.
+**Deviations:** Formal reviewer subagents were not run because delegation was not explicitly requested for this execution; local tests and full suite passed.
+
+**Reviews:**
+
+*Round 1:*
+- code-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+- security-auditor: Not run -> subagent delegation not explicitly requested for this task execution.
+- test-reviewer: Not run -> subagent delegation not explicitly requested for this task execution.
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_reports_delivery.py -q` -> 6 passed
+- `.venv/bin/python -m pytest` -> 278 passed
