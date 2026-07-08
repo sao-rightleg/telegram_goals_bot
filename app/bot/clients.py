@@ -20,11 +20,27 @@ class OutgoingMessage:
     text: str
 
 
+@dataclass(frozen=True)
+class OutgoingDocument:
+    chat_id: str
+    file_path: Path
+    caption: str | None = None
+
+
 class BotClient(Protocol):
     purpose: BotPurpose
 
     def send_message(self, *, chat_id: str, text: str) -> OutgoingMessage:
         """Send a text message through a concrete bot client."""
+
+    def send_document(
+        self,
+        *,
+        chat_id: str,
+        file_path: Path,
+        caption: str | None = None,
+    ) -> OutgoingDocument:
+        """Send a document through a concrete bot client."""
 
 
 @dataclass(frozen=True)
@@ -42,11 +58,23 @@ class TelegramFileDownloader(Protocol):
 class FakeBotClient:
     purpose: BotPurpose
     sent_messages: list[OutgoingMessage] = field(default_factory=list)
+    sent_documents: list[OutgoingDocument] = field(default_factory=list)
 
     def send_message(self, *, chat_id: str, text: str) -> OutgoingMessage:
         message = OutgoingMessage(chat_id=chat_id, text=text)
         self.sent_messages.append(message)
         return message
+
+    def send_document(
+        self,
+        *,
+        chat_id: str,
+        file_path: Path,
+        caption: str | None = None,
+    ) -> OutgoingDocument:
+        document = OutgoingDocument(chat_id=chat_id, file_path=file_path, caption=caption)
+        self.sent_documents.append(document)
+        return document
 
 
 @dataclass

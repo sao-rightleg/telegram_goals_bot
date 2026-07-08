@@ -85,6 +85,21 @@ class SheetsGateway(Protocol):
     def list_insights(self) -> list[SheetRow]:
         """Return insight rows for tests or future readers."""
 
+    def list_goals(self) -> list[SheetRow]:
+        """Return all goal rows for report aggregation."""
+
+    def list_planned_steps_all(self) -> list[SheetRow]:
+        """Return all planned step rows for report aggregation."""
+
+    def list_weekly_reports_for_week(self, week_number: int) -> list[SheetRow]:
+        """Return final weekly report rows for one week."""
+
+    def list_weekly_report_steps_all(self) -> list[SheetRow]:
+        """Return all weekly report step relation rows for report aggregation."""
+
+    def list_insights_for_week(self, week_number: int) -> list[SheetRow]:
+        """Return final insight rows for one week."""
+
 
 class FakeSheetsGateway:
     def __init__(
@@ -233,6 +248,29 @@ class FakeSheetsGateway:
 
     def list_insights(self) -> list[SheetRow]:
         return [dict(row) for row in self._insights]
+
+    def list_goals(self) -> list[SheetRow]:
+        return [dict(row) for row in self._goals]
+
+    def list_planned_steps_all(self) -> list[SheetRow]:
+        return [dict(row) for row in self._planned_steps]
+
+    def list_weekly_reports_for_week(self, week_number: int) -> list[SheetRow]:
+        return [
+            dict(row)
+            for row in self._weekly_reports
+            if row.get("week_number") == week_number
+        ]
+
+    def list_weekly_report_steps_all(self) -> list[SheetRow]:
+        return [dict(row) for row in self._weekly_report_steps]
+
+    def list_insights_for_week(self, week_number: int) -> list[SheetRow]:
+        return [
+            dict(row)
+            for row in self._insights
+            if row.get("week_number") == week_number
+        ]
 
 
 def _copy_rows(rows: Iterable[SheetRow]) -> list[SheetRow]:

@@ -16,6 +16,8 @@ REQUIRED_TECHNICAL_TABLES = {
     "scheduler_jobs",
     "job_runs",
     "reminder_log",
+    "report_job_runs",
+    "report_delivery_log",
     "error_events",
 }
 
@@ -237,6 +239,38 @@ SCHEMA_STATEMENTS = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS report_job_runs (
+        report_job_run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        week_number INTEGER NOT NULL,
+        job_type TEXT NOT NULL CHECK (job_type IN ('report_generate_send')),
+        idempotency_key TEXT NOT NULL UNIQUE,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        status TEXT NOT NULL CHECK (
+            status IN ('running', 'completed', 'failed', 'skipped')
+        ),
+        error_message TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS report_delivery_log (
+        report_delivery_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        week_number INTEGER NOT NULL,
+        report_type TEXT NOT NULL,
+        scope_id TEXT NOT NULL,
+        recipient_type TEXT NOT NULL,
+        recipient_id TEXT NOT NULL,
+        chat_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('sent', 'failed', 'skipped')),
+        sent_at TEXT NOT NULL,
+        telegram_message_id INTEGER,
+        file_path TEXT,
+        error_message TEXT,
+        attempt_count INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count > 0),
+        UNIQUE (week_number, report_type, scope_id, recipient_type, recipient_id)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS error_events (
         error_event_id INTEGER PRIMARY KEY AUTOINCREMENT,
         created_at TEXT NOT NULL,
@@ -260,6 +294,7 @@ SCHEMA_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_draft_attachments_draft_id ON draft_attachments(draft_id)",
     "CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_status_scheduled_for ON scheduler_jobs(status, scheduled_for)",
     "CREATE INDEX IF NOT EXISTS idx_reminder_log_participant_week_status ON reminder_log(participant_id, week_number, status)",
+    "CREATE INDEX IF NOT EXISTS idx_report_delivery_log_recipient_status ON report_delivery_log(week_number, report_type, scope_id, recipient_type, recipient_id, status)",
     "CREATE INDEX IF NOT EXISTS idx_error_events_created_at ON error_events(created_at)",
     "CREATE INDEX IF NOT EXISTS idx_error_events_severity_admin_notified ON error_events(severity, admin_notified)",
     """

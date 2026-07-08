@@ -20,6 +20,18 @@ def test_init_creates_required_technical_tables(tmp_path: Path) -> None:
     assert REQUIRED_TECHNICAL_TABLES <= list_tables(db_path)
 
 
+def test_report_tables_are_technical_not_business_primary(tmp_path: Path) -> None:
+    db_path = tmp_path / "state.sqlite3"
+
+    initialize_schema(db_path)
+
+    tables = list_tables(db_path)
+    assert {"report_job_runs", "report_delivery_log"} <= tables
+    assert "report_runs" not in tables
+    assert "report_job_runs" not in BUSINESS_PRIMARY_TABLES
+    assert "report_delivery_log" not in BUSINESS_PRIMARY_TABLES
+
+
 def test_init_does_not_create_business_primary_tables(tmp_path: Path) -> None:
     db_path = tmp_path / "state.sqlite3"
 

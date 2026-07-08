@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Iterable
 
-from app.bot.clients import BotClient, OutgoingMessage
+from app.bot.clients import BotClient, OutgoingDocument, OutgoingMessage
 
 
 class NotificationCategory(str, Enum):
@@ -59,3 +60,25 @@ class NotificationRouter:
             else self.notification_bot
         )
         return [bot.send_message(chat_id=recipient.chat_id, text=text) for recipient in recipients]
+
+    def send_document(
+        self,
+        *,
+        category: NotificationCategory,
+        file_path: Path,
+        recipients: Iterable[Recipient],
+        caption: str | None = None,
+    ) -> list[OutgoingDocument]:
+        bot = (
+            self.main_bot
+            if category is NotificationCategory.PARTICIPANT_MESSAGE
+            else self.notification_bot
+        )
+        return [
+            bot.send_document(
+                chat_id=recipient.chat_id,
+                file_path=file_path,
+                caption=caption,
+            )
+            for recipient in recipients
+        ]
