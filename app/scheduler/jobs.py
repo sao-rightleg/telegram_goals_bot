@@ -101,6 +101,74 @@ class SchedulerService:
             failed_count=failed_count,
         )
 
+    def close_week(self, *, now: datetime) -> WeekCloseResult:
+        week_number = current_challenge_week_number(now)
+        gray_created_count = 0
+        existing_count = 0
+        failed_count = 0
+        job_run_id = self.repository.start_job_run(
+            job_type="week_close",
+            week_number=week_number,
+            scheduled_for=now.isoformat(),
+            idempotency_key=build_idempotency_key("week_close", week_number=week_number),
+            started_at=now.isoformat(),
+        )
+
+        for participant in self.sheets.list_participants():
+            if _normalized_string(participant.get("status")) == "dropped":
+                continue
+
+            participant_id = _string_value(participant.get("participant_id"))
+            team_id = _string_value(participant.get("team_id"))
+            if not participant_id:
+                failed_count += 1
+                self._notify_admin_error(
+                    "week_close_missing_participant_id",
+                    "week_close_missing_participant_id",
+                    participant_id="",
+                    team_id=team_id,
+                    now=now,
+                )
+                continue
+
+            if self.sheets.find_weekly_report(participant_id, week_number=week_number) is not None:
+                existing_count += 1
+                continue
+
+            try:
+                self.sheets.append_weekly_report(
+                    _gray_weekly_report_row(
+                        participant,
+                        goal_id=_active_goal_id(self.sheets, participant_id),
+                        week_number=week_number,
+                        submitted_at=now.isoformat(),
+                    )
+                )
+                gray_created_count += 1
+            except Exception as exc:  # pragma: no cover - concrete exception type belongs to Sheets adapter
+                failed_count += 1
+                self._notify_admin_error(
+                    "week_close_gray_failed",
+                    f"week_close_gray_failed participant_id={participant_id} error={exc}",
+                    participant_id=participant_id,
+                    team_id=team_id,
+                    now=now,
+                )
+
+        status = "failed" if failed_count else "completed"
+        self.repository.finish_job_run(
+            job_run_id,
+            status=status,
+            finished_at=now.isoformat(),
+            error_message=None if not failed_count else f"failed_count={failed_count}",
+        )
+        return WeekCloseResult(
+            gray_created_count=gray_created_count,
+            existing_count=existing_count,
+            failed_count=failed_count,
+            notified_team_count=0,
+        )
+
     def _is_reminder_eligible(self, participant: dict[str, object], *, week_number: int) -> bool:
         if _normalized_string(participant.get("status")) == "dropped":
             return False
@@ -221,3 +289,40 @@ def _normalized_string(value: object) -> str:
 def _telegram_message_id(message: object) -> int | None:
     value = getattr(message, "telegram_message_id", None)
     return value if isinstance(value, int) else None
+
+
+def _active_goal_id(sheets: SheetsGateway, participant_id: str) -> str:
+    goal = sheets.get_active_goal(participant_id)
+    if goal is None:
+        return ""
+    return _string_value(goal.get("goal_id"))
+
+
+def _gray_weekly_report_row(
+    participant: dict[str, object],
+    *,
+    goal_id: str,
+    week_number: int,
+    submitted_at: str,
+) -> dict[str, object]:
+    participant_id = _string_value(participant.get("participant_id"))
+    return {
+        "weekly_report_id": f"WR:{participant_id}:week-{week_number:02d}",
+        "participant_id": participant_id,
+        "team_id": _string_value(participant.get("team_id")),
+        "goal_id": goal_id,
+        "week_number": week_number,
+        "status_code": "gray",
+        "status_symbol": "⬜",
+        "score": 0,
+        "status_score": 0,
+        "report_text": "",
+        "transcription_text": "",
+        "audio_file_path": "",
+        "audio_deleted_at": "",
+        "submitted_at": submitted_at,
+        "submitted_by_id": "system",
+        "submitted_by_role": "system",
+        "flow_source": "system_deadline",
+        "submitted_source": "system_deadline",
+    }

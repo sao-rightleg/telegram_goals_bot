@@ -12,6 +12,7 @@ from app.services.notifications import NotificationRouter, Recipient, RecipientT
 from app.sheets.gateway import FakeSheetsGateway
 from app.storage.scheduler import SchedulerJobRepository
 from app.storage.sqlite import initialize_schema
+from app.storage.weekly_report_drafts import WeeklyReportDraftRepository
 
 
 NOW = datetime(2026, 7, 2, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME))
@@ -107,16 +108,138 @@ def test_failed_reminder_after_retry_exhaustion_notifies_admin(tmp_path: Path) -
     assert "reminder_send_failed" in error_bot.sent_messages[0].text
 
 
+def test_week_close_creates_gray_reports_for_active_missing_participants(tmp_path: Path) -> None:
+    service, gateway, _main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[
+            _participant("P001", 1001, consent=True),
+            _participant("P002", 1002, consent=True),
+        ],
+        goals=[
+            {"goal_id": "G001", "participant_id": "P001", "goal_status": "active"},
+            {"goal_id": "G002", "participant_id": "P002", "goal_status": "active"},
+        ],
+    )
+
+    result = service.close_week(now=NOW)
+
+    assert result.gray_created_count == 2
+    assert result.existing_count == 0
+    reports = gateway.list_weekly_reports()
+    assert [row["participant_id"] for row in reports] == ["P001", "P002"]
+    assert {row["status_code"] for row in reports} == {"gray"}
+    assert {row["status_symbol"] for row in reports} == {"⬜"}
+    assert {row["submitted_by_role"] for row in reports} == {"system"}
+    assert {row["submitted_source"] for row in reports} == {"system_deadline"}
+    assert {row["score"] for row in reports} == {0}
+    assert {row["status_score"] for row in reports} == {0}
+
+
+def test_week_close_includes_non_consenting_active_participants(tmp_path: Path) -> None:
+    service, gateway, _main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[_participant("P001", 1001, consent=False)],
+    )
+
+    result = service.close_week(now=NOW)
+
+    assert result.gray_created_count == 1
+    assert gateway.list_weekly_reports()[0]["participant_id"] == "P001"
+
+
+def test_week_close_skips_dropped_and_already_reported_participants(tmp_path: Path) -> None:
+    service, gateway, _main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[
+            _participant("P001", 1001, consent=True),
+            _participant("P002", 1002, consent=True, status="dropped"),
+            _participant("P003", 1003, consent=True),
+        ],
+        weekly_reports=[
+            {"weekly_report_id": "WR:P003:week-04", "participant_id": "P003", "week_number": 4}
+        ],
+    )
+
+    result = service.close_week(now=NOW)
+
+    assert result.gray_created_count == 1
+    assert result.existing_count == 1
+    assert [row["participant_id"] for row in gateway.list_weekly_reports()] == ["P003", "P001"]
+
+
+def test_week_close_is_idempotent_on_rerun(tmp_path: Path) -> None:
+    service, gateway, _main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[_participant("P001", 1001, consent=True)],
+    )
+
+    first = service.close_week(now=NOW)
+    second = service.close_week(now=NOW)
+
+    assert first.gray_created_count == 1
+    assert second.gray_created_count == 0
+    assert second.existing_count == 1
+    assert len(gateway.list_weekly_reports()) == 1
+
+
+def test_week_close_rerun_after_partial_failure_creates_only_missing_gray_rows(tmp_path: Path) -> None:
+    gateway = FailsOnceAfterFirstGrayGateway(
+        participants=[
+            _participant("P001", 1001, consent=True),
+            _participant("P002", 1002, consent=True),
+        ]
+    )
+    service, _gateway, _main_bot, error_bot = _service(tmp_path, participants=[], gateway=gateway)
+
+    first = service.close_week(now=NOW)
+    second = service.close_week(now=NOW)
+
+    assert first.gray_created_count == 1
+    assert first.failed_count == 1
+    assert second.gray_created_count == 1
+    assert second.existing_count == 1
+    assert [row["participant_id"] for row in gateway.list_weekly_reports()] == ["P001", "P002"]
+    assert "week_close_gray_failed" in error_bot.sent_messages[0].text
+
+
+def test_week_close_preserves_unfinished_drafts(tmp_path: Path) -> None:
+    service, gateway, _main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[_participant("P001", 1001, consent=True)],
+    )
+    drafts = WeeklyReportDraftRepository(tmp_path / "state.sqlite3")
+    drafts.create_draft(
+        draft_id="draft-P001-week-04",
+        telegram_id=1001,
+        participant_id="P001",
+        team_id="T001",
+        goal_id="G001",
+        week_number=4,
+        occurred_at=NOW.isoformat(),
+    )
+
+    service.close_week(now=NOW)
+
+    assert gateway.list_weekly_reports()[0]["participant_id"] == "P001"
+    assert drafts.get_active_draft(1001) is not None
+
+
 def _service(
     tmp_path: Path,
     *,
     participants: list[dict[str, object]],
     weekly_reports: list[dict[str, object]] | None = None,
+    goals: list[dict[str, object]] | None = None,
     failing_chat_ids: set[str] | None = None,
+    gateway: FakeSheetsGateway | None = None,
 ) -> tuple[SchedulerService, FakeSheetsGateway, "FailingBotClient", FakeBotClient]:
     db_path = tmp_path / "state.sqlite3"
     initialize_schema(db_path)
-    gateway = FakeSheetsGateway(participants=participants, weekly_reports=weekly_reports or [])
+    gateway = gateway or FakeSheetsGateway(
+        participants=participants,
+        weekly_reports=weekly_reports or [],
+        goals=goals or [],
+    )
     main_bot = FailingBotClient(BotPurpose.MAIN, failing_chat_ids=failing_chat_ids or set())
     error_bot = FakeBotClient(BotPurpose.ERROR)
     notification_bot = FakeBotClient(BotPurpose.NOTIFICATION)
@@ -169,3 +292,15 @@ class FailingBotClient:
         message = OutgoingMessage(chat_id=chat_id, text=text)
         self.sent_messages.append(message)
         return message
+
+
+class FailsOnceAfterFirstGrayGateway(FakeSheetsGateway):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._failed = False
+
+    def append_weekly_report(self, row: dict[str, object]) -> None:
+        if len(self.list_weekly_reports()) == 1 and not self._failed:
+            self._failed = True
+            raise RuntimeError("google sheets unavailable")
+        super().append_weekly_report(row)

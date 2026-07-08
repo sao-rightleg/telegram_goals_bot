@@ -68,6 +68,22 @@ Agent reports on completed tasks. Each entry is written by the agent that execut
 **Verification:**
 - `.venv/bin/python -m pytest tests/test_scheduler_deadlines.py tests/test_scheduler_repository.py tests/test_scheduler_messages.py -q` -> 13 passed
 
+## Task 5: Week Close Service
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Added idempotent `SchedulerService.close_week` that creates system deadline gray weekly reports for active participants without finalized reports. The implementation skips dropped participants, preserves unfinished drafts, and can recover from partial Sheets append failures by rerunning.
+**Deviations:** Review subagents were not launched because this environment only permits delegation after an explicit agent request; local tests and diff review were used for this task.
+
+**Reviews:**
+
+*Round 1:*
+- local review: OK
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_scheduler_deadlines.py tests/test_weekly_report_finalize.py tests/test_weekly_report_boundaries.py -q` -> 29 passed
+
 <!-- Entries are added by agents as tasks are completed.
 
 Format is strict — use only these sections, do not add others.
