@@ -47,6 +47,13 @@ Product decisions in `docs/02_open_questions.md` are resolved and must be follow
 - Final goal achievement is fixed by tracker or admin, not participant/captain and not automatically by the bot.
 - Captain may see full report texts, voice transcriptions, and insights for own team only.
 - Trackers may have direct Google Sheets access but must not change sheet structure, column names, technical IDs, or service fields.
+- Reports read only final Google Sheets business facts and must not include unfinished SQLite drafts as report content.
+- Report delivery uses notification bot for report texts and PDF documents; main bot is not used for mass report delivery.
+- Captains receive only own-team report summary/PDF; trackers receive only assigned gender/team scopes.
+- Admin and Alexander Sitnikov receive all team reports, PDFs, full summary, and group comparison.
+- Group comparison is not delivered to captains or trackers.
+- Report delivery is idempotent per week, report type, scope, recipient type, and recipient id.
+- Missing chat id, send failure, or PDF generation failure must notify admin with sanitized technical context and must not block unrelated recipients/teams.
 
 ## Statuses and Scoring
 

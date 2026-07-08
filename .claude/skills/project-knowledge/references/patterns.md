@@ -64,6 +64,8 @@ Admin must receive Telegram error notifications for:
 - Invalid dialog state.
 - Missing required data.
 
+For report delivery errors, keep admin messages technical and sanitized: include report type, scope, recipient role/id, and failure category; do not include raw personal report text, secrets, token-like strings, or PDF contents.
+
 Error messages must contain enough context to fix the issue, but must not expose secrets or unnecessary personal data.
 
 ## Testing Focus
@@ -81,8 +83,8 @@ High-risk tests:
 
 ## Current Test Coverage Shape
 
-The implemented MVP slices are covered with local pytest tests and fake external boundaries. Pre-deploy QA passed for foundation, participant core flows, weekly report flow, insight flow, voice processing, and captain flows without production secrets or live API calls.
+The implemented MVP slices are covered with local pytest tests and fake external boundaries. Pre-deploy QA passed for foundation, participant core flows, weekly report flow, insight flow, voice processing, captain flows, scheduler deadlines, and reports flow without production secrets or live API calls.
 
-Tests are organized around service boundaries and business risks: config validation, secret redaction, SQLite schema/repositories, participant and captain role/consent gates, weekly report deadline and duplicate guards, Sheets fake behavior, insight privacy boundaries, captain forged-selection and own-team boundaries, voice duration and failure retention behavior, scheduler reminder recipient filtering/retry/idempotency, week-close partial failure recovery, silent-notification team privacy, and forbidden out-of-scope dependencies.
+Tests are organized around service boundaries and business risks: config validation, secret redaction, SQLite schema/repositories, participant and captain role/consent gates, weekly report deadline and duplicate guards, Sheets fake behavior, insight privacy boundaries, captain forged-selection and own-team boundaries, voice duration and failure retention behavior, scheduler reminder recipient filtering/retry/idempotency, week-close partial failure recovery, silent-notification team privacy, report aggregation/formatting/PDF generation, role-safe report recipient planning, report delivery idempotency, report failure isolation, generated artifact safety, and forbidden out-of-scope dependencies.
 
 When adding the next feature, preserve the same fake-boundary approach until live integration tasks explicitly require real SDKs or external credentials.

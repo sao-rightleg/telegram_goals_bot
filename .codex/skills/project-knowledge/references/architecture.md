@@ -18,7 +18,7 @@
 
 Telegram users interact with thin Telegram handlers. Handlers route updates into business services, business services use SQLite repositories for technical dialogue and draft state, and final business facts go through the Google Sheets integration boundary.
 
-The implemented MVP foundation currently includes adapter-independent boundaries for configuration, logging, Google Sheets access, Telegram bot clients, notification routing, speech transcription, report generation, local storage paths, scheduler calendar constants, participant flows, weekly report flows, insight flows, voice message input for active weekly-report and insight drafts, and captain own-team/manual-report service flows.
+The implemented MVP foundation currently includes adapter-independent boundaries for configuration, logging, Google Sheets access, Telegram bot clients, notification routing, speech transcription, report generation, local storage paths, scheduler calendar constants, participant flows, weekly report flows, insight flows, voice message input for active weekly-report and insight drafts, captain own-team/manual-report service flows, scheduler deadline execution, and local report generation/delivery orchestration.
 
 ## Component Boundaries
 
@@ -41,7 +41,7 @@ Business services enforce role rules, deadline rules, progress calculation, and 
 
 Google Sheets integration isolates Google API details and stores final business facts.
 
-SQLite stores active flows, drafts, selected statuses, selected participants, temporary voice state, scheduler run state, retries, and technical errors.
+SQLite stores active flows, drafts, selected statuses, selected participants, temporary voice state, scheduler run state, report job/delivery state, retries, and technical errors.
 
 ## Storage Boundary
 
@@ -64,7 +64,7 @@ SQLite stores technical state only:
 
 SQLite must not become the only source for final business facts.
 
-Current SQLite repositories cover dialog state, weekly report drafts, insight drafts, temporary voice attachment/message state, and scheduler technical state. Voice transcriptions are stored in draft state only until the owning weekly-report or insight flow finalizes. Saved insight drafts purge full personal text and voice attachment rows from SQLite after successful Sheets save; Google Sheets remains the final store for insight text and voice transcription text.
+Current SQLite repositories cover dialog state, weekly report drafts, insight drafts, temporary voice attachment/message state, scheduler technical state, and report technical state. Report state uses `report_job_runs` and `report_delivery_log`; do not create a SQLite `report_runs` table because that name is reserved as a Google Sheets business-primary concept. Voice transcriptions are stored in draft state only until the owning weekly-report or insight flow finalizes. Saved insight drafts purge full personal text and voice attachment rows from SQLite after successful Sheets save; Google Sheets remains the final store for insight text and voice transcription text.
 
 ## Implemented Flow Slices
 
@@ -75,6 +75,7 @@ Current SQLite repositories cover dialog state, weekly report drafts, insight dr
 - Voice processing input: weekly-report and insight draft flows accept voice messages up to 600 seconds, download audio through a Telegram file boundary, store audio under the local non-public audio path policy, transcribe through the speech boundary, append ordered `voice_transcription` draft messages, and write final transcription/audio path fields through the owning finalization service. Voice processing does not own final Google Sheets writes and cannot bypass weekly deadline, duplicate, selected-step, or insight progress-isolation rules.
 - Captain flows: captain service resolves Telegram identity, consent, `role = captain`, and captain `team_id`; own-team view lists only rows from the captain's team and avoids internal ID leakage. Captain manual reports reuse weekly report draft state with `flow_source = captain_manual`, selected participant state, and captain submitter metadata. Final manual reports write normal `weekly_reports` and `weekly_report_steps` business facts for the selected participant, revalidate own-team ownership, dropped status, duplicate report, deadline, active goal, selected status, selected steps, and non-empty text before save, and clear draft state after success.
 - Scheduler deadline execution: scheduler service sends approved participant reminders through the main bot for active consenting participants without a current-week report, records retry/job state in SQLite, skips already-successful reminder sends on rerun, and sanitizes scheduler admin errors before sending them through the error bot. Week close creates official `gray` / `⬜` Google Sheets weekly report rows for active participants without final reports, preserves unfinished SQLite drafts, is idempotent across reruns and partial Sheets failures, and sends team-scoped aggregated silent-participant notifications through the notification bot to captain/tracker recipients.
+- Reports flow: report service reads final Google Sheets facts through `SheetsGateway`, aggregates team/global report data, formats Russian Telegram summaries, writes dependency-free local PDF-like team reports through `StoragePathPolicy.pdf_path`, plans role-safe recipients, and delivers text/documents through the notification bot. Captains receive only own-team summary/PDF; trackers receive assigned gender/team scopes; admin and Alexander Sitnikov receive all team reports, full summary, and group comparison. Delivery is idempotent per recipient/report item through SQLite `report_delivery_log`; PDF generation, missing chat id, and send failures notify admin through the error bot and continue unrelated work where possible.
 
 ## Bot Separation
 
