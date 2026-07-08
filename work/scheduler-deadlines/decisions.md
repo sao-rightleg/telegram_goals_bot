@@ -36,6 +36,22 @@ Agent reports on completed tasks. Each entry is written by the agent that execut
 **Verification:**
 - `.venv/bin/python -m pytest tests/test_scheduler_sheets_gateway.py tests/test_participant_sheets_gateway.py tests/test_weekly_report_sheets_gateway.py -q` -> 18 passed
 
+## Task 3: Scheduler SQLite Repository
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Added a scheduler SQLite repository for job runs, reminder retry state, and technical error recording. Added `attempt_count` to `reminder_log` as technical state so reminder retry limits can be enforced without storing business facts in SQLite.
+**Deviations:** Review subagents were not launched because this environment only permits delegation after an explicit agent request; local tests and diff review were used for this task.
+
+**Reviews:**
+
+*Round 1:*
+- local review: OK
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_scheduler_repository.py tests/test_sqlite_schema.py -q` -> 14 passed
+
 <!-- Entries are added by agents as tasks are completed.
 
 Format is strict — use only these sections, do not add others.

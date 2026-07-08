@@ -231,6 +231,7 @@ SCHEMA_STATEMENTS = [
         sent_at TEXT NOT NULL,
         telegram_message_id INTEGER,
         status TEXT NOT NULL CHECK (status IN ('sent', 'failed', 'skipped')),
+        attempt_count INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count > 0),
         error_message TEXT,
         UNIQUE (participant_id, week_number, reminder_type)
     )
@@ -324,6 +325,13 @@ def initialize_schema(db_path: str | Path) -> None:
                 "insight_title": "TEXT",
                 "saved_insight_id": "TEXT",
                 "saved_at": "TEXT",
+            },
+        )
+        _ensure_columns(
+            connection,
+            "reminder_log",
+            {
+                "attempt_count": "INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count > 0)",
             },
         )
 

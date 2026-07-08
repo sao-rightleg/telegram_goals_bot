@@ -255,3 +255,16 @@ def test_schema_contains_insight_draft_technical_fields(tmp_path: Path) -> None:
 
     columns = {row[1] for row in rows}
     assert {"insight_title", "saved_insight_id", "saved_at"} <= columns
+
+
+def test_reminder_log_tracks_attempt_count(tmp_path: Path) -> None:
+    db_path = tmp_path / "state.sqlite3"
+
+    initialize_schema(db_path)
+    initialize_schema(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        rows = connection.execute("PRAGMA table_info(reminder_log)").fetchall()
+
+    columns = {row[1] for row in rows}
+    assert "attempt_count" in columns
