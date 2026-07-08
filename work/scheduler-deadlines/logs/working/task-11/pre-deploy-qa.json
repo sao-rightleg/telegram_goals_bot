@@ -1,0 +1,242 @@
+{
+  "status": "passed",
+  "summary": {
+    "totalChecks": 31,
+    "passed": 31,
+    "failed": 0,
+    "notVerifiable": 0,
+    "criticals": 0,
+    "majors": 0,
+    "minors": 0
+  },
+  "testSuite": {
+    "status": "passed",
+    "details": "Full local pytest suite passed twice: 241 passed in 9.86s, then 241 passed in 10.13s.",
+    "commands": [
+      ".venv/bin/python -m pytest -> 241 passed",
+      ".venv/bin/python -m pytest -> 241 passed"
+    ]
+  },
+  "acceptanceCriteria": [
+    {
+      "id": "US-01",
+      "criterion": "Scheduler sends Monday, Wednesday, Sunday 18:00, Sunday 22:30, and Sunday 23:00 reminders on the approved Asia/Yekaterinburg schedule.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_foundation.py::test_timezone_is_yekaterinburg and ::test_reminder_schedule_matches_product_decisions"
+    },
+    {
+      "id": "US-02",
+      "criterion": "Reminders go only to active consenting participants without a current-week weekly report.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_reminder_sends_only_to_active_consenting_participants_without_report"
+    },
+    {
+      "id": "US-03",
+      "criterion": "Reminders skip dropped, non-consenting, and already reported participants.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_reminder_skips_dropped_non_consenting_and_already_reported_participants"
+    },
+    {
+      "id": "US-04",
+      "criterion": "Sunday 18:00 sends only text and does not start weekly report flow.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_sunday_1800_reminder_does_not_start_report_flow"
+    },
+    {
+      "id": "US-05",
+      "criterion": "One participant send failure does not stop reminder sends to other participants.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_failed_participant_send_retries_three_times_without_blocking_others"
+    },
+    {
+      "id": "US-06",
+      "criterion": "A failed reminder recipient gets no more than 3 attempts in one scheduled send.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_failed_participant_send_retries_three_times_without_blocking_others"
+    },
+    {
+      "id": "US-07",
+      "criterion": "After retry exhaustion scheduler records failed state in SQLite and sends admin error.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_failed_reminder_after_retry_exhaustion_notifies_admin and tests/test_scheduler_repository.py::test_reminder_attempt_upserts_retry_state"
+    },
+    {
+      "id": "US-08",
+      "criterion": "Week close creates gray/⬜ weekly report rows for active participants without final weekly reports.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_week_close_creates_gray_reports_for_active_missing_participants"
+    },
+    {
+      "id": "US-09",
+      "criterion": "Active participant without consent receives gray/⬜ at week close if no weekly report exists.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_week_close_includes_non_consenting_active_participants"
+    },
+    {
+      "id": "US-10",
+      "criterion": "Dropped participant does not receive a new gray/⬜ row through week close.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_week_close_skips_dropped_and_already_reported_participants"
+    },
+    {
+      "id": "US-11",
+      "criterion": "Participant with unfinished draft receives gray/⬜ at week close and draft remains in SQLite.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_week_close_preserves_unfinished_drafts"
+    },
+    {
+      "id": "US-12",
+      "criterion": "Repeated week close does not duplicate weekly reports and writes only missing gray/⬜ rows.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_week_close_is_idempotent_on_rerun"
+    },
+    {
+      "id": "US-13",
+      "criterion": "After partial Google Sheets write failure, the next week close continues with missing participants.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_week_close_rerun_after_partial_failure_creates_only_missing_gray_rows"
+    },
+    {
+      "id": "US-14",
+      "criterion": "After week close participants do not receive a separate gray/⬜ notification.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_week_close_sends_aggregated_silent_notification_to_captain_and_tracker verifies only notification bot messages to captain/tracker."
+    },
+    {
+      "id": "US-15",
+      "criterion": "Captain receives one aggregated silent notification for own team.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_week_close_sends_aggregated_silent_notification_to_captain_and_tracker and ::test_silent_notifications_are_scoped_to_team"
+    },
+    {
+      "id": "US-16",
+      "criterion": "Tracker receives one aggregated silent notification for assigned team.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_week_close_sends_aggregated_silent_notification_to_captain_and_tracker and ::test_silent_notifications_are_scoped_to_team"
+    },
+    {
+      "id": "US-17",
+      "criterion": "Silent notification contains only count and names, without draft state and without other-team data.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_silent_notifications_are_scoped_to_team, ::test_silent_notification_does_not_include_draft_state, and tests/test_scheduler_messages.py::test_silent_participant_notification_lists_names_only"
+    },
+    {
+      "id": "US-18",
+      "criterion": "Missing captain/tracker chat id does not block week close and sends admin error.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_missing_captain_or_tracker_chat_id_notifies_admin_without_blocking_week_close"
+    },
+    {
+      "id": "US-19",
+      "criterion": "After deadline, finalizing an old draft returns the existing late message and does not change weekly status.",
+      "status": "passed",
+      "evidence": "tests/test_weekly_report_finalize.py::test_finalize_rejects_late_report_without_final_facts and tests/test_weekly_report_boundaries.py::test_late_report_never_writes_weekly_report_or_relations"
+    },
+    {
+      "id": "US-20",
+      "criterion": "Feature does not generate PDF, team report, group comparison, or production deploy.",
+      "status": "passed",
+      "evidence": "Feature diff contains no PDF/report generation/deploy files; git diff name scan found no generated PDF/audio/backup artifacts."
+    },
+    {
+      "id": "TS-01",
+      "criterion": "Tech-spec scope excludes PDF/report generation, production deploy, APScheduler/systemd runtime, and live Google/Telegram adapters.",
+      "status": "passed",
+      "evidence": "Feature diff limited to local scheduler service, gateway, SQLite repo, messages, tests, and work artifacts."
+    },
+    {
+      "id": "TS-02",
+      "criterion": "Scheduler service uses Asia/Yekaterinburg calendar helpers and does not rely on VPS local timezone.",
+      "status": "passed",
+      "evidence": "app/scheduler/jobs.py uses current_challenge_week_number(); tests/test_scheduler_foundation.py covers timezone immutability."
+    },
+    {
+      "id": "TS-03",
+      "criterion": "Sheets access happens through SheetsGateway; scheduler does not call Google APIs directly.",
+      "status": "passed",
+      "evidence": "app/scheduler/jobs.py depends on SheetsGateway only; no google/gspread imports in scheduler code."
+    },
+    {
+      "id": "TS-04",
+      "criterion": "SQLite stores only technical scheduler/reminder/retry/error state.",
+      "status": "passed",
+      "evidence": "app/storage/scheduler.py stores job runs, reminder attempts, and error events; tests/test_scheduler_repository.py and tests/test_sqlite_schema.py verify schema behavior."
+    },
+    {
+      "id": "TS-05",
+      "criterion": "Final gray weekly report facts are written to Google Sheets gateway, not SQLite only.",
+      "status": "passed",
+      "evidence": "SchedulerService.close_week calls SheetsGateway.append_weekly_report; tests assert rows in FakeSheetsGateway.list_weekly_reports()."
+    },
+    {
+      "id": "TS-06",
+      "criterion": "Reminder sends are participant-isolated and retry-capped at 3 attempts.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_failed_participant_send_retries_three_times_without_blocking_others"
+    },
+    {
+      "id": "TS-07",
+      "criterion": "Week close is idempotent across repeated runs and partial failure recovery.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_week_close_is_idempotent_on_rerun and ::test_week_close_rerun_after_partial_failure_creates_only_missing_gray_rows"
+    },
+    {
+      "id": "TS-08",
+      "criterion": "Silent notifications are team-scoped and role-safe.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_silent_notifications_are_scoped_to_team"
+    },
+    {
+      "id": "TS-09",
+      "criterion": "Missing recipient chat ids produce admin technical errors without blocking week close.",
+      "status": "passed",
+      "evidence": "tests/test_scheduler_deadlines.py::test_missing_captain_or_tracker_chat_id_notifies_admin_without_blocking_week_close"
+    },
+    {
+      "id": "TS-10",
+      "criterion": "All new tests and existing local test suite pass.",
+      "status": "passed",
+      "evidence": ".venv/bin/python -m pytest -> 241 passed, run twice."
+    },
+    {
+      "id": "TS-11",
+      "criterion": "No secrets, tokens, credentials, live chat ids, or generated files are committed.",
+      "status": "passed",
+      "evidence": "rg scan found only synthetic test strings/docs; git tracked/diff artifact scan found no data/, PDF, SQLite DB, backup, credentials, .env, key, or secrets files."
+    }
+  ],
+  "coverageVerification": {
+    "status": "passed",
+    "featureFiles": [
+      {
+        "file": "app/bot/messages.py",
+        "tests": ["tests/test_scheduler_messages.py"]
+      },
+      {
+        "file": "app/sheets/gateway.py",
+        "tests": ["tests/test_scheduler_sheets_gateway.py"]
+      },
+      {
+        "file": "app/storage/scheduler.py",
+        "tests": ["tests/test_scheduler_repository.py", "tests/test_sqlite_schema.py"]
+      },
+      {
+        "file": "app/scheduler/jobs.py",
+        "tests": ["tests/test_scheduler_deadlines.py"]
+      },
+      {
+        "file": "tests/test_scheduler_deadlines.py",
+        "tests": ["self-verifying under full pytest suite"]
+      }
+    ],
+    "notes": "No coverage tool threshold is configured for this project; pytest behavior coverage was verified through acceptance mapping and audit reports."
+  },
+  "securityAndArtifacts": {
+    "status": "passed",
+    "secretScan": "rg scan found no committed live secrets; matches were documentation or synthetic test strings.",
+    "artifactScan": "git diff and git ls-files scans found no generated audio, PDF, SQLite DB, backups, credentials, .env, key, or secrets files.",
+    "liveVerification": "No live Telegram, live Google Sheets, production deploy, or external service verification was performed."
+  },
+  "findings": [],
+  "deferredToPostDeploy": []
+}

@@ -168,6 +168,24 @@ Agent reports on completed tasks. Each entry is written by the agent that execut
 - `.venv/bin/python -m json.tool work/scheduler-deadlines/logs/working/task-10/test-audit.json` -> valid JSON
 - `.venv/bin/python -m pytest tests/test_scheduler_deadlines.py tests/test_scheduler_repository.py tests/test_scheduler_messages.py tests/test_scheduler_sheets_gateway.py tests/test_scheduler_foundation.py tests/test_weekly_report_finalize.py tests/test_weekly_report_boundaries.py -q` -> 54 passed
 
+## Task 11: Pre-deploy QA
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Pre-deploy QA passed. Full local pytest suite passed twice, 31 user-spec/tech-spec acceptance checks passed, and no production secrets, live chat ids, generated files, audio, PDFs, or backups were found in the feature diff.
+**Deviations:** None.
+
+**Reviews:**
+
+*Round 1:*
+- local pre-deploy QA: OK -> `work/scheduler-deadlines/logs/working/task-11/pre-deploy-qa.json`
+
+**Verification:**
+- `.venv/bin/python -m pytest` -> 241 passed
+- `.venv/bin/python -m pytest` -> 241 passed
+- `.venv/bin/python -m json.tool work/scheduler-deadlines/logs/working/task-11/pre-deploy-qa.json` -> valid JSON
+
 <!-- Entries are added by agents as tasks are completed.
 
 Format is strict — use only these sections, do not add others.
