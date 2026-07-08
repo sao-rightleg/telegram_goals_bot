@@ -13,7 +13,7 @@
 interview_metadata:
   started: "2026-07-08 20:29:10"  # Timestamp (YYYY-MM-DD HH:MM:SS)
   last_updated: "2026-07-08 20:29:10"
-  status: "in_progress"  # not_started | in_progress | completed
+  status: "completed"  # not_started | in_progress | completed
   can_resume: true
   current_question_num: 1
   feature_size: "L"  # S | M | L
