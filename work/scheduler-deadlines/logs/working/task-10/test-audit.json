@@ -1,0 +1,131 @@
+{
+  "task": 10,
+  "audit_type": "test_quality",
+  "status": "needs_improvement",
+  "scope": [
+    "tests/test_scheduler_deadlines.py",
+    "tests/test_scheduler_repository.py",
+    "tests/test_scheduler_messages.py",
+    "tests/test_scheduler_sheets_gateway.py",
+    "tests/test_scheduler_foundation.py",
+    "tests/test_sqlite_schema.py",
+    "tests/test_weekly_report_finalize.py",
+    "tests/test_weekly_report_boundaries.py",
+    "work/scheduler-deadlines/user-spec.md",
+    "work/scheduler-deadlines/tech-spec.md"
+  ],
+  "summary": {
+    "overall": "Scheduler tests are mostly behavior-focused and cover recipient filtering, retry count, week-close gray creation, partial Sheets failures, draft preservation, silent-notification privacy, and existing weekly report deadline regressions. The key gap is service-level duplicate reminder prevention: repository behavior is tested, but SchedulerService.run_reminder is not tested for rerun idempotency, which allowed the CODE-001 implementation defect.",
+    "finding_count": 2,
+    "critical": 0,
+    "high": 1,
+    "medium": 0,
+    "low": 1
+  },
+  "coverage_map": [
+    {
+      "behavior": "Reminder schedule and Yekaterinburg timezone",
+      "tests": [
+        "tests/test_scheduler_foundation.py::test_timezone_is_yekaterinburg",
+        "tests/test_scheduler_foundation.py::test_timezone_is_not_overridden_by_env",
+        "tests/test_scheduler_foundation.py::test_reminder_schedule_matches_product_decisions"
+      ],
+      "assessment": "covered"
+    },
+    {
+      "behavior": "Reminder recipient filtering",
+      "tests": [
+        "tests/test_scheduler_deadlines.py::test_reminder_sends_only_to_active_consenting_participants_without_report",
+        "tests/test_scheduler_deadlines.py::test_reminder_skips_dropped_non_consenting_and_already_reported_participants"
+      ],
+      "assessment": "covered"
+    },
+    {
+      "behavior": "Participant send retry and failure isolation",
+      "tests": [
+        "tests/test_scheduler_deadlines.py::test_failed_participant_send_retries_three_times_without_blocking_others",
+        "tests/test_scheduler_deadlines.py::test_failed_reminder_after_retry_exhaustion_notifies_admin",
+        "tests/test_scheduler_repository.py::test_reminder_attempt_upserts_retry_state"
+      ],
+      "assessment": "covered"
+    },
+    {
+      "behavior": "Reminder rerun idempotency after a successful send",
+      "tests": [
+        "tests/test_scheduler_repository.py::test_successful_reminder_lookup_prevents_duplicate_send"
+      ],
+      "assessment": "gap: repository-only coverage does not exercise SchedulerService.run_reminder"
+    },
+    {
+      "behavior": "Week close gray report creation and idempotency",
+      "tests": [
+        "tests/test_scheduler_deadlines.py::test_week_close_creates_gray_reports_for_active_missing_participants",
+        "tests/test_scheduler_deadlines.py::test_week_close_includes_non_consenting_active_participants",
+        "tests/test_scheduler_deadlines.py::test_week_close_skips_dropped_and_already_reported_participants",
+        "tests/test_scheduler_deadlines.py::test_week_close_is_idempotent_on_rerun",
+        "tests/test_scheduler_deadlines.py::test_week_close_rerun_after_partial_failure_creates_only_missing_gray_rows"
+      ],
+      "assessment": "covered"
+    },
+    {
+      "behavior": "Draft preservation and late finalization behavior",
+      "tests": [
+        "tests/test_scheduler_deadlines.py::test_week_close_preserves_unfinished_drafts",
+        "tests/test_weekly_report_finalize.py::test_finalize_rejects_late_report_without_final_facts",
+        "tests/test_weekly_report_boundaries.py::test_late_report_never_writes_weekly_report_or_relations"
+      ],
+      "assessment": "covered"
+    },
+    {
+      "behavior": "Silent notification recipient scope and privacy",
+      "tests": [
+        "tests/test_scheduler_deadlines.py::test_week_close_sends_aggregated_silent_notification_to_captain_and_tracker",
+        "tests/test_scheduler_deadlines.py::test_silent_notifications_are_scoped_to_team",
+        "tests/test_scheduler_deadlines.py::test_missing_captain_or_tracker_chat_id_notifies_admin_without_blocking_week_close",
+        "tests/test_scheduler_deadlines.py::test_silent_notification_does_not_include_draft_state",
+        "tests/test_scheduler_messages.py::test_silent_participant_notification_lists_names_only"
+      ],
+      "assessment": "covered"
+    }
+  ],
+  "findings": [
+    {
+      "id": "TEST-001",
+      "severity": "high",
+      "category": "missing coverage",
+      "title": "No service-level test prevents duplicate reminder sends on rerun",
+      "files": [
+        {
+          "path": "tests/test_scheduler_deadlines.py",
+          "line": 23
+        },
+        {
+          "path": "tests/test_scheduler_repository.py",
+          "line": 111
+        }
+      ],
+      "description": "The repository has a has_successful_reminder test, but SchedulerService.run_reminder is never exercised twice for the same participant/week/reminder type. This means tests pass even when the service records successful reminder state but does not read it.",
+      "litmus_test": "Remove or ignore the repository has_successful_reminder call in service code: the current service tests still pass.",
+      "recommended_test": "Add tests/test_scheduler_deadlines.py::test_reminder_rerun_skips_participants_already_successfully_sent. It should run service.run_reminder('wednesday_checkin', now=NOW) twice with one eligible participant, assert only one main-bot message exists, and assert the second result increments skipped_count rather than sent_count."
+    },
+    {
+      "id": "TEST-002",
+      "severity": "low",
+      "category": "brittleness",
+      "title": "Acceptance coverage matrix validates only local test names",
+      "files": [
+        {
+          "path": "tests/test_scheduler_deadlines.py",
+          "line": 329
+        }
+      ],
+      "description": "test_scheduler_acceptance_criteria_coverage validates local function names through globals(), but external test references with '::' are treated as documentation strings and are not checked for existence.",
+      "litmus_test": "Rename an externally referenced test in tests/test_scheduler_foundation.py or tests/test_weekly_report_finalize.py: the coverage matrix still passes.",
+      "recommended_test": "Either keep the matrix as documentation-only and accept this limitation, or resolve external references against pytest collection if the matrix is intended to be executable traceability."
+    }
+  ],
+  "verification": {
+    "manual_review": "completed",
+    "automated": "Report JSON validity checked with python json.tool"
+  }
+}
