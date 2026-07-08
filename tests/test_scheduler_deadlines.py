@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -224,6 +226,106 @@ def test_week_close_preserves_unfinished_drafts(tmp_path: Path) -> None:
     assert drafts.get_active_draft(1001) is not None
 
 
+def test_week_close_sends_aggregated_silent_notification_to_captain_and_tracker(tmp_path: Path) -> None:
+    service, _gateway, _main_bot, _error_bot, notification_bot = _service_with_notification_bot(
+        tmp_path,
+        participants=[
+            _participant("P001", 1001, consent=True, full_name="Иван Иванов"),
+            _participant("C001", 2001, consent=True, role="captain", full_name="Капитан"),
+        ],
+        teams=[{"team_id": "T001", "captain_id": "C001", "tracker_id": "TR001"}],
+        trackers=[{"tracker_id": "TR001", "telegram_id": 3001, "full_name": "Трекер"}],
+    )
+
+    result = service.close_week(now=NOW)
+
+    assert result.notified_team_count == 1
+    assert [message.chat_id for message in notification_bot.sent_messages] == ["2001", "3001"]
+    assert notification_bot.sent_messages[0].text == (
+        "Нет отчёта за неделю 4: 1 участник(ов).\n"
+        "- Иван Иванов"
+    )
+    assert notification_bot.sent_messages[1].text == notification_bot.sent_messages[0].text
+
+
+def test_silent_notifications_are_scoped_to_team(tmp_path: Path) -> None:
+    service, _gateway, _main_bot, _error_bot, notification_bot = _service_with_notification_bot(
+        tmp_path,
+        participants=[
+            _participant("P001", 1001, consent=True, team_id="T001", full_name="Участник 1"),
+            _participant("P002", 1002, consent=True, team_id="T002", full_name="Участник 2"),
+            _participant("C001", 2001, consent=True, role="captain", team_id="T001"),
+            _participant("C002", 2002, consent=True, role="captain", team_id="T002"),
+        ],
+        teams=[
+            {"team_id": "T001", "captain_id": "C001", "tracker_id": "TR001"},
+            {"team_id": "T002", "captain_id": "C002", "tracker_id": "TR002"},
+        ],
+        trackers=[
+            {"tracker_id": "TR001", "telegram_id": 3001},
+            {"tracker_id": "TR002", "telegram_id": 3002},
+        ],
+    )
+
+    service.close_week(now=NOW)
+
+    messages_by_chat = {message.chat_id: message.text for message in notification_bot.sent_messages}
+    assert "Участник 1" in messages_by_chat["2001"]
+    assert "Участник 2" not in messages_by_chat["2001"]
+    assert "Участник 2" in messages_by_chat["2002"]
+    assert "Участник 1" not in messages_by_chat["2002"]
+    assert messages_by_chat["3001"] == messages_by_chat["2001"]
+    assert messages_by_chat["3002"] == messages_by_chat["2002"]
+
+
+def test_missing_captain_or_tracker_chat_id_notifies_admin_without_blocking_week_close(tmp_path: Path) -> None:
+    service, gateway, _main_bot, error_bot, notification_bot = _service_with_notification_bot(
+        tmp_path,
+        participants=[
+            _participant("P001", 1001, consent=True, full_name="Иван Иванов"),
+            {"participant_id": "C001", "team_id": "T001", "role": "captain", "status": "active"},
+        ],
+        teams=[{"team_id": "T001", "captain_id": "C001", "tracker_id": "TR001"}],
+        trackers=[{"tracker_id": "TR001", "full_name": "Трекер"}],
+    )
+
+    result = service.close_week(now=NOW)
+
+    assert result.gray_created_count == 2
+    assert len(gateway.list_weekly_reports()) == 2
+    assert notification_bot.sent_messages == []
+    assert len(error_bot.sent_messages) == 2
+    assert "silent_notification_missing_recipient" in error_bot.sent_messages[0].text
+
+
+def test_silent_notification_does_not_include_draft_state(tmp_path: Path) -> None:
+    service, _gateway, _main_bot, _error_bot, notification_bot = _service_with_notification_bot(
+        tmp_path,
+        participants=[
+            _participant("P001", 1001, consent=True, full_name="Иван Иванов"),
+            _participant("C001", 2001, consent=True, role="captain", full_name="Капитан"),
+        ],
+        teams=[{"team_id": "T001", "captain_id": "C001"}],
+        trackers=[],
+    )
+    drafts = WeeklyReportDraftRepository(tmp_path / "state.sqlite3")
+    drafts.create_draft(
+        draft_id="draft-P001-week-04",
+        telegram_id=1001,
+        participant_id="P001",
+        team_id="T001",
+        goal_id="G001",
+        week_number=4,
+        occurred_at=NOW.isoformat(),
+    )
+
+    service.close_week(now=NOW)
+
+    assert "Иван Иванов" in notification_bot.sent_messages[0].text
+    assert "черновик" not in notification_bot.sent_messages[0].text.lower()
+    assert "draft" not in notification_bot.sent_messages[0].text.lower()
+
+
 def _service(
     tmp_path: Path,
     *,
@@ -267,15 +369,34 @@ def _participant(
     *,
     consent: bool,
     status: str = "active",
+    role: str = "participant",
+    team_id: str = "T001",
+    full_name: str | None = None,
 ) -> dict[str, object]:
     return {
         "participant_id": participant_id,
         "telegram_id": telegram_id,
-        "team_id": "T001",
-        "full_name": f"Participant {participant_id}",
+        "team_id": team_id,
+        "full_name": full_name or f"Participant {participant_id}",
         "consent_given": consent,
         "status": status,
+        "role": role,
     }
+
+
+def _service_with_notification_bot(
+    tmp_path: Path,
+    *,
+    participants: list[dict[str, object]],
+    teams: list[dict[str, object]],
+    trackers: list[dict[str, object]],
+) -> tuple[SchedulerService, FakeSheetsGateway, FailingBotClient, FakeBotClient, FakeBotClient]:
+    service, gateway, main_bot, error_bot = _service(
+        tmp_path,
+        participants=participants,
+        gateway=FakeSheetsGateway(participants=participants, teams=teams, trackers=trackers),
+    )
+    return service, gateway, main_bot, error_bot, service.notification_router.notification_bot
 
 
 @dataclass

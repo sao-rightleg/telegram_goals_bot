@@ -84,6 +84,22 @@ Agent reports on completed tasks. Each entry is written by the agent that execut
 **Verification:**
 - `.venv/bin/python -m pytest tests/test_scheduler_deadlines.py tests/test_weekly_report_finalize.py tests/test_weekly_report_boundaries.py -q` -> 29 passed
 
+## Task 6: Silent Participant Notifications
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Added team-scoped silent participant notifications after week close. Notifications are aggregated for captain/tracker recipients, omit draft state, and missing recipient chat ids produce admin errors without blocking gray report creation.
+**Deviations:** Review subagents were not launched because this environment only permits delegation after an explicit agent request; local tests and diff review were used for this task.
+
+**Reviews:**
+
+*Round 1:*
+- local review: OK
+
+**Verification:**
+- `.venv/bin/python -m pytest tests/test_scheduler_deadlines.py tests/test_scheduler_messages.py tests/test_scheduler_sheets_gateway.py tests/test_scheduler_repository.py -q` -> 27 passed
+
 <!-- Entries are added by agents as tasks are completed.
 
 Format is strict — use only these sections, do not add others.
