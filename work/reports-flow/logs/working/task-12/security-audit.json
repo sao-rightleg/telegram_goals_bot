@@ -1,0 +1,61 @@
+{
+  "task": 12,
+  "audit_type": "security",
+  "status": "approved",
+  "reviewed_files": [
+    "app/reports/aggregation.py",
+    "app/reports/delivery.py",
+    "app/reports/service.py",
+    "app/reports/pdf.py",
+    "app/storage/reports.py",
+    "app/storage/sqlite.py",
+    "app/services/notifications.py",
+    "app/bot/clients.py",
+    "tests/test_reports_delivery.py",
+    "tests/test_reports_service.py",
+    "tests/test_reports_boundaries.py"
+  ],
+  "summary": "No critical, high, or medium security findings were identified. Report routing is centralized, group comparison is limited to admin/Sitnikov plans, delivery idempotency reduces duplicate-send risk, and admin errors are sanitized in tested failure paths.",
+  "findings": [],
+  "checks": [
+    {
+      "area": "role_safe_routing",
+      "result": "passed",
+      "evidence": "tests/test_reports_delivery.py and tests/test_reports_boundaries.py assert captain/tracker scopes and no group comparison for restricted roles."
+    },
+    {
+      "area": "secret_exposure",
+      "result": "passed",
+      "evidence": "Admin error tests assert token-like fragments and personal report body text are not included."
+    },
+    {
+      "area": "sqlite_injection",
+      "result": "passed",
+      "evidence": "ReportStateRepository uses parameterized sqlite3 queries."
+    },
+    {
+      "area": "generated_files",
+      "result": "passed",
+      "evidence": "PDF paths use StoragePathPolicy and tests use tmp_path; reports/pdf artifacts are not generated in repo."
+    },
+    {
+      "area": "dependency_surface",
+      "result": "passed",
+      "evidence": "No new runtime dependencies were added."
+    }
+  ],
+  "residual_risk": [
+    "Live Telegram adapter may introduce API-specific failure modes not covered by local fake clients.",
+    "The concrete Google Sheets adapter must preserve the same role and row-copy boundaries when implemented or wired."
+  ],
+  "verification": [
+    {
+      "command": ".venv/bin/python -m pytest tests/test_reports_boundaries.py -q",
+      "result": "6 passed"
+    },
+    {
+      "command": ".venv/bin/python -m pytest",
+      "result": "296 passed"
+    }
+  ]
+}

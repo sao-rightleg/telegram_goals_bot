@@ -1,0 +1,52 @@
+{
+  "task": 11,
+  "audit_type": "code",
+  "status": "approved_with_minor_findings",
+  "reviewed_files": [
+    "app/reports/models.py",
+    "app/reports/formatting.py",
+    "app/reports/aggregation.py",
+    "app/reports/pdf.py",
+    "app/reports/delivery.py",
+    "app/reports/service.py",
+    "app/reports/generator.py",
+    "app/sheets/gateway.py",
+    "app/storage/reports.py",
+    "app/storage/sqlite.py",
+    "app/bot/clients.py",
+    "app/services/notifications.py",
+    "tests/test_reports_messages.py",
+    "tests/test_reports_sheets_gateway.py",
+    "tests/test_reports_repository.py",
+    "tests/test_reports_delivery_boundary.py",
+    "tests/test_reports_generation.py",
+    "tests/test_reports_pdf.py",
+    "tests/test_reports_delivery.py",
+    "tests/test_reports_service.py",
+    "tests/test_reports_boundaries.py"
+  ],
+  "summary": "Reports-flow implementation follows the approved architecture: Sheets facts are aggregated into report DTOs, formatting/PDF/delivery are separated, SQLite stores technical state only, and tests cover the main boundaries. No critical or major code-quality blockers were found.",
+  "findings": [
+    {
+      "id": "CODE-001",
+      "severity": "minor",
+      "file": "app/reports/service.py",
+      "line": 47,
+      "title": "ReportService calls a private delivery-service helper",
+      "description": "ReportService uses delivery_service._notify_admin for PDF generation failures. The behavior is covered and currently works, but the underscore method is an internal helper of ReportDeliveryService, so future refactors could break orchestration without an explicit public contract.",
+      "recommendation": "Expose a small public method such as notify_admin_error(error_type, message) on ReportDeliveryService or inject a dedicated admin error notifier.",
+      "status": "accepted_deferred",
+      "reason": "Non-blocking for MVP; existing behavior is tested by tests/test_reports_service.py and tests/test_reports_boundaries.py."
+    }
+  ],
+  "residual_risk": [
+    "The MVP PDF writer is intentionally simple and PDF-like; visual fidelity is deferred.",
+    "Live Telegram document delivery and live Google Sheets adapter behavior remain post-deploy concerns by spec."
+  ],
+  "verification": [
+    {
+      "command": ".venv/bin/python -m pytest",
+      "result": "296 passed"
+    }
+  ]
+}
