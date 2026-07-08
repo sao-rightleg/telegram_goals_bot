@@ -12,8 +12,8 @@
 # ============================================================================
 interview_metadata:
   started: "2026-07-08 15:44:30"  # Timestamp (YYYY-MM-DD HH:MM:SS)
-  last_updated: "2026-07-08 16:11:55"
-  status: "in_progress"  # not_started | in_progress | completed
+  last_updated: "2026-07-08 16:16:05"
+  status: "completed"  # not_started | in_progress | completed
   can_resume: true
   current_question_num: 6
   feature_size: "M"  # S | M | L
@@ -328,7 +328,7 @@ phase3_integration:
 # ============================================================================
 phase4_completion:
   userspec_file: "work/scheduler-deadlines/user-spec.md"  # work/{feature}/user-spec.md
-  status: "created"  # pending | created | approved
+  status: "approved"  # pending | created | approved
 
 # ============================================================================
 # Decision Rules
