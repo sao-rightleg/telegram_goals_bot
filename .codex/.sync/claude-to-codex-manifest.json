@@ -99,18 +99,18 @@
     {
       "adapter": "project-skill",
       "adapter_version": "1",
-      "input_set_hash": "627e5f9200837b26dd823af67d7e13e4924a1bf72e724e6bbdd5b408c6f6d1db",
+      "input_set_hash": "bffb12115b7bdca8166101259d7f7f40803e3056180617e831259aa9d1007d4b",
       "outputs": [
         {
-          "output_sha256": "8f742e2527cb6b7dd8cdf082cd90d4b2329059819a2c45dc6e883f2251060b63",
-          "source_sha256": "627e5f9200837b26dd823af67d7e13e4924a1bf72e724e6bbdd5b408c6f6d1db",
+          "output_sha256": "5d264cd3188f6c060730579d333405141c91e57cf460f15b6fa5bff00a729270",
+          "source_sha256": "bffb12115b7bdca8166101259d7f7f40803e3056180617e831259aa9d1007d4b",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/references/deployment.md"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/references/deployment.md",
       "transformer_version": "1",
-      "updated_at": "2026-07-09T04:35:22Z"
+      "updated_at": "2026-07-09T05:28:21Z"
     },
     {
       "adapter": "project-skill",

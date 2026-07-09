@@ -31,3 +31,9 @@ def test_forbidden_infrastructure_dependencies_absent() -> None:
     forbidden_terms = ("docker", "postgres", "psycopg", "redis", "celery", "kubernetes")
 
     assert not any(term in dependency_text.lower() for term in forbidden_terms)
+
+
+def test_console_script_points_to_runtime_entrypoint() -> None:
+    pyproject = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+
+    assert pyproject["project"]["scripts"]["telegram-goals-bot"] == "app.runtime:main"

@@ -11,10 +11,12 @@ Production deployment must be executed only through GitHub CI/CD after explicit 
 - CI workflow: `.github/workflows/ci.yml`
 - Manual production deploy workflow: `.github/workflows/deploy-production.yml`
 - Production target: custom VPS, `systemd` service
-- Runtime entrypoint: not yet implemented in the repository
-- Committed systemd unit: not yet implemented in the repository
+- Readiness CLI: `telegram-goals-bot check-config` / `telegram-goals-bot init-storage`
+- Runtime command: `telegram-goals-bot run`
+- Committed systemd unit template: `deploy/systemd/telegram-goals-bot.service`
+- Live polling runtime: not yet implemented in the repository
 
-First production launch is blocked until the runtime entrypoint and systemd service definition are created or confirmed on the VPS.
+First production launch is blocked until live Telegram/Google/transcription adapters and the polling runtime are implemented. The current `run` command fails explicitly until that task is complete.
 
 ## GitHub Setup Checklist
 
@@ -81,13 +83,14 @@ Generated data must remain outside git-tracked release files.
 
 Before first production deploy:
 
-- Define the application entrypoint.
-- Create `telegram-goals-bot.service`.
+- Implement live Telegram polling runtime behind `telegram-goals-bot run`.
+- Review and install `deploy/systemd/telegram-goals-bot.service`.
 - Configure service environment loading from a protected file.
 - Use `WorkingDirectory=/opt/telegram_goals_bot/current`.
 - Use the release-local virtual environment.
 - Ensure service user can read config and write SQLite/audio/PDF/log paths.
 - Ensure GitHub deploy user can restart the service through a narrow sudo rule.
+- Run `telegram-goals-bot --env-file /opt/telegram_goals_bot/shared/.env check-config`.
 
 Manual inspection commands:
 
@@ -132,7 +135,7 @@ Use a separate test Telegram bot and test Google Sheet.
 1. Confirm explicit user approval for production deploy and target ref.
 2. Confirm GitHub `production` environment approval is enabled.
 3. Confirm all GitHub deployment secrets exist.
-4. Confirm runtime entrypoint and systemd unit are ready.
+4. Confirm live runtime, systemd unit, and protected env file are ready.
 5. Run `Deploy Production` manually in GitHub Actions.
 6. Verify GitHub runner tests pass.
 7. Verify VPS release tests pass.

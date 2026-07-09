@@ -27,13 +27,21 @@ Production deployment is configured in `.github/workflows/deploy-production.yml`
 - Pre-deploy gate: installs the package and runs `pytest` on GitHub runner before uploading anything.
 - Target: custom VPS with existing `systemd` service.
 - Deployment shape: uploads a source archive, creates a release directory under `VPS_APP_DIR/releases/{sha}`, installs a release-local `.venv`, runs tests on the VPS release, updates `VPS_APP_DIR/current`, then restarts `VPS_SERVICE_NAME`.
-- Runtime limitation: the repository does not yet define a production application entrypoint or committed systemd unit. First production launch requires a separate runtime-entrypoint/systemd task or a pre-created compatible service on the VPS.
+- Runtime limitation: the repository defines readiness CLI commands and a committed systemd unit template, but live Telegram polling runtime is not implemented yet. First production launch requires a separate live-runtime adapter task before the service can stay healthy.
 
-Do not run the production workflow until production secrets, GitHub environment protection, runtime entrypoint, systemd unit, and smoke checklist are ready and explicitly approved.
+Do not run the production workflow until production secrets, GitHub environment protection, live runtime, systemd unit installation, and smoke checklist are ready and explicitly approved.
 
 Detailed deployment readiness checklist: `docs/09_deployment_preparation.md`.
 
 The deploy user on the VPS needs a narrow passwordless sudo rule for restarting and checking only the configured bot service.
+
+Runtime readiness commands:
+
+- `telegram-goals-bot --env-file /opt/telegram_goals_bot/shared/.env check-config`
+- `telegram-goals-bot --env-file /opt/telegram_goals_bot/shared/.env init-storage`
+- `telegram-goals-bot --env-file /opt/telegram_goals_bot/shared/.env run`
+
+The `run` command currently exits with a clear not-implemented error until live Telegram polling adapters are added.
 
 ## Environment Variables and Credentials
 

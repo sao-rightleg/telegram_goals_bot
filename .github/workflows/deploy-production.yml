@@ -97,6 +97,8 @@ jobs:
             "$APP_DIR/shared/backups/google_sheets_exports" \
             "$APP_DIR/shared/backups/pdf"
 
+          ./.venv/bin/telegram-goals-bot --env-file "$APP_DIR/shared/.env" check-config
+
           ln -sfn "$RELEASE_DIR" "$APP_DIR/current"
           sudo systemctl restart "$SERVICE_NAME"
           sudo systemctl status "$SERVICE_NAME" --no-pager

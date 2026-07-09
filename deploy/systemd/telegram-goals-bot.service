@@ -1,0 +1,21 @@
+[Unit]
+Description=Telegram Goals Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=telegram-goals-bot
+Group=telegram-goals-bot
+WorkingDirectory=/opt/telegram_goals_bot/current
+EnvironmentFile=/opt/telegram_goals_bot/shared/.env
+ExecStart=/opt/telegram_goals_bot/current/.venv/bin/telegram-goals-bot --env-file /opt/telegram_goals_bot/shared/.env run
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/telegram_goals_bot/shared
+
+[Install]
+WantedBy=multi-user.target
