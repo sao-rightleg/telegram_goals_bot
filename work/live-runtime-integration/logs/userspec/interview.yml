@@ -12,8 +12,8 @@
 # ============================================================================
 interview_metadata:
   started: "2026-07-09 19:38:51 +0200"  # Timestamp (YYYY-MM-DD HH:MM:SS)
-  last_updated: "2026-07-09 20:52:00 +0200"
-  status: "in_progress"  # not_started | in_progress | completed
+  last_updated: "2026-07-09 21:00:00 +0200"
+  status: "completed"  # not_started | in_progress | completed
   can_resume: true
   current_question_num: 5
   feature_size: "L"  # S | M | L
@@ -279,7 +279,7 @@ phase3_integration:
 # ============================================================================
 phase4_completion:
   userspec_file: "work/live-runtime-integration/user-spec.md"  # work/{feature}/user-spec.md
-  status: "created"  # pending | created | approved
+  status: "approved"  # pending | created | approved
 
 # ============================================================================
 # Decision Rules
@@ -339,6 +339,7 @@ notes: |
   - Current code has Protocol/fake boundaries but lacks live Telegram polling, real Telegram client/downloader, real Google Sheets adapter, Yandex adapter, runtime composition, and separate test deploy target.
   - User approved separate test VPS environment, simple bounded wait for Yandex async, fail-fast required Sheets schema with allowed extra columns, and minimal test dataset.
   - Draft user-spec created at work/live-runtime-integration/user-spec.md. It remains status=draft pending user approval.
+  - User approved user-spec. Frontmatter status set to approved.
 
 # ============================================================================
 # USAGE INSTRUCTIONS
