@@ -1,0 +1,103 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to deploy
+        required: true
+        default: main
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_PORT: ${{ secrets.VPS_PORT }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+      VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+      VPS_SERVICE_NAME: ${{ secrets.VPS_SERVICE_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Verify test suite before deploy
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          pytest
+      - name: Validate deployment secrets
+        run: |
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          test -n "$VPS_SSH_KEY"
+          test -n "$VPS_APP_DIR"
+          test -n "$VPS_SERVICE_NAME"
+      - name: Create deployment archive
+        run: |
+          tar \
+            --exclude='.git' \
+            --exclude='.venv' \
+            --exclude='venv' \
+            --exclude='data/audio' \
+            --exclude='data/sqlite' \
+            --exclude='reports/pdf' \
+            --exclude='backups' \
+            --exclude='logs' \
+            --exclude='*.sqlite' \
+            --exclude='*.sqlite3' \
+            --exclude='*.db' \
+            -czf "/tmp/telegram-goals-bot-${GITHUB_SHA}.tgz" .
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${VPS_PORT:-22}" "$VPS_HOST" >> ~/.ssh/known_hosts
+      - name: Upload archive
+        run: |
+          scp -i ~/.ssh/deploy_key -P "${VPS_PORT:-22}" \
+            "/tmp/telegram-goals-bot-${GITHUB_SHA}.tgz" \
+            "$VPS_USER@$VPS_HOST:/tmp/telegram-goals-bot-${GITHUB_SHA}.tgz"
+      - name: Install release and restart service
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${VPS_PORT:-22}" "$VPS_USER@$VPS_HOST" \
+            "APP_DIR='$VPS_APP_DIR' SERVICE_NAME='$VPS_SERVICE_NAME' GITHUB_SHA='$GITHUB_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          RELEASE_DIR="$APP_DIR/releases/$GITHUB_SHA"
+          mkdir -p "$RELEASE_DIR" "$APP_DIR/shared"
+          tar -xzf "/tmp/telegram-goals-bot-$GITHUB_SHA.tgz" -C "$RELEASE_DIR"
+
+          cd "$RELEASE_DIR"
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          pytest
+
+          mkdir -p \
+            "$APP_DIR/shared/data/audio" \
+            "$APP_DIR/shared/data/sqlite" \
+            "$APP_DIR/shared/reports/pdf" \
+            "$APP_DIR/shared/logs" \
+            "$APP_DIR/shared/backups/sqlite" \
+            "$APP_DIR/shared/backups/google_sheets_exports" \
+            "$APP_DIR/shared/backups/pdf"
+
+          ln -sfn "$RELEASE_DIR" "$APP_DIR/current"
+          sudo systemctl restart "$SERVICE_NAME"
+          sudo systemctl status "$SERVICE_NAME" --no-pager
+          REMOTE

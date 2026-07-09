@@ -99,34 +99,34 @@
     {
       "adapter": "project-skill",
       "adapter_version": "1",
-      "input_set_hash": "045f3647a08121ec1c128cd2cffc92dc52c97e1b627a5082082eb21c02b3bc18",
+      "input_set_hash": "627e5f9200837b26dd823af67d7e13e4924a1bf72e724e6bbdd5b408c6f6d1db",
       "outputs": [
         {
-          "output_sha256": "96ca3c22464f0a8f89df88a65f2bb68f8130e3ed3ccafbfa336a5bb61c6de35a",
-          "source_sha256": "045f3647a08121ec1c128cd2cffc92dc52c97e1b627a5082082eb21c02b3bc18",
+          "output_sha256": "8f742e2527cb6b7dd8cdf082cd90d4b2329059819a2c45dc6e883f2251060b63",
+          "source_sha256": "627e5f9200837b26dd823af67d7e13e4924a1bf72e724e6bbdd5b408c6f6d1db",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/references/deployment.md"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/references/deployment.md",
       "transformer_version": "1",
-      "updated_at": "2026-07-03T10:41:24Z"
+      "updated_at": "2026-07-09T04:35:22Z"
     },
     {
       "adapter": "project-skill",
       "adapter_version": "1",
-      "input_set_hash": "cd94539d3abaebe6176e756798185a1af81dbe492141dd28038fdc5b4de9d979",
+      "input_set_hash": "570ffea6f9d1ae0bf1442a340d43d38774edf64d030a2ac464a9c13144a998ed",
       "outputs": [
         {
-          "output_sha256": "99fcb456440527e3a3da5cb2801c90233a08e0ce150117ff2ff78e387e121c74",
-          "source_sha256": "cd94539d3abaebe6176e756798185a1af81dbe492141dd28038fdc5b4de9d979",
+          "output_sha256": "30485608aae5bede4d5b4cde019f119408d71ead655b8b2f658ddf3cf1543e9b",
+          "source_sha256": "570ffea6f9d1ae0bf1442a340d43d38774edf64d030a2ac464a9c13144a998ed",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/references/patterns.md"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/references/patterns.md",
       "transformer_version": "1",
-      "updated_at": "2026-07-08T20:11:41Z"
+      "updated_at": "2026-07-09T04:34:06Z"
     },
     {
       "adapter": "project-skill",

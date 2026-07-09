@@ -11,7 +11,30 @@ All deployments must go through GitHub CI/CD unless emergency debugging of broke
 
 Docker, Redis, Celery, Kubernetes, and complex DevOps are out of MVP.
 
-The repository currently contains locally verified MVP slices for the foundation, participant core flows, weekly report flow, insight flow, and voice processing input for weekly-report/insight drafts. They have passed pre-deploy QA with fake/local boundaries; no production deployment or live Telegram/Google/transcription integration has been performed as part of those feature completions.
+The repository currently contains locally verified MVP slices for the foundation, participant core flows, weekly report flow, insight flow, voice processing input for weekly-report/insight drafts, captain flows, scheduler deadlines, and reports flow. They have passed pre-deploy QA with fake/local boundaries; no production deployment or live Telegram/Google/transcription integration has been performed as part of those feature completions.
+
+## GitHub CI/CD
+
+CI is configured in `.github/workflows/ci.yml`.
+
+- Trigger: pull requests to `main` and pushes to `main`.
+- Skip logic: docs-only changes under Markdown/text, `.claude/`, `.codex/`, `docs/`, and `work/` skip the Python test job.
+- Test job: Python 3.10, `pip install -e ".[dev]"`, then `pytest`.
+
+Production deployment is configured in `.github/workflows/deploy-production.yml`.
+
+- Trigger: manual `workflow_dispatch` only.
+- Protection: GitHub `production` environment should require manual approval before the job receives production secrets.
+- Pre-deploy gate: installs the package and runs `pytest` on GitHub runner before uploading anything.
+- Target: custom VPS with existing `systemd` service.
+- Deployment shape: uploads a source archive, creates a release directory under `VPS_APP_DIR/releases/{sha}`, installs a release-local `.venv`, runs tests on the VPS release, updates `VPS_APP_DIR/current`, then restarts `VPS_SERVICE_NAME`.
+- Runtime limitation: the repository does not yet define a production application entrypoint or committed systemd unit. First production launch requires a separate runtime-entrypoint/systemd task or a pre-created compatible service on the VPS.
+
+Do not run the production workflow until production secrets, GitHub environment protection, runtime entrypoint, systemd unit, and smoke checklist are ready and explicitly approved.
+
+Detailed deployment readiness checklist: `docs/09_deployment_preparation.md`.
+
+The deploy user on the VPS needs a narrow passwordless sudo rule for restarting and checking only the configured bot service.
 
 ## Environment Variables and Credentials
 
@@ -39,6 +62,19 @@ Required configuration is expected to include:
 
 Never ask the user to paste secret values in chat.
 
+Required GitHub Actions secrets for production deployment:
+
+| Secret | Purpose | Workflow |
+| --- | --- | --- |
+| `VPS_HOST` | VPS host name or IP address. | `deploy-production.yml` |
+| `VPS_PORT` | SSH port. Optional; defaults to `22` when empty. | `deploy-production.yml` |
+| `VPS_USER` | SSH user used by GitHub Actions. | `deploy-production.yml` |
+| `VPS_SSH_KEY` | Private SSH deploy key with access to the VPS user. | `deploy-production.yml` |
+| `VPS_APP_DIR` | Base app directory on VPS, for example `/opt/telegram_goals_bot`. | `deploy-production.yml` |
+| `VPS_SERVICE_NAME` | systemd service name, for example `telegram-goals-bot`. | `deploy-production.yml` |
+
+Application secrets remain outside the repository. Store local values in `.env` or protected credential files. Store production values on the VPS and/or GitHub Actions secrets, depending on the final systemd unit design.
+
 ## Local Runtime Paths
 
 Recommended local folders:
@@ -62,6 +98,21 @@ Manual service commands:
 - `journalctl -u telegram-goals-bot -f`
 
 Production launch requires a separate test Telegram bot and smoke test.
+
+Manual production deploy procedure:
+
+1. Confirm the target commit/ref and production approval with the user.
+2. Confirm GitHub `production` environment approval is enabled.
+3. Confirm all deployment secrets exist in GitHub Actions.
+4. Run the `Deploy Production` workflow manually with the approved ref.
+5. Verify the workflow test gate, VPS install test gate, service restart, and service status.
+6. Run the production smoke checklist with test Telegram bot, test Google Sheet, error bot, notification bot, and transcription provider.
+
+Rollback procedure:
+
+1. On the VPS, point `VPS_APP_DIR/current` back to the previous release directory.
+2. Restart `VPS_SERVICE_NAME` through GitHub Actions or emergency SSH if production is broken.
+3. Record the rollback reason and failed release SHA in project decisions or incident notes.
 
 ## Retention and Backups
 

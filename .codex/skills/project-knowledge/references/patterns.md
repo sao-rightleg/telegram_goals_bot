@@ -15,6 +15,16 @@ Before coding:
 
 Do not silently change business logic.
 
+## Git Workflow and CI/CD
+
+Use pull requests for changes that will be pushed to GitHub. CI runs on pull requests to `main` and pushes to `main`.
+
+The CI workflow uses Python 3.10, installs the project with `pip install -e ".[dev]"`, and runs `pytest`. Docs-only changes under Markdown/text, `.claude/`, `.codex/`, `docs/`, and `work/` skip the Python test job.
+
+Production deploys must be run only through the manual `Deploy Production` GitHub Actions workflow after explicit user approval. Do not configure automatic production deploy on every push to `main` unless the user changes the deployment policy.
+
+GitHub production environment protection should require manual approval before production secrets are released to the deploy job.
+
 ## Methodology Workflow
 
 For new feature work, use the Molyanov pipeline:
