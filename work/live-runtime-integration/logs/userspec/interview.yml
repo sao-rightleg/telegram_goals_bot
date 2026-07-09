@@ -1,0 +1,373 @@
+# Interview Plan for Feature Planning
+#
+# Tracks progress of adaptive discovery interview for a new feature/bug/refactoring.
+# Updated after EACH user response with scoring, values, and remaining gaps.
+#
+# Scoring: 0-100% (how well we understand this aspect)
+# Status: pending → partial → complete
+# Required: true = must reach threshold, false = cover if relevant
+
+# ============================================================================
+# Interview Metadata (Session Recovery)
+# ============================================================================
+interview_metadata:
+  started: "2026-07-09 19:38:51 +0200"  # Timestamp (YYYY-MM-DD HH:MM:SS)
+  last_updated: "2026-07-09 20:52:00 +0200"
+  status: "in_progress"  # not_started | in_progress | completed
+  can_resume: true
+  current_question_num: 5
+  feature_size: "L"  # S | M | L
+
+# ============================================================================
+# Conversation History (for session recovery)
+# ============================================================================
+# Preserves complete Q&A. Update after EVERY user response.
+#
+conversation_history:
+  - question_num: 1
+    timestamp: "2026-07-09 19:50:00 +0200"
+    topic: "launch_scope_and_transcription_provider"
+    agent_question: |
+      1. Делаем эту фичу как полный первый production-ready live runtime или как тестовый live запуск на test bot + test Google Sheet, после которого отдельно пойдём в production hardening?
+
+      2. Какой transcription provider фиксируем для MVP: OpenAI Whisper/API, другой сервис, или оставляем provider-абстракцию, но первым реализуем конкретно OpenAI?
+    user_answer: |
+      1 не понятен вопрос
+      2 какой качественнее и дешевле ? может инструмент от яндекс внедрим ?
+    summary: "Question 1 needs simpler wording. User is open to Yandex SpeechKit and asks for quality/cost comparison before choosing transcription provider."
+  - question_num: 2
+    timestamp: "2026-07-09 19:58:00 +0200"
+    topic: "launch_scope_and_transcription_provider_decision"
+    agent_question: |
+      Фиксируем так для user-spec?
+      1. Сначала тестовый live-запуск на test bot + test Google Sheet.
+      2. Первый провайдер транскрибации: Yandex SpeechKit async.
+      3. Архитектурно оставить provider-абстракцию, чтобы потом добавить OpenAI.
+    user_answer: |
+      1 согласен, сначала тестовый
+      2 Да
+      3 да
+    summary: "User approved test live launch first, Yandex SpeechKit async as first transcription provider, and keeping provider abstraction."
+  - question_num: 3
+    timestamp: "2026-07-09 20:08:00 +0200"
+    topic: "smoke_scope_test_roles_live_checks_schema_validation"
+    agent_question: |
+      1. Smoke scope: в тестовом live-запуске проверяем все MVP-сценарии из docs/09_deployment_preparation.md или сначала обязательный минимум?
+      2. Тестовые аккаунты: отдельные Telegram-аккаунты/чаты для ролей participant, captain, tracker, admin, или один-два тестовых пользователя будут временно переключаться в Google Sheet между ролями?
+      3. Live smoke tests с реальными API делаем только вручную после настройки секретов, или добавляем отдельную manual GitHub Actions workflow/check, который запускается только при наличии protected secrets?
+      4. По Google Sheets schema: если в тестовой таблице не хватает обязательной колонки, бот должен сразу падать на check-config/startup, или разрешаем старт, а ошибку показываем только при первом обращении к конкретному листу?
+    user_answer: |
+      1 давай как то пошагово - сначала минимум, потом далее
+      2 Сам выбери оптимально
+      3 вообще не знаю
+      4 а почему там должно не хватать обязательной колонки ? должно всего хватать - если не хватает - сразу падаем, не ждем - и шлем ошибку
+    summary: "Smoke verification should be phased: minimum first, then broader checks. Agent should choose optimal test-account setup. User is unsure about live checks in GitHub Actions. Google Sheets schema must be fully present; missing required columns should fail fast at startup/check-config and notify admin."
+  - question_num: 4
+    timestamp: "2026-07-09 20:18:00 +0200"
+    topic: "minimum_smoke_voice_captain_vps_test_runtime"
+    agent_question: |
+      1. Минимальный live-smoke подтверждаем таким? /start known participant, consent, unknown user + admin error, menu, goal, steps, progress, weekly report text, insight text.
+      2. Voice smoke: достаточно одного русского voice до 10 минут, который сохраняется, уходит в Yandex SpeechKit async, возвращает transcription и добавляется в draft weekly report или insight?
+      3. Captain smoke: включаем в минимальный smoke сразу или отдельным вторым шагом? Я бы сделал вторым шагом: own-team view + manual report за участника своей команды.
+      4. Test deploy: где должен крутиться тестовый live runtime — локально на машине разработчика через .env или на VPS через GitHub CI/CD в отдельном test/systemd окружении?
+    user_answer: |
+      1 2 3 согласен
+      4 - точно не на моем компьютере, пусть на впс
+    summary: "Minimum interactive smoke, voice smoke, and captain second-step smoke are approved. Test live runtime must run on VPS, not on user's computer."
+  - question_num: 5
+    timestamp: "2026-07-09 20:42:00 +0200"
+    topic: "test_vps_environment_yandex_timeout_schema_validation_test_data"
+    agent_question: |
+      1. Test VPS environment: делаем отдельный сервис и директорию, например `/opt/telegram_goals_bot_test`, `telegram-goals-bot-test.service`, отдельный GitHub environment `test`, отдельные secrets для test VPS/test bots/test sheet?
+      2. Yandex SpeechKit async: для первой версии бот ждёт результат в рамках обработки voice с timeout, а если timeout/failure — пишет “не удалось расшифровать, отправь текстом” и шлёт admin error. Ок?
+      3. Google Sheets schema validation: лишние колонки разрешаем, обязательные вкладки/колонки обязательны. Если нет обязательного — startup/check-config падает. Ок?
+      4. Test data: минимальный набор строк в тестовой таблице: одна команда, один participant, один captain, tracker scope, admin/Sitnikov recipients, active goal, 6 planned steps. Ок?
+    user_answer: |
+      со всем ок
+    summary: "User approved separate test VPS environment, synchronous wait wrapper for Yandex async with timeout/failure handling, fail-fast Sheets schema validation with allowed extra columns, and minimal test data set."
+# Format:
+# - question_num: 1
+#   timestamp: "2025-11-12 15:20:33"
+#   topic: "user_problem"
+#   agent_question: |
+#     [Full question text]
+#   user_answer: |
+#     [Full answer text]
+#   summary: "Brief summary"
+
+# ============================================================================
+# Phase 1: High-Level Feature Understanding
+# ============================================================================
+# Interview Cycle 1 scope
+phase1_feature_overview:
+
+  feature_name:
+    score: 90
+    status: "complete"
+    value: "live-runtime-integration"
+    gaps: ""
+    required: true
+
+  feature_description:
+    score: 88
+    status: "complete"
+    value: "Implement the first test live runtime for the Telegram Goals Bot: real Telegram polling, real Google Sheets integration against a test sheet, Yandex SpeechKit async as the first real transcription provider, and runtime orchestration through the existing CLI/systemd/CI-CD deployment model. Existing business services and fake-boundary test approach should remain the base. This feature proves the live system on test bots and test data before any production participant launch."
+    gaps: ""
+    required: true
+
+  work_type:
+    score: 90
+    status: "complete"
+    value: "feature"
+    gaps: ""
+    required: true
+
+  user_problem:
+    score: 90
+    status: "complete"
+    value: "The implemented MVP slices are locally verified, but the app cannot be tested end-to-end with real Telegram updates, Google Sheets, and voice transcription because `telegram-goals-bot run` intentionally exits until live adapters and polling runtime are implemented. The immediate need is a test live launch with test bots and a test Google Sheet before production hardening and production deploy."
+    gaps: ""
+    required: true
+
+  target_users:
+    score: 88
+    status: "complete"
+    value: "First verification targets admin/operator and selected test Telegram accounts using test bot tokens and a test Google Sheet. The test data should include participant, captain, tracker, admin, and Alexander Sitnikov rows/scopes, but the live test can use the minimum practical number of Telegram accounts by mapping test rows to available test chat IDs. Production participants are not included in the first launch."
+    gaps: ""
+    required: false
+
+  success_criteria:
+    score: 93
+    status: "complete"
+    value: "The `telegram-goals-bot run` command starts a healthy live bot process on VPS instead of failing with RuntimeNotImplementedError; real adapters can read/write required business data in the test Google Sheet; Telegram updates route into existing services through test bots; minimum interactive smoke passes (`/start`, known participant, consent, unknown user plus admin error, menu, goal, steps, progress, weekly report text, insight text); Yandex SpeechKit async transcribes one valid Russian Telegram voice under 10 minutes and adds the transcription to an active weekly-report or insight draft; captain smoke passes as a second step (own-team view plus manual report for own-team participant); required Google Sheets schema validation fails fast during check-config/startup when required tabs/columns are missing and notifies admin where runtime notification is possible; and broader scheduler/reports/PDF smoke remains a later pre-production step before production launch."
+    gaps: ""
+    required: true
+
+  constraints:
+    score: 90
+    status: "complete"
+    value: "No direct production deploy without explicit approval. The first launch is test-only with test bot tokens and test Google Sheet. Deployments go through GitHub CI/CD. MVP stays Telegram-only with VPS systemd, no Docker/Redis/Celery/PostgreSQL/web admin. Secrets must stay in `.env`, protected files, or GitHub Actions secrets, never chat or repo. Existing business rules, roles, deadlines, report routing, Google Sheets as business storage, SQLite as technical state, local audio/PDF storage, and three-bot separation must remain unchanged. First transcription provider is Yandex SpeechKit async, while the provider abstraction remains for future OpenAI support."
+    gaps: ""
+    required: true
+
+  testing_strategy:
+    score: 92
+    status: "complete"
+    value: "Unit tests remain mandatory. Integration tests are needed around adapter mapping, polling dispatch, config/readiness, schema validation, and fake/live boundary contracts. Test-live smoke verification is phased on VPS: first minimum interactive flow set, second voice via Yandex SpeechKit async, third captain own-team/manual-report flow, then broader scheduler/reports/PDF and pre-production readiness checks. Live API smoke checks can begin as manual operator checks after secrets are configured; a separate manual GitHub Actions workflow can be deferred unless tech-spec finds it simple and low-risk."
+    gaps: ""
+    required: true
+
+# ============================================================================
+# Phase 2: User Experience & Scenarios
+# ============================================================================
+# Interview Cycle 2 scope (together with Phase 3)
+phase2_user_experience:
+
+  user_stories:
+    score: 0
+    status: "pending"
+    value: ""
+    gaps: "Step-by-step user interaction scenarios"
+    required: true
+
+  acceptance_criteria:
+    score: 90
+    status: "complete"
+    value: "Phased smoke approach: phase 1 minimum interactive checks (`/start`, known participant, consent, unknown user plus admin error, menu, goal, steps, progress, weekly report text, insight text); phase 2 voice under 10 minutes through Yandex SpeechKit async into weekly-report or insight draft, with timeout/failure response and admin error; phase 3 captain own-team view and manual report; phase 4 later scheduler/report/PDF pre-production checks. Missing required Google Sheets tabs/columns must fail fast during readiness/startup and send admin error when possible. Extra columns are allowed."
+    gaps: ""
+    required: true
+
+  edge_cases:
+    score: 82
+    status: "partial"
+    value: "Missing required Google Sheets schema should be treated as startup/readiness failure, not discovered lazily during user interaction. Yandex async timeout/failure should not save a failed voice fragment; user gets retry/send-text response and admin gets sanitized technical error. Test and production secrets/services must be separate. Extra Google Sheets columns are allowed."
+    gaps: "Need cover Telegram polling failures, invalid callbacks, duplicate updates, Google quota/network errors, and restart behavior in user-spec risks/criteria."
+    required: true
+
+  error_scenarios:
+    score: 85
+    status: "complete"
+    value: "Unknown Telegram user sends approved rejection text and admin error. Missing required Google Sheets tabs/columns fail check-config/startup. Yandex SpeechKit timeout/failure returns voice failure text, preserves existing draft text, deletes failed just-downloaded audio according to current voice rules, and sends admin error. Missing/invalid secrets fail readiness. Runtime/service errors must not expose secrets or personal report text in logs/admin error."
+    gaps: ""
+    required: true
+
+  verification_strategy:
+    score: 88
+    status: "partial"
+    value: "Verification should be phased: agent/unit/integration checks first, then deployment of test live runtime to VPS through CI/CD/test systemd environment (`/opt/telegram_goals_bot_test`, `telegram-goals-bot-test.service`, GitHub environment `test`), then manual live smoke against test bots and test Google Sheet, then broader pre-production checks."
+    gaps: "Need exact commands in tech-spec."
+    required: true
+
+  ui_ux_requirements:
+    score: 0
+    status: "pending"
+    value: ""
+    gaps: "Specific UI/UX requirements if applicable"
+    required: false
+
+  risks:
+    score: 85
+    status: "complete"
+    value: "Main risks: mixing test and production secrets/services; Yandex async latency; Google Sheets schema drift/manual edits; Telegram dispatch mismatch with existing service state; leaking secrets or personal text in logs/admin errors. Mitigations: separate test VPS environment/secrets/service; bounded Yandex timeout and retry/send-text fallback; fail-fast schema validation; adapter/dispatcher tests; redaction and sanitized admin errors."
+    gaps: ""
+    required: true
+
+  technical_decisions:
+    score: 88
+    status: "complete"
+    value: "First launch is test-only on VPS. First speech provider is Yandex SpeechKit async, wrapped behind the existing `SpeechTranscriber` abstraction. Provider abstraction remains for future OpenAI support. Google Sheets adapter allows extra columns but requires all mandatory tabs/columns. Test runtime uses separate VPS directory, systemd service, GitHub environment, and secrets."
+    gaps: ""
+    required: false
+
+  deploy_approach:
+    score: 90
+    status: "complete"
+    value: "Test live runtime must run on VPS, not on the user's computer. Use separate test environment: `/opt/telegram_goals_bot_test`, `telegram-goals-bot-test.service`, GitHub environment `test`, and separate secrets for test VPS/test bots/test sheet/Yandex. Production deploy remains blocked until explicit approval."
+    gaps: ""
+    required: false
+
+  manual_user_actions:
+    score: 85
+    status: "partial"
+    value: "User/operator must create/configure test Telegram bots, test Google Sheet with full required schema and minimal rows, Google service account access, Yandex SpeechKit credentials, test VPS service/environment, and GitHub `test` environment secrets. Secrets must not be pasted in chat; store them in GitHub Actions secrets, protected VPS `.env`, or credential files."
+    gaps: "Need exact setup checklist in user-spec."
+    required: false
+
+# ============================================================================
+# Phase 3: Integration & Technical Context
+# ============================================================================
+# Interview Cycle 2 scope (together with Phase 2)
+phase3_integration:
+
+  integration_points:
+    score: 90
+    status: "complete"
+    value: "Fits around existing Protocol boundaries and services: live Telegram polling/dispatch calls participant, weekly report, insight, voice, and captain services; real Telegram clients implement `BotClient`/`TelegramFileDownloader`; real Sheets adapter implements `SheetsGateway`; Yandex adapter implements `SpeechTranscriber`; runtime composition replaces the current `RuntimeNotImplementedError` path."
+    gaps: ""
+    required: true
+
+  dependencies:
+    score: 80
+    status: "partial"
+    value: "Depends on completed participant-core, weekly-report, insight, voice-processing, captain-flow, scheduler/report foundations, SQLite repositories, config/runtime helpers, and deployment workflow."
+    gaps: "Need exact Python SDK/dependency choices in tech-spec."
+    required: false
+
+  technical_constraints:
+    score: 88
+    status: "complete"
+    value: "No Docker/Redis/Celery/PostgreSQL/web admin. Runtime is VPS/systemd. External SDK dependencies must stay minimal. Long-running polling must shut down cleanly under systemd. Yandex async is wrapped with bounded timeout for first version. Logs/admin errors must be sanitized."
+    gaps: ""
+    required: false
+
+  data_requirements:
+    score: 88
+    status: "complete"
+    value: "Test Google Sheet must include all required MVP tabs and required columns. Extra columns are allowed. Minimum test data: one active team, one participant, one captain, tracker scope, admin/Sitnikov recipients, active goal, and 6 planned steps; rows must support the minimum interactive, voice, and captain smoke checks."
+    gaps: ""
+    required: false
+
+  migration_needs:
+    score: 80
+    status: "complete"
+    value: "No production user/data migration in this feature. It creates a separate test-live environment and uses test data. Production launch remains a later approval step."
+    gaps: ""
+    required: false
+
+# ============================================================================
+# Phase 4: Completion
+# ============================================================================
+phase4_completion:
+  userspec_file: "work/live-runtime-integration/user-spec.md"  # work/{feature}/user-spec.md
+  status: "created"  # pending | created | approved
+
+# ============================================================================
+# Decision Rules
+# ============================================================================
+decision_rules:
+
+  required_threshold: 85
+  optional_threshold: 50
+
+  # Stop criteria (BOTH must be true to exit a cycle)
+  stop_criteria:
+    - "All required items in current cycle scope score >= 85%"
+    - "Structural: every required item has non-empty value, no TBD, gaps empty or conscious limitations"
+
+  priority_order:
+    - "Required items with score < 85% (lowest score first)"
+    - "Optional items mentioned by user in context"
+    - "Other optional items if user seems knowledgeable"
+
+  question_strategy:
+    - "3-4 questions per batch about different gaps"
+    - "Run as many batches as needed — batch size is NOT cycle limit"
+    - "Propose solutions based on PK, not just ask questions"
+    - "Challenge with substance: counterexamples, code references, unexplored scenarios"
+    - "After each response: update scores, values, gaps, conversation_history, save"
+
+# ============================================================================
+# Interview Progress
+# ============================================================================
+progress:
+  current_phase: "phase4_completion"
+  questions_asked: 5
+  last_question: "Test VPS environment, Yandex timeout, schema validation, and test data"
+  total_required_score: 89
+  total_optional_score: 86
+  completion_estimate: "90%"
+  user_detail_level: "brief"  # brief | moderate | detailed
+
+# ============================================================================
+# Notes
+# ============================================================================
+notes: |
+  Free-form notes:
+  - User asked to continue project work by Molyanov methodology.
+  - Current repo has completed feature work under work/completed and no active work folder.
+  - Deployment docs and runtime.py identify live Telegram polling runtime/adapters as the next blocker.
+  - Proposed feature slug: live-runtime-integration.
+  - User asked to compare transcription provider quality/cost and suggested Yandex.
+  - User approved test live launch first, Yandex SpeechKit async first, provider abstraction retained.
+  - User wants phased live smoke: minimum first, then broader checks.
+  - Agent should choose optimal test account setup.
+  - User is unsure about automated live GitHub smoke checks; default to manual smoke first.
+  - Missing Google Sheets required schema should fail fast and notify admin.
+  - User approved minimum interactive smoke, voice smoke, and captain smoke as second step.
+  - Test live runtime must run on VPS, not on user's computer.
+  - Local code research saved to work/live-runtime-integration/code-research.md because spawning a code-researcher is unavailable without explicit subagent permission in this runtime.
+  - Current code has Protocol/fake boundaries but lacks live Telegram polling, real Telegram client/downloader, real Google Sheets adapter, Yandex adapter, runtime composition, and separate test deploy target.
+  - User approved separate test VPS environment, simple bounded wait for Yandex async, fail-fast required Sheets schema with allowed extra columns, and minimal test dataset.
+  - Draft user-spec created at work/live-runtime-integration/user-spec.md. It remains status=draft pending user approval.
+
+# ============================================================================
+# USAGE INSTRUCTIONS
+# ============================================================================
+#
+# 1. INIT: Created by init-feature-folder.sh at work/{feature}/logs/userspec/interview.yml
+#    Set metadata.started, metadata.status: in_progress
+#
+# 2. INITIAL SCORING: After user's free-form description, score ALL items
+#    Detailed 80-95%, brief 50-70%, vague 20-40%, not mentioned 0%
+#
+# 3. INTERVIEW LOOP (save after EVERY response):
+#    a) Find required items with score < 85% in current cycle scope
+#    b) Ask 3-4 questions about different gaps
+#    c) Propose solutions based on PK
+#    d) User answers
+#    e) Update: conversation_history, scores, values, gaps, metadata
+#    f) Save immediately
+#    g) Check stop criteria (score >= 85% AND structural: value filled, no TBD, gaps resolved)
+#    h) Not done → repeat. Done → next cycle.
+#
+# 4. CYCLES:
+#    Cycle 1: phase1_feature_overview items
+#    Cycle 2: phase2_user_experience + phase3_integration items
+#    Cycle 3: ALL items still below threshold (cleanup pass)
+#
+# 5. RESUME: If metadata.status is "in_progress"
+#    Load, show conversation summary, resume from current state
+#
+# 6. COMPLETION: After user approves user-spec.md
+#    Set phase4_completion.status: approved
+#    Set metadata.status: completed
