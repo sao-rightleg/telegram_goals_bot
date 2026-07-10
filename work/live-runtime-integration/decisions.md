@@ -169,3 +169,19 @@ None.
 **Verification:**
 - `python -m json.tool work/live-runtime-integration/logs/working/code-audit.json >/tmp/code-audit.pretty.json` -> OK
 - `test -s work/live-runtime-integration/logs/working/code-audit.json` -> OK
+
+## Task 8a: Code audit fixes
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Fixed the three blocking audit findings by preserving service response buttons/menu items through the Telegram outbound boundary, adding sanitized polling error containment with handled-offset advancement, and normalizing Google Sheets readiness failures into clear CLI errors. Callback data is generated from stable constants for consent, role menus, weekly status buttons, and insight buttons.
+**Deviations:** None.
+
+**Reviews:**
+
+Not run. This task fixes findings from the completed code audit.
+
+**Verification:**
+- `python -m pytest tests/test_boundaries.py tests/test_runtime_entrypoint.py -v` -> 29 passed
+- `python -m pytest -q` -> 344 passed

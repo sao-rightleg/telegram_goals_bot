@@ -12,8 +12,11 @@ from app.bot.clients import (
     LiveTelegramFileDownloader,
     TelegramApiError,
     TelegramFileDownload,
+    TelegramInlineButton,
 )
+from app.bot.menus import CONSENT_ACCEPT_CALLBACK, MenuAction
 from app.reports.generator import FakeReportGenerator, ReportRequest, ReportType
+from app.services.participant_models import MenuItem
 from app.services.notifications import (
     NotificationCategory,
     NotificationRouter,
@@ -151,6 +154,49 @@ def test_live_telegram_client_sends_message_request() -> None:
     assert len(requests) == 1
     assert requests[0].url.path == "/botsecret-token-123/sendMessage"
     assert requests[0].read().decode("utf-8") == "chat_id=1001&text=%D0%9F%D1%80%D0%B8%D0%B2%D0%B5%D1%82"
+
+
+def test_live_telegram_client_sends_inline_keyboard_markup() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 77}})
+
+    client = LiveTelegramBotClient(
+        purpose=BotPurpose.MAIN,
+        token="secret-token-123",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    message = client.send_message(
+        chat_id="1001",
+        text="Согласие",
+        buttons=(TelegramInlineButton(text="✅ Согласен", callback_data=CONSENT_ACCEPT_CALLBACK),),
+    )
+
+    body = requests[0].read().decode("utf-8")
+    assert message.buttons == (
+        TelegramInlineButton(text="✅ Согласен", callback_data=CONSENT_ACCEPT_CALLBACK),
+    )
+    assert "reply_markup=" in body
+    assert "%22callback_data%22%3A%22consent%3Aaccept%22" in body
+    assert "%22text%22%3A%22%E2%9C%85+%D0%A1%D0%BE%D0%B3%D0%BB%D0%B0%D1%81%D0%B5%D0%BD%22" in body
+
+
+def test_fake_telegram_client_records_menu_item_callback_markup() -> None:
+    bot = FakeBotClient(BotPurpose.MAIN)
+
+    message = bot.send_message(
+        chat_id="1001",
+        text="Меню",
+        menu_items=(MenuItem(MenuAction.VIEW_GOAL, "🎯 Моя цель"),),
+    )
+
+    assert message.menu_items == (MenuItem(MenuAction.VIEW_GOAL, "🎯 Моя цель"),)
+    assert message.buttons == (
+        TelegramInlineButton(text="🎯 Моя цель", callback_data="menu:view_goal"),
+    )
 
 
 def test_live_telegram_client_sends_document_request(tmp_path: Path) -> None:

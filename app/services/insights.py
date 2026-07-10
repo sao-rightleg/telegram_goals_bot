@@ -336,7 +336,12 @@ class InsightService:
         menu_items: tuple = (),
     ) -> FlowResponse:
         response = FlowResponse(chat_id=user.chat_id, text=text, buttons=buttons, menu_items=menu_items)
-        self.main_bot.send_message(chat_id=user.chat_id, text=text)
+        self.main_bot.send_message(
+            chat_id=user.chat_id,
+            text=text,
+            buttons=buttons,
+            menu_items=menu_items,
+        )
         return response
 
 

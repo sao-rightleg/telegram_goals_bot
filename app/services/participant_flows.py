@@ -57,7 +57,11 @@ class ParticipantFlowService:
                     occurred_at=occurred_at,
                 )
             )
-            self.main_bot.send_message(chat_id=user.chat_id, text=response.text)
+            self.main_bot.send_message(
+                chat_id=user.chat_id,
+                text=response.text,
+                buttons=response.buttons,
+            )
             return response
 
         return self._show_menu(user, participant=participant, occurred_at=occurred_at)
@@ -104,7 +108,11 @@ class ParticipantFlowService:
                     occurred_at=occurred_at,
                 )
             )
-            self.main_bot.send_message(chat_id=user.chat_id, text=response.text)
+            self.main_bot.send_message(
+                chat_id=user.chat_id,
+                text=response.text,
+                buttons=response.buttons,
+            )
             return response
 
         normalized_action = _normalize_action(action)
@@ -219,7 +227,7 @@ class ParticipantFlowService:
                 occurred_at=occurred_at,
             )
         )
-        self.main_bot.send_message(chat_id=user.chat_id, text=text)
+        self.main_bot.send_message(chat_id=user.chat_id, text=text, menu_items=menu_items)
         return response
 
     def _send_simple_response(
@@ -243,7 +251,7 @@ class ParticipantFlowService:
                 occurred_at=occurred_at,
             )
         )
-        self.main_bot.send_message(chat_id=user.chat_id, text=text)
+        self.main_bot.send_message(chat_id=user.chat_id, text=text, buttons=buttons)
         return response
 
     def _handle_missing_data(

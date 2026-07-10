@@ -2,12 +2,36 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Protocol
 
 import httpx
+
+from app.bot.menus import (
+    CONSENT_ACCEPT_CALLBACK,
+    INSIGHT_ADD_CALLBACK,
+    INSIGHT_CANCEL_CALLBACK,
+    INSIGHT_DONE_CALLBACK,
+    INSIGHT_LIST_CALLBACK_PREFIX,
+    MENU_CALLBACK_PREFIX,
+    WEEKLY_REPORT_DONE_CALLBACK,
+    WEEKLY_REPORT_STATUS_CALLBACK_PREFIX,
+)
+from app.bot.messages import (
+    CONSENT_ACCEPT_BUTTON,
+    INSIGHT_ADD_BUTTON,
+    INSIGHT_CANCEL_BUTTON,
+    INSIGHT_DONE_BUTTON,
+    INSIGHT_LIST_BUTTON,
+    WEEKLY_REPORT_BLUE_BUTTON,
+    WEEKLY_REPORT_DONE_BUTTON,
+    WEEKLY_REPORT_GREEN_BUTTON,
+    WEEKLY_REPORT_RED_BUTTON,
+)
+from app.services.participant_models import MenuItem
 
 
 class BotPurpose(str, Enum):
@@ -20,6 +44,14 @@ class BotPurpose(str, Enum):
 class OutgoingMessage:
     chat_id: str
     text: str
+    buttons: tuple["TelegramInlineButton", ...] = ()
+    menu_items: tuple[MenuItem, ...] = ()
+
+
+@dataclass(frozen=True)
+class TelegramInlineButton:
+    text: str
+    callback_data: str
 
 
 @dataclass(frozen=True)
@@ -32,7 +64,14 @@ class OutgoingDocument:
 class BotClient(Protocol):
     purpose: BotPurpose
 
-    def send_message(self, *, chat_id: str, text: str) -> OutgoingMessage:
+    def send_message(
+        self,
+        *,
+        chat_id: str,
+        text: str,
+        buttons: tuple[str | TelegramInlineButton, ...] = (),
+        menu_items: tuple[MenuItem, ...] = (),
+    ) -> OutgoingMessage:
         """Send a text message through a concrete bot client."""
 
     def send_document(
@@ -67,15 +106,31 @@ class LiveTelegramBotClient:
     http_client: httpx.Client
     api_base_url: str = "https://api.telegram.org"
 
-    def send_message(self, *, chat_id: str, text: str) -> OutgoingMessage:
+    def send_message(
+        self,
+        *,
+        chat_id: str,
+        text: str,
+        buttons: tuple[str | TelegramInlineButton, ...] = (),
+        menu_items: tuple[MenuItem, ...] = (),
+    ) -> OutgoingMessage:
+        inline_buttons = _normalize_inline_buttons(buttons=buttons, menu_items=menu_items)
+        data = {
+            "chat_id": chat_id,
+            "text": text,
+        }
+        if inline_buttons:
+            data["reply_markup"] = _inline_keyboard_markup(inline_buttons)
         self._post_api(
             "sendMessage",
-            data={
-                "chat_id": chat_id,
-                "text": text,
-            },
+            data=data,
         )
-        return OutgoingMessage(chat_id=chat_id, text=text)
+        return OutgoingMessage(
+            chat_id=chat_id,
+            text=text,
+            buttons=inline_buttons,
+            menu_items=menu_items,
+        )
 
     def send_document(
         self,
@@ -190,8 +245,20 @@ class FakeBotClient:
     sent_messages: list[OutgoingMessage] = field(default_factory=list)
     sent_documents: list[OutgoingDocument] = field(default_factory=list)
 
-    def send_message(self, *, chat_id: str, text: str) -> OutgoingMessage:
-        message = OutgoingMessage(chat_id=chat_id, text=text)
+    def send_message(
+        self,
+        *,
+        chat_id: str,
+        text: str,
+        buttons: tuple[str | TelegramInlineButton, ...] = (),
+        menu_items: tuple[MenuItem, ...] = (),
+    ) -> OutgoingMessage:
+        message = OutgoingMessage(
+            chat_id=chat_id,
+            text=text,
+            buttons=_normalize_inline_buttons(buttons=buttons, menu_items=menu_items),
+            menu_items=menu_items,
+        )
         self.sent_messages.append(message)
         return message
 
@@ -228,6 +295,53 @@ def _file_url(base_url: str, token: str, file_path: str) -> str:
     return f"{base_url.rstrip('/')}/file/bot{token}/{file_path.lstrip('/')}"
 
 
+def _normalize_inline_buttons(
+    *,
+    buttons: tuple[str | TelegramInlineButton, ...] = (),
+    menu_items: tuple[MenuItem, ...] = (),
+) -> tuple[TelegramInlineButton, ...]:
+    normalized = []
+    for button in buttons:
+        if isinstance(button, TelegramInlineButton):
+            normalized.append(button)
+            continue
+        callback_data = _callback_data_for_button(button)
+        if callback_data is not None:
+            normalized.append(TelegramInlineButton(text=button, callback_data=callback_data))
+
+    normalized.extend(
+        TelegramInlineButton(
+            text=item.label,
+            callback_data=f"{MENU_CALLBACK_PREFIX}{_menu_action_value(item)}",
+        )
+        for item in menu_items
+    )
+    return tuple(normalized)
+
+
+def _menu_action_value(item: MenuItem) -> str:
+    action = item.action
+    value = getattr(action, "value", action)
+    return str(value)
+
+
+def _callback_data_for_button(text: str) -> str | None:
+    return _BUTTON_CALLBACKS.get(text)
+
+
+def _inline_keyboard_markup(buttons: tuple[TelegramInlineButton, ...]) -> str:
+    return json.dumps(
+        {
+            "inline_keyboard": [
+                [{"text": button.text, "callback_data": button.callback_data}]
+                for button in buttons
+            ]
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
 def _parse_telegram_json(
     response: httpx.Response,
     *,
@@ -253,3 +367,16 @@ def _parse_telegram_json(
 
 def _sanitize_token(text: str, token: str) -> str:
     return text.replace(token, "[REDACTED]")
+
+
+_BUTTON_CALLBACKS = {
+    CONSENT_ACCEPT_BUTTON: CONSENT_ACCEPT_CALLBACK,
+    WEEKLY_REPORT_GREEN_BUTTON: f"{WEEKLY_REPORT_STATUS_CALLBACK_PREFIX}green",
+    WEEKLY_REPORT_BLUE_BUTTON: f"{WEEKLY_REPORT_STATUS_CALLBACK_PREFIX}blue",
+    WEEKLY_REPORT_RED_BUTTON: f"{WEEKLY_REPORT_STATUS_CALLBACK_PREFIX}red",
+    WEEKLY_REPORT_DONE_BUTTON: WEEKLY_REPORT_DONE_CALLBACK,
+    INSIGHT_ADD_BUTTON: INSIGHT_ADD_CALLBACK,
+    INSIGHT_LIST_BUTTON: f"{INSIGHT_LIST_CALLBACK_PREFIX}0",
+    INSIGHT_DONE_BUTTON: INSIGHT_DONE_CALLBACK,
+    INSIGHT_CANCEL_BUTTON: INSIGHT_CANCEL_CALLBACK,
+}

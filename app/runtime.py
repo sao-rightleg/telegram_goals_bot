@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import signal
 import sys
 from pathlib import Path
@@ -22,7 +22,7 @@ from app.services.notifications import NotificationCategory, NotificationRouter,
 from app.services.participant_flows import ParticipantFlowService
 from app.services.voice_messages import VoiceMessageService
 from app.services.weekly_reports import WeeklyReportService
-from app.sheets.gateway import GoogleSheetsGateway, validate_required_schema
+from app.sheets.gateway import GoogleSheetsError, GoogleSheetsGateway, validate_required_schema
 from app.speech.transcription import FakeSpeechTranscriber, YandexSpeechKitTranscriber
 from app.storage.dialog_state import DialogStateRepository
 from app.storage.insight_drafts import InsightDraftRepository
@@ -51,6 +51,9 @@ class RuntimeComponents:
     captain_service: CaptainService
     sheets_gateway: GoogleSheetsGateway
     voice_service: VoiceMessageService
+
+    def with_replacements(self, **changes: object) -> "RuntimeComponents":
+        return replace(self, **changes)
 
 
 class PollingRunner(Protocol):
@@ -102,15 +105,22 @@ def validate_runtime_readiness(
             "Google credentials file is missing: GOOGLE_APPLICATION_CREDENTIALS"
         )
 
-    selected_google_service_factory = google_service_factory or create_google_sheets_service
-    google_service = selected_google_service_factory(settings)
-    if schema_validator is None:
-        schema_validator = validate_required_schema
-    schema_validator(
-        google_service,
-        spreadsheet_id=settings.google_sheets.sheet_id,
-    )
-    _build_transcriber(settings, http_client=httpx.Client())
+    try:
+        selected_google_service_factory = google_service_factory or create_google_sheets_service
+        google_service = selected_google_service_factory(settings)
+        if schema_validator is None:
+            schema_validator = validate_required_schema
+        schema_validator(
+            google_service,
+            spreadsheet_id=settings.google_sheets.sheet_id,
+        )
+        _build_transcriber(settings, http_client=httpx.Client())
+    except ConfigurationError:
+        raise
+    except GoogleSheetsError as exc:
+        raise ConfigurationError(str(exc)) from exc
+    except Exception as exc:
+        raise ConfigurationError(f"Runtime readiness failed: {type(exc).__name__}") from exc
 
 
 def compose_runtime(
@@ -238,14 +248,31 @@ class TelegramPollingRunner:
     def run(self, components: RuntimeComponents) -> None:
         offset: int | None = None
         while not self.stop_event.is_set():
-            updates = components.main_bot.get_updates(
-                offset=offset,
-                timeout_seconds=self.poll_timeout_seconds,
-                limit=self.poll_limit,
-            )
+            try:
+                updates = components.main_bot.get_updates(
+                    offset=offset,
+                    timeout_seconds=self.poll_timeout_seconds,
+                    limit=self.poll_limit,
+                )
+            except Exception as exc:
+                _notify_polling_error(
+                    components.notification_router,
+                    event="telegram_get_updates_failed",
+                    error=exc,
+                )
+                continue
+
             for update in updates:
-                components.dispatcher.dispatch_update(update)
                 update_id = update.get("update_id")
+                try:
+                    components.dispatcher.dispatch_update(update)
+                except Exception as exc:
+                    _notify_polling_error(
+                        components.notification_router,
+                        event="telegram_update_dispatch_failed",
+                        error=exc,
+                        update_id=update_id if isinstance(update_id, int) else None,
+                    )
                 if isinstance(update_id, int):
                     offset = update_id + 1
 
@@ -384,6 +411,23 @@ def _notify_startup_readiness_failure(settings: Settings, error: Exception) -> N
         )
     except Exception:
         return
+
+
+def _notify_polling_error(
+    router: NotificationRouter,
+    *,
+    event: str,
+    error: Exception,
+    update_id: int | None = None,
+) -> None:
+    parts = [event, f"error_type={type(error).__name__}"]
+    if update_id is not None:
+        parts.append(f"update_id={update_id}")
+    router.send(
+        category=NotificationCategory.TECHNICAL_ERROR,
+        text=" ".join(parts),
+        recipients=(),
+    )
 
 
 def _install_shutdown_handlers(stop_event: Event) -> None:

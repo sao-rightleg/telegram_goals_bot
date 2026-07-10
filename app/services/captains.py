@@ -51,7 +51,11 @@ class CaptainService:
                 text=CONSENT_TEXT,
                 buttons=(CONSENT_ACCEPT_BUTTON,),
             )
-            self.main_bot.send_message(chat_id=user.chat_id, text=response.text)
+            self.main_bot.send_message(
+                chat_id=user.chat_id,
+                text=response.text,
+                buttons=response.buttons,
+            )
             return response
 
         if _role(captain) != "captain":
@@ -257,7 +261,7 @@ class CaptainService:
         buttons: tuple[str, ...] = (),
     ) -> FlowResponse:
         response = FlowResponse(chat_id=user.chat_id, text=text, buttons=buttons)
-        self.main_bot.send_message(chat_id=user.chat_id, text=text)
+        self.main_bot.send_message(chat_id=user.chat_id, text=text, buttons=buttons)
         return response
 
     def _resolve_manual_context(

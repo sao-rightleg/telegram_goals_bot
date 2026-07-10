@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app.config import load_settings
-from app.bot.clients import BotPurpose, FakeBotClient
+from app.bot.clients import BotPurpose, FakeBotClient, TelegramApiError
 from app.bot.menus import CONSENT_ACCEPT_CALLBACK
 from app.runtime import (
     RuntimeComponents,
@@ -15,8 +15,10 @@ from app.runtime import (
     initialize_runtime,
     main,
     run_bot,
+    TelegramPollingRunner,
     validate_runtime_readiness,
 )
+from app.sheets.gateway import GoogleSheetsSchemaError
 from app.scheduler.calendar import TIMEZONE_NAME
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.services.participant_models import FlowResponse, TelegramUserContext
@@ -143,6 +145,31 @@ def test_cli_check_config_uses_env_file_and_initializes_storage(tmp_path: Path) 
     assert (tmp_path / "data" / "sqlite" / "bot.sqlite3").exists()
 
 
+def test_cli_check_config_returns_clear_error_for_google_schema_failure(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(f"{key}={value}" for key, value in runtime_env(tmp_path).items()),
+        encoding="utf-8",
+    )
+    (tmp_path / "credentials.json").write_text("{}", encoding="utf-8")
+
+    def broken_schema_service(_settings):
+        raise GoogleSheetsSchemaError("Missing required Google Sheets tabs: Participants")
+
+    exit_code = main(
+        ["--env-file", str(env_file), "check-config"],
+        google_service_factory=broken_schema_service,
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "Missing required Google Sheets tabs: Participants" in captured.err
+    assert "Traceback" not in captured.err
+
+
 def test_runtime_env_includes_transcription_provider_config(tmp_path: Path) -> None:
     settings = load_settings(environ=runtime_env(tmp_path))
 
@@ -236,6 +263,53 @@ def test_dispatcher_routes_consent_callback(tmp_path: Path) -> None:
     ]
 
 
+def test_polling_runner_reports_dispatch_error_and_continues_without_raw_update(tmp_path: Path) -> None:
+    components = _runtime_components(tmp_path)
+    dispatcher, services, _dispatcher_error_bot = _dispatcher(tmp_path)
+    error_bot = FakeBotClient(BotPurpose.ERROR)
+    components = components.with_replacements(
+        main_bot=PollingBot(
+            updates=[
+                _message_update(text="/boom", message_id=701, update_id=100),
+                _message_update(text="/start", message_id=702, update_id=101),
+            ]
+        ),
+        error_bot=error_bot,
+        notification_router=_router(error_bot=error_bot),
+        dispatcher=FailingOnceDispatcher(dispatcher),
+    )
+    runner = TelegramPollingRunner(poll_timeout_seconds=1, poll_limit=100, stop_event=StopAfterCalls(limit=2))
+
+    runner.run(components)
+
+    assert components.main_bot.offsets == [None, 101]
+    assert len(error_bot.sent_messages) == 1
+    error_text = error_bot.sent_messages[0].text
+    assert "telegram_update_dispatch_failed" in error_text
+    assert "RuntimeError" in error_text
+    assert "/boom" not in error_text
+    assert "personal report text" not in error_text
+    assert services.participant.starts
+
+
+def test_polling_runner_does_not_advance_offset_when_get_updates_fails(tmp_path: Path) -> None:
+    components = _runtime_components(tmp_path)
+    error_bot = FakeBotClient(BotPurpose.ERROR)
+    components = components.with_replacements(
+        main_bot=FailingPollingBot(),
+        error_bot=error_bot,
+        notification_router=_router(error_bot=error_bot),
+    )
+    runner = TelegramPollingRunner(poll_timeout_seconds=1, poll_limit=100, stop_event=StopAfterCalls(limit=1))
+
+    runner.run(components)
+
+    assert components.main_bot.offsets == [None]
+    assert len(error_bot.sent_messages) == 1
+    assert "telegram_get_updates_failed" in error_bot.sent_messages[0].text
+    assert "poll-token-123" not in error_bot.sent_messages[0].text
+
+
 NOW = datetime(2026, 7, 5, 18, 0, tzinfo=ZoneInfo(TIMEZONE_NAME))
 
 
@@ -295,9 +369,9 @@ def _state(
     )
 
 
-def _message_update(*, text: str, message_id: int = 600) -> dict[str, object]:
+def _message_update(*, text: str, message_id: int = 600, update_id: int = 10) -> dict[str, object]:
     return {
-        "update_id": 10,
+        "update_id": update_id,
         "message": {
             "message_id": message_id,
             "date": int(NOW.timestamp()),
@@ -398,6 +472,64 @@ class RecordingInsightService:
 
 class RecordingCaptainService:
     pass
+
+
+def _router(*, error_bot: FakeBotClient) -> NotificationRouter:
+    return NotificationRouter(
+        main_bot=FakeBotClient(BotPurpose.MAIN),
+        error_bot=error_bot,
+        notification_bot=FakeBotClient(BotPurpose.NOTIFICATION),
+        admin_error_recipient=Recipient(RecipientType.ADMIN_ERROR_CHAT, "admin-errors"),
+    )
+
+
+@dataclass(frozen=True)
+class StopAfterCalls:
+    limit: int
+    calls: int = 0
+
+    def is_set(self) -> bool:
+        object.__setattr__(self, "calls", self.calls + 1)
+        return self.calls > self.limit
+
+
+@dataclass
+class PollingBot(FakeBotClient):
+    updates: list[dict[str, object]] = field(default_factory=list)
+    offsets: list[int | None] = field(default_factory=list)
+
+    def __init__(self, updates: list[dict[str, object]]) -> None:
+        super().__init__(BotPurpose.MAIN)
+        self.updates = updates
+        self.offsets = []
+
+    def get_updates(self, *, offset: int | None, timeout_seconds: int, limit: int) -> list[dict[str, object]]:
+        self.offsets.append(offset)
+        if self.updates:
+            return [self.updates.pop(0)]
+        return []
+
+
+class FailingPollingBot(FakeBotClient):
+    def __init__(self) -> None:
+        super().__init__(BotPurpose.MAIN)
+        self.offsets: list[int | None] = []
+
+    def get_updates(self, *, offset: int | None, timeout_seconds: int, limit: int) -> list[dict[str, object]]:
+        self.offsets.append(offset)
+        raise TelegramApiError("Telegram getUpdates request failed: poll-token-123")
+
+
+@dataclass
+class FailingOnceDispatcher:
+    delegate: TelegramUpdateDispatcher
+    failed: bool = False
+
+    def dispatch_update(self, payload: dict[str, object]) -> FlowResponse | None:
+        if not self.failed:
+            self.failed = True
+            raise RuntimeError("personal report text /boom")
+        return self.delegate.dispatch_update(payload)
 
 
 class RecordingPollingRunner:

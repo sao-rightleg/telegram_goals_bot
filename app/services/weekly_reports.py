@@ -322,7 +322,7 @@ class WeeklyReportService:
         buttons: tuple[str, ...] = (),
     ) -> FlowResponse:
         response = FlowResponse(chat_id=user.chat_id, text=text, buttons=buttons)
-        self.main_bot.send_message(chat_id=user.chat_id, text=text)
+        self.main_bot.send_message(chat_id=user.chat_id, text=text, buttons=buttons)
         return response
 
     def _handle_missing_data(
