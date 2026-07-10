@@ -271,3 +271,23 @@ None.
 - Full report: `work/live-runtime-integration/logs/working/pre-deploy-qa.json`
 
 **Deferred to post-deploy:** Five criteria require live verification: test VPS launch, real Yandex voice, interactive Telegram smoke, captain smoke, and test Google Sheet data.
+
+## Task 12: Deploy test-live
+
+**Status:** Blocked
+**Commit:** not completed
+**Agent:** main agent
+**Summary:** The user approved test-live deployment through GitHub Actions for ref `d835d88aa1efb860ece5592028838dc915d83d0a`, but the workflow could not be started from this workspace because no `remote.origin` is configured and GitHub CLI is unavailable or not authenticated.
+**Deviations:** None.
+
+**Reviews:**
+
+None.
+
+**Verification:**
+- `git config --get remote.origin.url || true` -> no configured remote
+- `command -v gh && gh auth status 2>&1 || true` -> GitHub CLI unavailable or not authenticated
+- `git rev-parse HEAD` -> `d835d88aa1efb860ece5592028838dc915d83d0a`
+- Deploy log: `work/live-runtime-integration/logs/working/deploy-test.md`
+
+**External actions:** No workflow, push, SSH/VPS access, live Telegram/Google/Yandex call, or production action was performed.
