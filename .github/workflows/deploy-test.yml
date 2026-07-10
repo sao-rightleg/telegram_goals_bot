@@ -93,7 +93,7 @@ jobs:
           python -m pip install -e ".[dev]"
           pytest
 
-          mkdir -p \
+          install -d -m 700 \
             "$TEST_APP_DIR/shared/data/audio" \
             "$TEST_APP_DIR/shared/data/sqlite" \
             "$TEST_APP_DIR/shared/reports/pdf" \

@@ -77,8 +77,10 @@ def initialize_runtime(settings: Settings) -> RuntimeInitializationResult:
     )
     for directory in storage_dirs:
         directory.mkdir(parents=True, exist_ok=True)
+        directory.chmod(0o700)
 
     initialize_schema(settings.storage.sqlite_db_path)
+    settings.storage.sqlite_db_path.chmod(0o600)
     tables = frozenset(list_tables(settings.storage.sqlite_db_path))
     missing_tables = REQUIRED_TECHNICAL_TABLES - tables
     if missing_tables:

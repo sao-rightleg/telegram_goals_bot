@@ -1,6 +1,7 @@
 from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime
+import stat
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -62,6 +63,20 @@ def test_initialize_runtime_creates_storage_dirs_and_sqlite_schema(tmp_path: Pat
         settings.storage.audio_storage_dir,
         settings.storage.pdf_storage_dir,
     )
+
+
+def test_initialize_runtime_restricts_sensitive_storage_permissions(tmp_path: Path) -> None:
+    settings = load_settings(environ=runtime_env(tmp_path))
+
+    initialize_runtime(settings)
+
+    for directory in (
+        settings.storage.sqlite_db_path.parent,
+        settings.storage.audio_storage_dir,
+        settings.storage.pdf_storage_dir,
+    ):
+        assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    assert stat.S_IMODE(settings.storage.sqlite_db_path.stat().st_mode) == 0o600
 
 
 def test_run_bot_starts_controlled_fake_runtime(tmp_path: Path) -> None:

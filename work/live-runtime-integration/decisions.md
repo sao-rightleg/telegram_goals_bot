@@ -201,3 +201,20 @@ None.
 **Verification:**
 - `python -m json.tool work/live-runtime-integration/logs/working/security-audit.json >/tmp/security-audit.pretty.json` -> OK
 - `uv tool run pip-audit -r <generated requirements from pyproject> --format json` -> 1 known vulnerability found in pytest
+
+## Task 9a: Security audit fixes
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Fixed the two blocking security audit findings by raising the dev pytest constraint to the fixed major line and enforcing private permissions for runtime storage directories, the SQLite database file, test-live shared directories, and the test systemd umask. The low SSH host-key pinning finding remains documented as non-blocking hardening for a later deploy pipeline pass.
+**Deviations:** None.
+
+**Reviews:**
+
+Not run. This task fixes findings from the completed security audit.
+
+**Verification:**
+- `python -m pytest tests/test_runtime_entrypoint.py tests/test_project_tooling.py -v` -> 28 passed
+- `uv tool run pip-audit -r <generated requirements from pyproject>` -> No known vulnerabilities found
+- `python -m pytest -q` -> 348 passed

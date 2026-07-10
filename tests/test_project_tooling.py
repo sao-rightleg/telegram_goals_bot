@@ -35,6 +35,12 @@ def test_forbidden_infrastructure_dependencies_absent() -> None:
     assert not any(term in dependency_text.lower() for term in forbidden_terms)
 
 
+def test_dev_pytest_dependency_allows_security_fixed_version() -> None:
+    pyproject = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+
+    assert "pytest>=9.0.3,<10" in pyproject["project"]["optional-dependencies"]["dev"]
+
+
 def test_console_script_points_to_runtime_entrypoint() -> None:
     pyproject = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
 
@@ -72,6 +78,13 @@ def test_deploy_test_workflow_uses_test_scoped_secrets() -> None:
     assert "telegram-goals-bot.service" not in workflow
 
 
+def test_deploy_test_workflow_creates_sensitive_shared_dirs_private() -> None:
+    workflow = DEPLOY_TEST_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "install -d -m 700" in workflow
+    assert "mkdir -p \\\n            \"$TEST_APP_DIR/shared/data/audio\"" not in workflow
+
+
 def test_test_systemd_unit_targets_test_app_dir_and_service() -> None:
     unit = TEST_SYSTEMD_UNIT.read_text(encoding="utf-8")
 
@@ -81,3 +94,9 @@ def test_test_systemd_unit_targets_test_app_dir_and_service() -> None:
     assert "ExecStart=/opt/telegram_goals_bot_test/current/.venv/bin/telegram-goals-bot --env-file /opt/telegram_goals_bot_test/shared/.env run" in unit
     assert "ReadWritePaths=/opt/telegram_goals_bot_test/shared" in unit
     assert "/opt/telegram_goals_bot/current" not in unit
+
+
+def test_test_systemd_unit_uses_restrictive_umask() -> None:
+    unit = TEST_SYSTEMD_UNIT.read_text(encoding="utf-8")
+
+    assert "UMask=0077" in unit

@@ -10,6 +10,7 @@ Group=telegram-goals-bot-test
 WorkingDirectory=/opt/telegram_goals_bot_test/current
 EnvironmentFile=/opt/telegram_goals_bot_test/shared/.env
 ExecStart=/opt/telegram_goals_bot_test/current/.venv/bin/telegram-goals-bot --env-file /opt/telegram_goals_bot_test/shared/.env run
+UMask=0077
 Restart=on-failure
 RestartSec=10
 NoNewPrivileges=true
