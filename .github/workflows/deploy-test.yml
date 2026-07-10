@@ -1,0 +1,110 @@
+name: Deploy Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to deploy to the test VPS environment
+        required: true
+        default: main
+
+concurrency:
+  group: test-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      contents: read
+    env:
+      TEST_VPS_HOST: ${{ secrets.TEST_VPS_HOST }}
+      TEST_VPS_PORT: ${{ secrets.TEST_VPS_PORT }}
+      TEST_VPS_USER: ${{ secrets.TEST_VPS_USER }}
+      TEST_VPS_SSH_KEY: ${{ secrets.TEST_VPS_SSH_KEY }}
+      TEST_VPS_APP_DIR: ${{ secrets.TEST_VPS_APP_DIR }}
+      TEST_VPS_SERVICE_NAME: ${{ secrets.TEST_VPS_SERVICE_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Verify test suite before deploy
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          pytest
+      - name: Validate test deployment secrets
+        run: |
+          test -n "$TEST_VPS_HOST"
+          test -n "$TEST_VPS_USER"
+          test -n "$TEST_VPS_SSH_KEY"
+          test -n "$TEST_VPS_APP_DIR"
+          test -n "$TEST_VPS_SERVICE_NAME"
+          test "$TEST_VPS_APP_DIR" = "/opt/telegram_goals_bot_test"
+          test "$TEST_VPS_SERVICE_NAME" = "telegram-goals-bot-test.service"
+      - name: Create deployment archive
+        run: |
+          tar \
+            --exclude='.git' \
+            --exclude='.venv' \
+            --exclude='venv' \
+            --exclude='data/audio' \
+            --exclude='data/sqlite' \
+            --exclude='reports/pdf' \
+            --exclude='backups' \
+            --exclude='logs' \
+            --exclude='*.sqlite' \
+            --exclude='*.sqlite3' \
+            --exclude='*.db' \
+            -czf "/tmp/telegram-goals-bot-test-${GITHUB_SHA}.tgz" .
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s' "$TEST_VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_HOST" >> ~/.ssh/known_hosts
+      - name: Upload archive
+        run: |
+          scp -i ~/.ssh/deploy_key -P "${TEST_VPS_PORT:-22}" \
+            "/tmp/telegram-goals-bot-test-${GITHUB_SHA}.tgz" \
+            "$TEST_VPS_USER@$TEST_VPS_HOST:/tmp/telegram-goals-bot-test-${GITHUB_SHA}.tgz"
+      - name: Install test release and restart test service
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_USER@$TEST_VPS_HOST" \
+            "TEST_APP_DIR='$TEST_VPS_APP_DIR' TEST_SERVICE_NAME='$TEST_VPS_SERVICE_NAME' GITHUB_SHA='$GITHUB_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          test "$TEST_APP_DIR" = "/opt/telegram_goals_bot_test"
+          test "$TEST_SERVICE_NAME" = "telegram-goals-bot-test.service"
+
+          RELEASE_DIR="$TEST_APP_DIR/releases/$GITHUB_SHA"
+          mkdir -p "$RELEASE_DIR" "$TEST_APP_DIR/shared"
+          tar -xzf "/tmp/telegram-goals-bot-test-$GITHUB_SHA.tgz" -C "$RELEASE_DIR"
+
+          cd "$RELEASE_DIR"
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          pytest
+
+          mkdir -p \
+            "$TEST_APP_DIR/shared/data/audio" \
+            "$TEST_APP_DIR/shared/data/sqlite" \
+            "$TEST_APP_DIR/shared/reports/pdf" \
+            "$TEST_APP_DIR/shared/logs" \
+            "$TEST_APP_DIR/shared/backups/sqlite" \
+            "$TEST_APP_DIR/shared/backups/google_sheets_exports" \
+            "$TEST_APP_DIR/shared/backups/pdf"
+
+          ./.venv/bin/telegram-goals-bot --env-file "$TEST_APP_DIR/shared/.env" check-config
+
+          ln -sfn "$RELEASE_DIR" "$TEST_APP_DIR/current"
+          sudo systemctl restart "$TEST_SERVICE_NAME"
+          sudo systemctl status "$TEST_SERVICE_NAME" --no-pager
+          REMOTE

@@ -9,26 +9,36 @@ Production deployment must be executed only through GitHub CI/CD after explicit 
 ## Current Status
 
 - CI workflow: `.github/workflows/ci.yml`
+- Manual test-live deploy workflow: `.github/workflows/deploy-test.yml`
 - Manual production deploy workflow: `.github/workflows/deploy-production.yml`
 - Production target: custom VPS, `systemd` service
 - Readiness CLI: `telegram-goals-bot check-config` / `telegram-goals-bot init-storage`
 - Runtime command: `telegram-goals-bot run`
 - Committed systemd unit template: `deploy/systemd/telegram-goals-bot.service`
-- Live polling runtime: not yet implemented in the repository
+- Committed test systemd unit template: `deploy/systemd/telegram-goals-bot-test.service`
+- Live polling runtime: implemented; production remains blocked until test-live smoke and explicit production approval
 
-First production launch is blocked until live Telegram/Google/transcription adapters and the polling runtime are implemented. The current `run` command fails explicitly until that task is complete.
+First production launch is blocked until test-live deployment and smoke verification pass, and the user explicitly approves a separate production deployment.
 
 ## GitHub Setup Checklist
 
 - Create GitHub environment: `production`
 - Require manual approval for the `production` environment
-- Add deployment secrets:
+- Create GitHub environment: `test`
+- Add production deployment secrets:
   - `VPS_HOST`
   - `VPS_PORT`
   - `VPS_USER`
   - `VPS_SSH_KEY`
   - `VPS_APP_DIR`
   - `VPS_SERVICE_NAME`
+- Add test-live deployment secrets:
+  - `TEST_VPS_HOST`
+  - `TEST_VPS_PORT`
+  - `TEST_VPS_USER`
+  - `TEST_VPS_SSH_KEY`
+  - `TEST_VPS_APP_DIR=/opt/telegram_goals_bot_test`
+  - `TEST_VPS_SERVICE_NAME=telegram-goals-bot-test.service`
 - Confirm branch protection for `main`
 - Confirm CI is required for pull requests to `main`
 
@@ -79,11 +89,30 @@ Recommended base:
 
 Generated data must remain outside git-tracked release files.
 
+Test-live base:
+
+```text
+/opt/telegram_goals_bot_test/
+├── current -> releases/{sha}
+├── releases/
+└── shared/
+    ├── .env
+    ├── data/audio/
+    ├── data/sqlite/
+    ├── reports/pdf/
+    ├── logs/
+    └── backups/
+        ├── sqlite/
+        ├── google_sheets_exports/
+        └── pdf/
+```
+
+The test-live directory, service, bots, Google Sheet, and credentials must be separate from production.
+
 ## systemd Checklist
 
 Before first production deploy:
 
-- Implement live Telegram polling runtime behind `telegram-goals-bot run`.
 - Review and install `deploy/systemd/telegram-goals-bot.service`.
 - Configure service environment loading from a protected file.
 - Use `WorkingDirectory=/opt/telegram_goals_bot/current`.
@@ -97,6 +126,21 @@ Manual inspection commands:
 ```bash
 systemctl status telegram-goals-bot
 journalctl -u telegram-goals-bot -f
+```
+
+Before first test-live deploy:
+
+- Install `deploy/systemd/telegram-goals-bot-test.service`.
+- Configure protected test env file at `/opt/telegram_goals_bot_test/shared/.env`.
+- Use separate test Telegram bot tokens, test Google Sheet, and test Yandex credentials.
+- Ensure GitHub deploy user can restart only `telegram-goals-bot-test.service` through a narrow sudo rule.
+- Run `telegram-goals-bot --env-file /opt/telegram_goals_bot_test/shared/.env check-config`.
+
+Manual test inspection commands:
+
+```bash
+systemctl status telegram-goals-bot-test.service
+journalctl -u telegram-goals-bot-test.service -f
 ```
 
 ## Backup and Retention Checklist
@@ -131,6 +175,23 @@ Use a separate test Telegram bot and test Google Sheet.
 - Captains/trackers do not receive group comparison.
 
 ## Deploy Procedure
+
+### Test-Live
+
+1. Confirm explicit user approval to run the test deploy workflow.
+2. Confirm GitHub `test` environment exists.
+3. Confirm all `TEST_*` GitHub deployment secrets exist and point only to test resources.
+4. Confirm `/opt/telegram_goals_bot_test/shared/.env` contains test-only application config.
+5. Run `Deploy Test` manually in GitHub Actions.
+6. Verify GitHub runner tests pass.
+7. Verify VPS release tests pass.
+8. Verify `check-config` passes before symlink switch.
+9. Verify `systemctl status telegram-goals-bot-test.service`.
+10. Run the approved test-live Telegram smoke checklist.
+
+Passing test-live does not approve production.
+
+### Production
 
 1. Confirm explicit user approval for production deploy and target ref.
 2. Confirm GitHub `production` environment approval is enabled.

@@ -11,7 +11,7 @@ All deployments must go through GitHub CI/CD unless emergency debugging of broke
 
 Docker, Redis, Celery, Kubernetes, and complex DevOps are out of MVP.
 
-The repository currently contains locally verified MVP slices for the foundation, participant core flows, weekly report flow, insight flow, voice processing input for weekly-report/insight drafts, captain flows, scheduler deadlines, and reports flow. They have passed pre-deploy QA with fake/local boundaries; no production deployment or live Telegram/Google/transcription integration has been performed as part of those feature completions.
+The repository currently contains locally verified MVP slices for the foundation, participant core flows, weekly report flow, insight flow, voice processing input for weekly-report/insight drafts, captain flows, scheduler deadlines, reports flow, and live-runtime adapters/composition. They have passed local automated checks with fake/local boundaries; no production deployment has been performed as part of those feature completions.
 
 ## GitHub CI/CD
 
@@ -28,9 +28,17 @@ Production deployment is configured in `.github/workflows/deploy-production.yml`
 - Pre-deploy gate: installs the package and runs `pytest` on GitHub runner before uploading anything.
 - Target: custom VPS with existing `systemd` service.
 - Deployment shape: uploads a source archive, creates a release directory under `VPS_APP_DIR/releases/{sha}`, installs a release-local `.venv`, runs tests on the VPS release, updates `VPS_APP_DIR/current`, then restarts `VPS_SERVICE_NAME`.
-- Runtime limitation: the repository defines readiness CLI commands and a committed systemd unit template, but live Telegram polling runtime is not implemented yet. First production launch requires a separate live-runtime adapter task before the service can stay healthy.
+- Runtime: `telegram-goals-bot run` composes the live Telegram polling runtime. Production launch still requires a separate explicit approval and successful test-live smoke.
 
 Do not run the production workflow until production secrets, GitHub environment protection, live runtime, systemd unit installation, and smoke checklist are ready and explicitly approved.
+
+Test-live deployment is configured in `.github/workflows/deploy-test.yml`.
+
+- Trigger: manual `workflow_dispatch` only.
+- Protection: GitHub `test` environment should hold test-only VPS secrets and test application credentials.
+- Target: custom VPS test directory `/opt/telegram_goals_bot_test` with `telegram-goals-bot-test.service`.
+- Deployment shape: uploads a source archive, creates a release under `TEST_VPS_APP_DIR/releases/{sha}`, installs a release-local `.venv`, runs tests on the VPS release, runs `check-config` against `TEST_VPS_APP_DIR/shared/.env`, updates `TEST_VPS_APP_DIR/current`, then restarts only `TEST_VPS_SERVICE_NAME`.
+- Production-blocking rule: passing test-live deployment and smoke does not approve production. Production remains blocked until the user explicitly approves a separate production deploy.
 
 Detailed deployment readiness checklist: `docs/09_deployment_preparation.md`.
 
@@ -42,7 +50,7 @@ Runtime readiness commands:
 - `telegram-goals-bot --env-file /opt/telegram_goals_bot/shared/.env init-storage`
 - `telegram-goals-bot --env-file /opt/telegram_goals_bot/shared/.env run`
 
-The `run` command currently exits with a clear not-implemented error until live Telegram polling adapters are added.
+The `run` command starts the live Telegram polling runtime after readiness passes.
 
 ## Environment Variables and Credentials
 
@@ -81,6 +89,17 @@ Required GitHub Actions secrets for production deployment:
 | `VPS_APP_DIR` | Base app directory on VPS, for example `/opt/telegram_goals_bot`. | `deploy-production.yml` |
 | `VPS_SERVICE_NAME` | systemd service name, for example `telegram-goals-bot`. | `deploy-production.yml` |
 
+Required GitHub Actions secrets for test-live deployment:
+
+| Secret | Purpose | Workflow |
+| --- | --- | --- |
+| `TEST_VPS_HOST` | Test VPS host name or IP address. | `deploy-test.yml` |
+| `TEST_VPS_PORT` | Test SSH port. Optional; defaults to `22` when empty. | `deploy-test.yml` |
+| `TEST_VPS_USER` | Test SSH user used by GitHub Actions. | `deploy-test.yml` |
+| `TEST_VPS_SSH_KEY` | Private SSH deploy key for the test VPS user. | `deploy-test.yml` |
+| `TEST_VPS_APP_DIR` | Must be `/opt/telegram_goals_bot_test`. | `deploy-test.yml` |
+| `TEST_VPS_SERVICE_NAME` | Must be `telegram-goals-bot-test.service`. | `deploy-test.yml` |
+
 Application secrets remain outside the repository. Store local values in `.env` or protected credential files. Store production values on the VPS and/or GitHub Actions secrets, depending on the final systemd unit design.
 
 ## Local Runtime Paths
@@ -104,6 +123,11 @@ Manual service commands:
 - `systemctl status telegram-goals-bot`
 - `systemctl restart telegram-goals-bot`
 - `journalctl -u telegram-goals-bot -f`
+
+Test-live service commands:
+
+- `systemctl status telegram-goals-bot-test.service`
+- `journalctl -u telegram-goals-bot-test.service -f`
 
 Production launch requires a separate test Telegram bot and smoke test.
 

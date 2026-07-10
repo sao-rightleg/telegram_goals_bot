@@ -136,3 +136,20 @@ Not run. Reviewer subagents require explicit user request in this runtime.
 - `python -m pytest tests/test_runtime_entrypoint.py tests/test_project_tooling.py -v` -> 18 passed
 - `git diff --check` -> OK
 - `python -m pytest -q` -> 336 passed
+
+## Task 7: Test-live deployment pipeline
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Added a manual-only `Deploy Test` GitHub Actions workflow using GitHub environment `test`, test-scoped VPS secrets, `/opt/telegram_goals_bot_test`, and `telegram-goals-bot-test.service`. Added the test systemd unit, deployment documentation, and static tooling tests that guard against production app-dir/service references in test deploy artifacts.
+**Deviations:** None.
+
+**Reviews:**
+
+Not run. Reviewer subagents require explicit user request in this runtime.
+
+**Verification:**
+- `python -m pytest tests/test_project_tooling.py -v` -> 8 passed
+- `git diff --check` -> OK
+- `python -m pytest -q` -> 339 passed

@@ -8,6 +8,8 @@ except ModuleNotFoundError:  # pragma: no cover - Python < 3.11 compatibility.
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT_PATH = PROJECT_ROOT / "pyproject.toml"
+DEPLOY_TEST_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "deploy-test.yml"
+TEST_SYSTEMD_UNIT = PROJECT_ROOT / "deploy" / "systemd" / "telegram-goals-bot-test.service"
 
 
 def test_app_package_imports() -> None:
@@ -44,3 +46,38 @@ def test_runtime_does_not_reference_runtime_not_implemented_error_path() -> None
 
     assert "RuntimeNotImplementedError" not in runtime_source
     assert "live Telegram polling runtime is not implemented" not in runtime_source
+
+
+def test_deploy_test_workflow_uses_test_environment() -> None:
+    workflow = DEPLOY_TEST_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "workflow_dispatch:" in workflow
+    assert "environment: test" in workflow
+    assert "environment: production" not in workflow
+    assert "push:" not in workflow
+    assert "pull_request:" not in workflow
+
+
+def test_deploy_test_workflow_uses_test_scoped_secrets() -> None:
+    workflow = DEPLOY_TEST_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "TEST_VPS_APP_DIR" in workflow
+    assert "TEST_VPS_SERVICE_NAME" in workflow
+    assert "secrets.VPS_APP_DIR" not in workflow
+    assert "secrets.VPS_SERVICE_NAME" not in workflow
+    assert "APP_DIR='$VPS_APP_DIR'" not in workflow
+    assert "SERVICE_NAME='$VPS_SERVICE_NAME'" not in workflow
+    assert "/opt/telegram_goals_bot_test" in workflow
+    assert "telegram-goals-bot-test.service" in workflow
+    assert "telegram-goals-bot.service" not in workflow
+
+
+def test_test_systemd_unit_targets_test_app_dir_and_service() -> None:
+    unit = TEST_SYSTEMD_UNIT.read_text(encoding="utf-8")
+
+    assert "Description=Telegram Goals Bot Test" in unit
+    assert "WorkingDirectory=/opt/telegram_goals_bot_test/current" in unit
+    assert "EnvironmentFile=/opt/telegram_goals_bot_test/shared/.env" in unit
+    assert "ExecStart=/opt/telegram_goals_bot_test/current/.venv/bin/telegram-goals-bot --env-file /opt/telegram_goals_bot_test/shared/.env run" in unit
+    assert "ReadWritePaths=/opt/telegram_goals_bot_test/shared" in unit
+    assert "/opt/telegram_goals_bot/current" not in unit
