@@ -250,3 +250,24 @@ Not run. This task fixes findings from the completed test audit.
 **Verification:**
 - `python -m pytest tests/test_boundaries.py tests/test_runtime_entrypoint.py -v` -> 33 passed
 - `python -m pytest -q` -> 351 passed
+
+## Task 11: Pre-deploy QA
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Pre-deploy QA passed. Full local pytest passed with 351 tests, targeted runtime/config/deploy smoke passed with 71 tests, and dependency audit found no known vulnerabilities. Acceptance mapping covered 36 criteria: 31 passed locally, 0 failed, and 5 live checks were deferred to post-deploy verification.
+**Deviations:** None.
+
+**Reviews:**
+
+None.
+
+**Verification:**
+- `python -m pytest -v` -> 351 passed in 16.76s
+- `python -m pytest tests/test_config.py tests/test_boundaries.py tests/test_voice_processing_boundaries.py tests/test_runtime_entrypoint.py tests/test_project_tooling.py -v` -> 71 passed in 3.11s
+- `uv tool run pip-audit -r <generated requirements from pyproject>` -> No known vulnerabilities found
+- `python -m json.tool work/live-runtime-integration/logs/working/pre-deploy-qa.json >/tmp/pre-deploy-qa.pretty.json` -> OK
+- Full report: `work/live-runtime-integration/logs/working/pre-deploy-qa.json`
+
+**Deferred to post-deploy:** Five criteria require live verification: test VPS launch, real Yandex voice, interactive Telegram smoke, captain smoke, and test Google Sheet data.

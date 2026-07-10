@@ -1,5 +1,5 @@
 ---
-status: planned
+status: done
 depends_on: [8, 9, 10]
 wave: 6
 skills: [pre-deploy-qa]
@@ -32,12 +32,12 @@ No deployment, push, or production action is allowed in this task.
 
 ## Acceptance Criteria
 
-- [ ] Full local `pytest` suite passes.
-- [ ] Runtime/config targeted checks pass.
-- [ ] Deploy artifact static checks pass.
-- [ ] Secret redaction and no-real-secret assumptions are checked locally.
-- [ ] QA report maps acceptance criteria to pass/fail/deferred.
-- [ ] No deployment or external production action is performed.
+- [x] Full local `pytest` suite passes.
+- [x] Runtime/config targeted checks pass.
+- [x] Deploy artifact static checks pass.
+- [x] Secret redaction and no-real-secret assumptions are checked locally.
+- [x] QA report maps acceptance criteria to pass/fail/deferred.
+- [x] No deployment or external production action is performed.
 
 ## Context Files
 
@@ -80,5 +80,5 @@ None.
 
 ## Post-completion
 
-- [ ] Write a brief report in `decisions.md` per the template.
-- [ ] If QA found blockers, stop before deploy and request/follow a fix task.
+- [x] Write a brief report in `decisions.md` per the template.
+- [x] If QA found blockers, stop before deploy and request/follow a fix task.

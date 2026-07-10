@@ -1,0 +1,337 @@
+{
+  "status": "passed",
+  "type": "pre-deploy-qa",
+  "created_at": "2026-07-10",
+  "feature": "live-runtime-integration",
+  "summary": {
+    "totalChecks": 36,
+    "passed": 31,
+    "failed": 0,
+    "notVerifiable": 5,
+    "criticals": 0,
+    "majors": 0,
+    "minors": 0
+  },
+  "testSuite": {
+    "status": "passed",
+    "details": "Full local pytest suite passed: 351 passed in 16.76s."
+  },
+  "targetedChecks": [
+    {
+      "name": "Runtime/config/deploy artifact smoke",
+      "status": "passed",
+      "command": "python -m pytest tests/test_config.py tests/test_boundaries.py tests/test_voice_processing_boundaries.py tests/test_runtime_entrypoint.py tests/test_project_tooling.py -v",
+      "details": "71 passed in 3.11s."
+    },
+    {
+      "name": "Audit report JSON validation",
+      "status": "passed",
+      "command": "python -m json.tool work/live-runtime-integration/logs/working/{code-audit,security-audit,test-audit}.json",
+      "details": "All three audit JSON reports parsed successfully."
+    },
+    {
+      "name": "Dependency vulnerability audit",
+      "status": "passed",
+      "command": "uv tool run pip-audit -r <generated requirements from pyproject>",
+      "details": "No known vulnerabilities found."
+    },
+    {
+      "name": "No deployment or external production action",
+      "status": "passed",
+      "details": "No push, deploy workflow run, SSH, live Telegram, live Google, or live Yandex action was performed during pre-deploy QA."
+    }
+  ],
+  "auditReports": [
+    {
+      "report": "work/live-runtime-integration/logs/working/code-audit.json",
+      "originalStatus": "completed_with_blocking_findings",
+      "qaStatus": "closed_by_followup",
+      "evidence": "Blocking findings CA-001/CA-002/CA-003 were fixed in Task 8a; full suite now passes."
+    },
+    {
+      "report": "work/live-runtime-integration/logs/working/security-audit.json",
+      "originalStatus": "fail",
+      "qaStatus": "closed_by_followup",
+      "evidence": "Blocking findings SA-001/SA-002 were fixed in Task 9a; dependency audit now reports no known vulnerabilities. SA-003 remains non-blocking hardening."
+    },
+    {
+      "report": "work/live-runtime-integration/logs/working/test-audit.json",
+      "originalStatus": "failed",
+      "qaStatus": "closed_by_followup",
+      "evidence": "Blocking findings TA-001/TA-002 were fixed in Task 10a; full suite now passes. TA-003 remains non-blocking hardening."
+    }
+  ],
+  "artifactCheck": {
+    "status": "passed",
+    "evidence": "Before writing this QA report, `git status --short` returned clean; no generated SQLite databases, credentials, secrets, audio, PDFs, backups, or logs were present as untracked/staged files."
+  },
+  "userSpecAcceptanceCriteria": [
+    {
+      "id": "US-AC1",
+      "criterion": "Test live runtime launches on VPS in separate environment with separate app dir, systemd service, GitHub environment/secrets; production service and secrets are not used.",
+      "status": "not_verifiable",
+      "evidence": "Static deploy artifacts pass local checks: tests/test_project_tooling.py verifies GitHub environment `test`, `/opt/telegram_goals_bot_test`, `telegram-goals-bot-test.service`, test-scoped secrets, private shared dirs, and no production service references. Actual VPS launch requires Task 12 deploy."
+    },
+    {
+      "id": "US-AC2",
+      "criterion": "`telegram-goals-bot run` no longer fails with RuntimeNotImplementedError in test-live configuration.",
+      "status": "passed",
+      "evidence": "tests/test_runtime_entrypoint.py::test_run_bot_no_longer_raises_not_implemented_with_fake_runtime and tests/test_project_tooling.py::test_runtime_does_not_reference_runtime_not_implemented_error_path."
+    },
+    {
+      "id": "US-AC3",
+      "criterion": "Real Telegram bot clients implement sending messages/documents for main, error, and notification bot boundaries.",
+      "status": "passed",
+      "evidence": "tests/test_boundaries.py::test_live_telegram_client_sends_message_request, ::test_live_telegram_client_sends_inline_keyboard_markup, ::test_live_telegram_client_sends_document_request, and three-bot boundary tests."
+    },
+    {
+      "id": "US-AC4",
+      "criterion": "Real Telegram file downloader downloads voice file to local audio path by storage policy.",
+      "status": "passed",
+      "evidence": "tests/test_boundaries.py::test_live_telegram_file_downloader_writes_requested_path and voice service path assertions in tests/test_voice_processing_service.py."
+    },
+    {
+      "id": "US-AC5",
+      "criterion": "Real Google Sheets adapter implements current SheetsGateway contract for smoke flows.",
+      "status": "passed",
+      "evidence": "tests/test_participant_sheets_gateway.py, tests/test_weekly_report_sheets_gateway.py, tests/test_insight_sheets_gateway.py, and tests/test_reports_sheets_gateway.py live-like FakeSheetsService tests."
+    },
+    {
+      "id": "US-AC6",
+      "criterion": "`check-config` or startup validates required Google Sheets tabs/columns fail-fast and allows extra columns.",
+      "status": "passed",
+      "evidence": "tests/test_participant_sheets_gateway.py::test_live_schema_validation_allows_extra_columns and ::test_live_schema_validation_fails_for_missing_required_column; tests/test_runtime_entrypoint.py::test_cli_check_config_returns_clear_error_for_google_schema_failure."
+    },
+    {
+      "id": "US-AC7",
+      "criterion": "Missing required tabs/columns fail before user scenarios; if error bot is available in runtime path, admin receives sanitized technical error.",
+      "status": "passed",
+      "evidence": "tests/test_runtime_entrypoint.py::test_cli_check_config_returns_clear_error_for_google_schema_failure and ::test_run_bot_notifies_startup_readiness_failure_without_raw_error."
+    },
+    {
+      "id": "US-AC8",
+      "criterion": "Yandex SpeechKit async is implemented as first concrete SpeechTranscriber provider.",
+      "status": "passed",
+      "evidence": "tests/test_voice_processing_boundaries.py::test_yandex_transcriber_returns_text_from_completed_operation, ::test_yandex_transcriber_times_out_with_sanitized_error, and ::test_yandex_transcriber_failure_does_not_expose_credentials."
+    },
+    {
+      "id": "US-AC9",
+      "criterion": "`TRANSCRIPTION_PROVIDER=yandex` selects Yandex adapter while provider abstraction remains.",
+      "status": "passed",
+      "evidence": "tests/test_config.py::test_load_settings_accepts_yandex_transcription_config and tests/test_runtime_entrypoint.py::test_runtime_env_includes_transcription_provider_config."
+    },
+    {
+      "id": "US-AC10",
+      "criterion": "Voice under 10 minutes in Russian is transcribed through Yandex and added to active weekly-report or insight draft.",
+      "status": "not_verifiable",
+      "evidence": "Local mocked Yandex and fake transcriber tests pass, including tests/test_voice_processing_boundaries.py and tests/test_voice_processing_service.py. Real Yandex SpeechKit transcription requires Task 13 live smoke with test credentials."
+    },
+    {
+      "id": "US-AC11",
+      "criterion": "Voice timeout/failure preserves existing drafts, deletes only failed just-downloaded audio, returns approved failure text, and sends sanitized admin error.",
+      "status": "passed",
+      "evidence": "tests/test_voice_processing_service.py::test_transcription_failure_preserves_draft_and_notifies_admin, ::test_transcription_failure_deletes_downloaded_audio_without_draft_message, and tests/test_voice_processing_boundaries.py::test_over_limit_voice_has_no_side_effects."
+    },
+    {
+      "id": "US-AC12",
+      "criterion": "Minimal interactive smoke passes on test bots and test Google Sheet: /start, consent, unknown user/admin error, role menu, goal, steps, progress, weekly report text, insight text.",
+      "status": "not_verifiable",
+      "evidence": "Local dispatcher and service tests cover these paths with fakes; real Telegram/test Sheet smoke requires Task 13 after deploy."
+    },
+    {
+      "id": "US-AC13",
+      "criterion": "Captain smoke passes: captain sees only own team and can enter manual report for own-team participant.",
+      "status": "not_verifiable",
+      "evidence": "Local captain flow tests pass, including own-team and forged participant boundaries. Real test account smoke requires Task 13."
+    },
+    {
+      "id": "US-AC14",
+      "criterion": "Test Google Sheet contains minimal data: active team, participant, captain, tracker scope, admin/Sitnikov recipients, active goal, six planned steps.",
+      "status": "not_verifiable",
+      "evidence": "Local FakeSheetsService minimal sheet fixtures are valid; real test Google Sheet contents must be verified before/during Task 12-13."
+    },
+    {
+      "id": "US-AC15",
+      "criterion": "Runtime logs/admin errors do not expose bot tokens, API keys, Google credentials, raw secrets, unnecessary personal report text, audio contents, or PDF contents.",
+      "status": "passed",
+      "evidence": "tests/test_config.py redaction tests; tests/test_boundaries.py token sanitization; tests/test_voice_processing_boundaries.py Yandex sanitization; tests/test_runtime_entrypoint.py malformed callback/polling/startup sanitization; report/scheduler admin sanitization in full suite."
+    },
+    {
+      "id": "US-AC16",
+      "criterion": "Production deploy remains blocked until separate explicit approval after test-live smoke.",
+      "status": "passed",
+      "evidence": "Task 12 requires explicit test-live approval; Task 13 states production remains blocked. No deploy/push/production action was performed during QA."
+    }
+  ],
+  "techSpecAcceptanceCriteria": [
+    {
+      "id": "TS-AC1",
+      "criterion": "`telegram-goals-bot run` no longer raises RuntimeNotImplementedError with valid test-live config.",
+      "status": "passed",
+      "evidence": "tests/test_runtime_entrypoint.py::test_run_bot_no_longer_raises_not_implemented_with_fake_runtime."
+    },
+    {
+      "id": "TS-AC2",
+      "criterion": "Runtime composition wires live Telegram, Google Sheets, Yandex SpeechKit, SQLite repositories, storage paths, notification router, and existing business services.",
+      "status": "passed",
+      "evidence": "tests/test_runtime_entrypoint.py::test_run_bot_composes_three_bot_router_and_services and controlled run tests."
+    },
+    {
+      "id": "TS-AC3",
+      "criterion": "Real Telegram bot clients implement send_message and send_document for main/error/notification purposes.",
+      "status": "passed",
+      "evidence": "tests/test_boundaries.py live Telegram message/document tests and three-bot boundary tests."
+    },
+    {
+      "id": "TS-AC4",
+      "criterion": "Real Telegram file downloader implements download_file and stores voice files at requested local path.",
+      "status": "passed",
+      "evidence": "tests/test_boundaries.py::test_live_telegram_file_downloader_writes_requested_path."
+    },
+    {
+      "id": "TS-AC5",
+      "criterion": "Telegram polling loop receives main bot updates and dispatches /start, consent, menu, weekly report, insight, voice, and captain smoke actions.",
+      "status": "passed",
+      "evidence": "tests/test_boundaries.py::test_live_telegram_client_get_updates_sends_polling_request; tests/test_runtime_entrypoint.py dispatch and polling recovery tests; full service tests cover menu/weekly/insight/captain local behavior."
+    },
+    {
+      "id": "TS-AC6",
+      "criterion": "Real Google Sheets adapter implements all current SheetsGateway methods used by smoke flows.",
+      "status": "passed",
+      "evidence": "Google Sheets gateway test files exercise participant, weekly report, insight, report, schema, append/update, aliases, and step-closing paths."
+    },
+    {
+      "id": "TS-AC7",
+      "criterion": "Google Sheets schema validation fails startup/readiness for missing required tabs or columns and allows extra columns.",
+      "status": "passed",
+      "evidence": "tests/test_participant_sheets_gateway.py schema tests and runtime check-config failure test."
+    },
+    {
+      "id": "TS-AC8",
+      "criterion": "Yandex SpeechKit async adapter implements SpeechTranscriber and is selected by TRANSCRIPTION_PROVIDER=yandex.",
+      "status": "passed",
+      "evidence": "tests/test_voice_processing_boundaries.py Yandex adapter tests and tests/test_config.py Yandex provider config tests."
+    },
+    {
+      "id": "TS-AC9",
+      "criterion": "Voice timeout/failure preserves drafts, deletes only failed just-downloaded audio, returns approved failure text, and sends sanitized admin error.",
+      "status": "passed",
+      "evidence": "Voice service and voice boundary tests cover over-limit, transcriber failure, draft preservation, audio cleanup, and error routing."
+    },
+    {
+      "id": "TS-AC10",
+      "criterion": "Runtime/admin logs do not expose bot tokens, Yandex credentials, Google credentials, raw API keys, full report text, audio contents, or PDF contents.",
+      "status": "passed",
+      "evidence": "Secret/personal-data sanitization tests pass across config, Telegram, Yandex, runtime polling/startup, voice, report, and scheduler slices."
+    },
+    {
+      "id": "TS-AC11",
+      "criterion": "Test deployment workflow uses separate GitHub `test` environment and test VPS target variables, and does not restart production service.",
+      "status": "passed",
+      "evidence": "tests/test_project_tooling.py::test_deploy_test_workflow_uses_test_environment and ::test_deploy_test_workflow_uses_test_scoped_secrets."
+    },
+    {
+      "id": "TS-AC12",
+      "criterion": "Test systemd unit targets `/opt/telegram_goals_bot_test/current` and `telegram-goals-bot-test.service`.",
+      "status": "passed",
+      "evidence": "tests/test_project_tooling.py::test_test_systemd_unit_targets_test_app_dir_and_service and ::test_test_systemd_unit_uses_restrictive_umask."
+    },
+    {
+      "id": "TS-AC13",
+      "criterion": "Automated tests pass locally with fake/live-like dependencies and no real secrets.",
+      "status": "passed",
+      "evidence": "`python -m pytest -v` -> 351 passed; all live-like adapters use fakes or httpx.MockTransport."
+    },
+    {
+      "id": "TS-AC14",
+      "criterion": "Production deploy remains blocked until separate explicit approval after test-live smoke.",
+      "status": "passed",
+      "evidence": "No production deploy workflow was run. Task 12 is test-live only and Task 13 keeps production blocked pending later explicit approval."
+    }
+  ],
+  "taskAcceptanceCriteria": [
+    {
+      "id": "TASK11-AC1",
+      "criterion": "Full local pytest suite passes.",
+      "status": "passed",
+      "evidence": "`python -m pytest -v` -> 351 passed in 16.76s."
+    },
+    {
+      "id": "TASK11-AC2",
+      "criterion": "Runtime/config targeted checks pass.",
+      "status": "passed",
+      "evidence": "Targeted runtime/config/deploy smoke command -> 71 passed in 3.11s."
+    },
+    {
+      "id": "TASK11-AC3",
+      "criterion": "Deploy artifact static checks pass.",
+      "status": "passed",
+      "evidence": "tests/test_project_tooling.py deploy workflow/systemd tests passed."
+    },
+    {
+      "id": "TASK11-AC4",
+      "criterion": "Secret redaction and no-real-secret assumptions are checked locally.",
+      "status": "passed",
+      "evidence": "Config, Telegram, Yandex, runtime, voice, scheduler, and report sanitization tests passed; `.env.example` contains names/default numeric values only; `.gitignore` protects secrets/generated artifacts."
+    },
+    {
+      "id": "TASK11-AC5",
+      "criterion": "QA report maps acceptance criteria to pass/fail/deferred.",
+      "status": "passed",
+      "evidence": "This report maps 16 user-spec AC, 14 tech-spec AC, and 6 task AC."
+    },
+    {
+      "id": "TASK11-AC6",
+      "criterion": "No deployment or external production action is performed.",
+      "status": "passed",
+      "evidence": "No push, deploy workflow run, SSH, live Telegram, live Google, live Yandex, or production action was performed."
+    }
+  ],
+  "findings": [],
+  "coverageVerification": {
+    "status": "passed",
+    "coverageTool": "not_configured",
+    "notes": [
+      "No pytest coverage tool is configured in pyproject.toml.",
+      "Feature files are covered by corresponding tests: config, bot clients, runtime, Sheets gateway, Yandex/voice, deploy workflow, systemd unit.",
+      "Audited test gaps from Task 10 were fixed in Task 10a."
+    ]
+  },
+  "deferredToPostDeploy": [
+    {
+      "id": "POST-1",
+      "criterion": "US-AC1: test live runtime launches on VPS in separate test environment.",
+      "reason": "Requires GitHub Actions test-live deploy and VPS service status.",
+      "verificationCondition": "Task 12 deploy workflow completed for approved ref.",
+      "verificationSteps": "Confirm GitHub `Deploy Test` workflow uses environment `test`, `/opt/telegram_goals_bot_test`, and `telegram-goals-bot-test.service`; confirm service starts without touching production."
+    },
+    {
+      "id": "POST-2",
+      "criterion": "US-AC10: Russian voice under 10 minutes is transcribed through Yandex and added to active draft.",
+      "reason": "Requires live Yandex SpeechKit credentials and real Telegram voice upload.",
+      "verificationCondition": "Test service running with test Yandex credentials and active weekly/insight draft.",
+      "verificationSteps": "Send one Russian voice message under 10 minutes in test bot, verify approved success text, draft transcription in test Google Sheet after finalization or draft state during flow, and no secret/personal-text leakage in admin error chat."
+    },
+    {
+      "id": "POST-3",
+      "criterion": "US-AC12: minimal interactive Telegram smoke with test bots and test Google Sheet.",
+      "reason": "Requires real Telegram updates and test Google Sheet.",
+      "verificationCondition": "Task 12 deploy complete and test accounts/sheet prepared.",
+      "verificationSteps": "Run `/start`, consent, menu, goal view, planned steps, progress, weekly report text, insight text, and unknown-user rejection/admin error with test accounts."
+    },
+    {
+      "id": "POST-4",
+      "criterion": "US-AC13: captain live smoke for own-team visibility and manual report.",
+      "reason": "Requires test captain Telegram account and test sheet team data.",
+      "verificationCondition": "Test captain account exists in test sheet with own team and target participant.",
+      "verificationSteps": "Use captain account to view team and submit one manual report for own-team participant; verify other-team participant is not visible/selectable."
+    },
+    {
+      "id": "POST-5",
+      "criterion": "US-AC14: test Google Sheet contains required smoke data.",
+      "reason": "Requires access to live test Google Sheet, not available locally.",
+      "verificationCondition": "Test Google Sheet is configured in VPS `.env` and shared with the service account.",
+      "verificationSteps": "Verify tabs/columns pass `check-config`; inspect test rows for one active team, one participant, one captain, tracker scope, admin/Sitnikov recipients, active goal, and six planned steps."
+    }
+  ]
+}
