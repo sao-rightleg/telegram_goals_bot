@@ -1,0 +1,186 @@
+{
+  "task": "09-security-audit",
+  "status": "fail",
+  "auditor": "main agent",
+  "created_at": "2026-07-10",
+  "scope": {
+    "feature": "live-runtime-integration",
+    "documents_reviewed": [
+      "AGENTS.md",
+      "docs/01_requirements.md",
+      ".claude/agents/security-reviewer.md",
+      ".codex/agents/security-reviewer.toml",
+      "work/live-runtime-integration/user-spec.md",
+      "work/live-runtime-integration/tech-spec.md",
+      "work/live-runtime-integration/decisions.md"
+    ],
+    "code_reviewed": [
+      "app/config.py",
+      "app/logging.py",
+      "app/runtime.py",
+      "app/bot/clients.py",
+      "app/bot/dispatch.py",
+      "app/sheets/gateway.py",
+      "app/speech/transcription.py",
+      "app/services/notifications.py",
+      "app/services/voice_messages.py",
+      "app/services/captains.py",
+      "app/storage/paths.py",
+      ".github/workflows/deploy-test.yml",
+      "deploy/systemd/telegram-goals-bot-test.service",
+      ".gitignore",
+      ".env.example",
+      "tests/test_boundaries.py",
+      "tests/test_runtime_entrypoint.py",
+      "tests/test_project_tooling.py"
+    ],
+    "limitations": [
+      ".codex/agents/security-reviewer.md referenced by the project skill is missing; equivalent instructions were read from .claude/agents/security-reviewer.md and .codex/agents/security-reviewer.toml.",
+      "Live Google Sheets sharing settings, GitHub environment protection rules, VPS Unix ownership/mode bits, and real Telegram/Yandex credentials were not available locally and must be verified during pre-deploy/post-deploy QA."
+    ]
+  },
+  "summary": {
+    "blocking_findings": 2,
+    "non_blocking_findings": 1,
+    "result": "Security audit found blockers that should be fixed before test-live deploy."
+  },
+  "findings": [
+    {
+      "id": "SA-001",
+      "severity": "medium",
+      "blocking": true,
+      "title": "Dev dependency constraint resolves to vulnerable pytest before CI/test deploy",
+      "location": [
+        {
+          "file": "pyproject.toml",
+          "line": 19
+        },
+        {
+          "file": ".github/workflows/deploy-test.yml",
+          "line": 38
+        },
+        {
+          "file": ".github/workflows/deploy-test.yml",
+          "line": 92
+        }
+      ],
+      "evidence": "Dependency audit with `uv tool run pip-audit -r <generated requirements from pyproject>` resolved pytest 8.4.2 and reported PYSEC-2026-1845 / CVE-2025-71176 / GHSA-6w46-j5rx-g56g. The published fix version is pytest 9.0.3, but the project currently constrains dev pytest to `>=8,<9`.",
+      "impact": "CI and the remote test deploy script install `.[dev]` before running tests. A vulnerable pytest in an untrusted or shared Unix environment can be abused through pytest temporary directory handling for denial of service or possible privilege impact. This is not a production runtime dependency, but it is in the deploy path.",
+      "recommendation": "Update the dev dependency constraint to allow or require pytest 9.0.3 or newer, then rerun the full test suite and dependency audit. If pytest 9 requires test adjustments, make them in a dedicated fix task before test-live deploy."
+    },
+    {
+      "id": "SA-002",
+      "severity": "medium",
+      "blocking": true,
+      "title": "Sensitive runtime storage permissions depend on VPS umask",
+      "location": [
+        {
+          "file": "app/runtime.py",
+          "line": 78
+        },
+        {
+          "file": ".github/workflows/deploy-test.yml",
+          "line": 96
+        },
+        {
+          "file": "deploy/systemd/telegram-goals-bot-test.service",
+          "line": 18
+        }
+      ],
+      "evidence": "Runtime initialization and test deploy create SQLite/audio/PDF/log/backup directories with plain `mkdir(parents=True, exist_ok=True)` / `mkdir -p`. The systemd unit constrains writes to the shared directory but does not define file modes. No code or deploy step enforces 0700 directories or 0600 sensitive files.",
+      "impact": "SQLite drafts, voice audio, generated PDFs, backups, and logs contain personal reports, insights, Telegram IDs, transcriptions, and local file paths. On a shared VPS or under a permissive umask, another local user could read sensitive participant data or generated reports.",
+      "recommendation": "Create sensitive shared directories with mode 0700 in deploy scripts, chmod existing shared runtime directories, and have runtime enforce restrictive permissions for storage directories and SQLite files where practical. Document the required mode for `.env` and Google credential files as 0600."
+    },
+    {
+      "id": "SA-003",
+      "severity": "low",
+      "blocking": false,
+      "title": "Test deploy uses trust-on-first-use SSH host key collection",
+      "location": [
+        {
+          "file": ".github/workflows/deploy-test.yml",
+          "line": 70
+        }
+      ],
+      "evidence": "The workflow populates `known_hosts` with `ssh-keyscan` during the deploy job instead of verifying a pinned host key or fingerprint stored in GitHub Secrets.",
+      "impact": "A network attacker during deploy could redirect the job to an unintended SSH host. The private key is not disclosed by SSH public-key authentication, but the deploy archive and remote commands could be sent to the attacker-controlled host.",
+      "recommendation": "Store the expected test VPS host key or fingerprint in GitHub Secrets and verify it before scp/ssh. This can be fixed after the two medium blockers if the test network is trusted, but should be closed before production deployment."
+    }
+  ],
+  "checks": {
+    "secret_handling": {
+      "status": "pass",
+      "notes": [
+        ".gitignore covers `.env`, `.env.*`, credential/key files, secrets directories, SQLite DBs, audio, PDFs, backups, logs, caches, and virtual environments.",
+        ".env.example contains variable names/default numeric values only, no real secrets.",
+        "Settings debug logging uses redact_mapping; secret-key fields such as tokens, credentials, API keys, and key paths are redacted.",
+        "Telegram API exceptions sanitize bot tokens from URL/error text.",
+        "Yandex SpeechKit errors sanitize API key, IAM token, and folder id."
+      ]
+    },
+    "external_api_auth": {
+      "status": "pass_with_residual_risk",
+      "notes": [
+        "Telegram bots are constructed as separate main/error/notification clients from separate token settings.",
+        "Google Sheets uses service account credentials from an external path and does not log credential contents.",
+        "Yandex requests put credentials only in Authorization headers and do not log request bodies.",
+        "Residual: real Google Sheet sharing permissions and service account least privilege require live environment verification."
+      ]
+    },
+    "telegram_authorization_boundaries": {
+      "status": "pass",
+      "notes": [
+        "Participants are resolved by Telegram ID before personal data access.",
+        "Consent is checked before menu/view/report/insight flows proceed.",
+        "Captain team view and manual report flows re-resolve captain role and team server-side.",
+        "Forged captain participant callbacks are checked against the captain's team before report draft creation.",
+        "Malformed callback admin errors do not include raw callback payload."
+      ]
+    },
+    "personal_data_exposure": {
+      "status": "pass_with_blocker_on_file_permissions",
+      "notes": [
+        "Runtime polling errors include only event name, error type, and optional update_id; raw update payload, report text, and tokens are not included.",
+        "Voice processing failures include flow, telegram_id, participant_id, error type, and timestamp; transcription text/audio content is not included.",
+        "Google Sheets adapter raises request error type only, not request payload or sheet contents.",
+        "Blocking issue SA-002 remains for local file permissions around SQLite/audio/PDF/log/backup storage."
+      ]
+    },
+    "cicd_isolation": {
+      "status": "pass_with_low_finding",
+      "notes": [
+        "Deploy Test is manual workflow_dispatch only and uses GitHub environment `test`.",
+        "Workflow validates exact test app dir `/opt/telegram_goals_bot_test` and service `telegram-goals-bot-test.service` locally and remotely.",
+        "Static tests guard against production app dir/service references in test artifacts.",
+        "Low finding SA-003 remains for SSH host key pinning."
+      ]
+    },
+    "dependency_audit": {
+      "status": "fail",
+      "command": "uv tool run pip-audit -r <generated requirements from pyproject> --format json",
+      "result": "1 known vulnerability found: pytest 8.4.2 / PYSEC-2026-1845 / CVE-2025-71176 / GHSA-6w46-j5rx-g56g; fixed in pytest 9.0.3."
+    }
+  },
+  "protected_data_confirmation": {
+    "bot_tokens": "Protected in settings redaction and Telegram API exception sanitization; not present in source or .env.example.",
+    "api_keys": "Yandex API key/IAM token are external settings and sanitized in Yandex errors.",
+    "google_credentials": "Credential file path is external and contents are not logged; file mode must be verified on VPS.",
+    "personal_report_text": "Not included in runtime polling/admin errors; report delivery storage has existing sanitization tests outside this feature.",
+    "audio_contents": "Sent only to Telegram download/Yandex transcription path; not logged, but local file permissions blocker SA-002 remains.",
+    "pdf_contents": "Generated/sent through notification delivery boundaries; not public links, but local file permissions blocker SA-002 remains."
+  },
+  "residual_risks": [
+    "No local evidence can prove that the live Google Sheet is not public or over-shared.",
+    "Telegram/Yandex/Google live API behavior still needs test-live smoke with test credentials.",
+    "No rate limiting is implemented for abusive Telegram users; current MVP relies on Telegram bot platform and server capacity.",
+    "Production deployment remains out of scope and must require separate explicit approval."
+  ],
+  "verification": {
+    "commands": [
+      {
+        "command": "uv tool run pip-audit -r <generated requirements from pyproject> --format json",
+        "result": "failed with 1 known vulnerability in pytest"
+      }
+    ]
+  }
+}

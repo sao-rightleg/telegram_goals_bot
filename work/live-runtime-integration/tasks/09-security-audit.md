@@ -1,5 +1,5 @@
 ---
-status: planned
+status: done
 depends_on: [7]
 wave: 5
 skills: [security-auditor]
@@ -31,11 +31,11 @@ This is an analysis task. Do not change application code unless a separate fix t
 
 ## Acceptance Criteria
 
-- [ ] Audit covers secret handling, external API auth, Telegram authorization boundaries, personal data exposure, and CI/CD isolation.
-- [ ] Findings include severity, file/line references, impact, and recommended fix.
-- [ ] Report confirms whether bot tokens, API keys, Google credentials, personal report text, audio contents, and PDF contents are protected.
-- [ ] Report is saved at the expected path.
-- [ ] No application code is changed directly by this audit task.
+- [x] Audit covers secret handling, external API auth, Telegram authorization boundaries, personal data exposure, and CI/CD isolation.
+- [x] Findings include severity, file/line references, impact, and recommended fix.
+- [x] Report confirms whether bot tokens, API keys, Google credentials, personal report text, audio contents, and PDF contents are protected.
+- [x] Report is saved at the expected path.
+- [x] No application code is changed directly by this audit task.
 
 ## Context Files
 
@@ -80,5 +80,5 @@ None.
 
 ## Post-completion
 
-- [ ] Write a brief report in `decisions.md` per the template.
-- [ ] If you found blocking issues, request/follow a fix task before final QA.
+- [x] Write a brief report in `decisions.md` per the template.
+- [x] If you found blocking issues, request/follow a fix task before final QA.

@@ -185,3 +185,19 @@ Not run. This task fixes findings from the completed code audit.
 **Verification:**
 - `python -m pytest tests/test_boundaries.py tests/test_runtime_entrypoint.py -v` -> 29 passed
 - `python -m pytest -q` -> 344 passed
+
+## Task 9: Security Audit
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Completed security/privacy audit for live runtime integration and saved `logs/working/security-audit.json`. The audit found two blocking medium findings before test-live deploy: vulnerable pytest dev dependency resolution in the deploy path and runtime storage permissions depending on VPS umask; it also found one non-blocking low SSH host-key pinning issue.
+**Deviations:** None.
+
+**Reviews:**
+
+None.
+
+**Verification:**
+- `python -m json.tool work/live-runtime-integration/logs/working/security-audit.json >/tmp/security-audit.pretty.json` -> OK
+- `uv tool run pip-audit -r <generated requirements from pyproject> --format json` -> 1 known vulnerability found in pytest
