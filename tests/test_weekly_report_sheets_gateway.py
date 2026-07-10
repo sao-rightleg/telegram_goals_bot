@@ -1,6 +1,7 @@
 import pytest
 
-from app.sheets.gateway import FakeSheetsGateway
+from app.sheets.gateway import FakeSheetsGateway, GoogleSheetsGateway
+from tests.test_sheets_live_helpers import FakeSheetsService, minimal_live_sheets
 
 
 def test_find_weekly_report_filters_by_participant_and_week() -> None:
@@ -128,6 +129,64 @@ def test_existing_gateway_behavior_is_preserved() -> None:
         {"weekly_report_id": "WR001", "participant_id": "P001"}
     ]
     assert gateway.list_insights() == [{"insight_id": "I001", "participant_id": "P001"}]
+
+
+def test_live_gateway_appends_weekly_report_and_steps() -> None:
+    service = FakeSheetsService(minimal_live_sheets())
+    gateway = GoogleSheetsGateway(service=service, spreadsheet_id="sheet-id")
+
+    gateway.append_weekly_report(
+        {
+            "weekly_report_id": "WR001",
+            "participant_id": "P001",
+            "team_id": "T001",
+            "goal_id": "G001",
+            "week_number": 4,
+            "status_symbol": "🟩",
+            "status_code": "green",
+            "score": 1,
+            "report_text": "Done",
+            "flow_source": "participant_bot",
+        }
+    )
+    gateway.append_weekly_report_step(
+        {
+            "weekly_report_step_id": "WRS001",
+            "weekly_report_id": "WR001",
+            "participant_id": "P001",
+            "step_id": "S001",
+            "relation_status": "closed",
+            "created_at": "2026-07-02T10:00:00+05:00",
+        }
+    )
+
+    report = gateway.find_weekly_report("P001", week_number=4)
+    assert report is not None
+    assert report["weekly_report_id"] == "WR001"
+    assert report["score"] == 1
+    assert report["flow_source"] == "participant_bot"
+    relation = gateway.list_weekly_report_steps()[0]
+    assert relation["weekly_report_step_id"] == "WRS001"
+    assert relation["relation_status"] == "closed"
+
+
+def test_live_gateway_closes_planned_steps() -> None:
+    service = FakeSheetsService(minimal_live_sheets())
+    gateway = GoogleSheetsGateway(service=service, spreadsheet_id="sheet-id")
+
+    gateway.close_planned_steps(
+        "P001",
+        "G001",
+        ["S001"],
+        closed_week_number=4,
+        closed_report_id="WR001",
+        closed_at="2026-07-02T10:00:00+05:00",
+    )
+
+    step = gateway.list_planned_steps("P001", "G001")[0]
+    assert step["step_status"] == "closed"
+    assert step["closed_week_number"] == 4
+    assert step["closed_report_id"] == "WR001"
 
 
 def _step(step_id: str, participant_id: str, goal_id: str, status: str) -> dict[str, object]:

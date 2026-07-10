@@ -1,4 +1,5 @@
-from app.sheets.gateway import FakeSheetsGateway
+from app.sheets.gateway import FakeSheetsGateway, GoogleSheetsGateway
+from tests.test_sheets_live_helpers import FakeSheetsService, minimal_live_sheets
 
 
 def test_lists_insights_for_current_participant_only() -> None:
@@ -55,6 +56,19 @@ def test_existing_insight_append_and_list_behavior_is_preserved() -> None:
     assert gateway.list_insights_for_participant("P001") == [
         {"insight_id": "I001", "participant_id": "P001"}
     ]
+
+
+def test_live_gateway_appends_and_lists_insights() -> None:
+    service = FakeSheetsService(minimal_live_sheets())
+    gateway = GoogleSheetsGateway(service=service, spreadsheet_id="sheet-id")
+
+    gateway.append_insight(_insight("I001", "P001", "2026-06-23"))
+
+    rows = gateway.list_insights_for_participant("P001")
+    assert len(rows) == 1
+    assert rows[0]["insight_id"] == "I001"
+    assert rows[0]["insight_title"] == "Нехватка планирования"
+    assert gateway.get_participant_insight("P001", "I001") == rows[0]
 
 
 def _insight(insight_id: str, participant_id: str, insight_date: str) -> dict[str, object]:

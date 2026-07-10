@@ -1,6 +1,12 @@
 import pytest
 
-from app.sheets.gateway import FakeSheetsGateway
+from app.sheets.gateway import (
+    FakeSheetsGateway,
+    GoogleSheetsGateway,
+    GoogleSheetsSchemaError,
+    validate_required_schema,
+)
+from tests.test_sheets_live_helpers import FakeSheetsService, minimal_live_sheets
 
 
 def test_find_participant_by_telegram_id_returns_copy() -> None:
@@ -145,3 +151,62 @@ def test_list_weekly_status_history_filters_by_participant() -> None:
         {"weekly_report_id": "WR001", "participant_id": "P001", "week_number": 1},
         {"weekly_report_id": "WR003", "participant_id": "P001", "week_number": 2},
     ]
+
+
+def test_live_gateway_finds_participant_by_telegram_id() -> None:
+    service = FakeSheetsService(minimal_live_sheets())
+    gateway = GoogleSheetsGateway(service=service, spreadsheet_id="sheet-id")
+
+    row = gateway.find_participant_by_telegram_id(1001)
+
+    assert row is not None
+    assert row["participant_id"] == "P001"
+    assert row["telegram_id"] == 1001
+    assert row["consent_given"] is False
+
+
+def test_live_gateway_updates_participant_consent() -> None:
+    service = FakeSheetsService(minimal_live_sheets())
+    gateway = GoogleSheetsGateway(service=service, spreadsheet_id="sheet-id")
+
+    gateway.update_participant_consent(
+        "P001",
+        consent_given=True,
+        consent_given_at="2026-07-02T10:00:00+05:00",
+    )
+
+    row = gateway.find_participant_by_telegram_id(1001)
+    assert row is not None
+    assert row["consent_given"] is True
+    assert row["consent_given_at"] == "2026-07-02T10:00:00+05:00"
+
+
+def test_live_schema_validation_allows_extra_columns() -> None:
+    sheets = minimal_live_sheets(
+        Participants=[
+            [
+                "participant_id",
+                "telegram_id",
+                "username",
+                "full_name",
+                "team_id",
+                "role",
+                "status",
+                "consent_given",
+                "consent_given_at",
+                "manual_extra_column",
+            ]
+        ]
+    )
+
+    validate_required_schema(FakeSheetsService(sheets), spreadsheet_id="sheet-id")
+
+
+def test_live_schema_validation_fails_for_missing_required_column() -> None:
+    sheets = minimal_live_sheets(Participants=[["participant_id", "telegram_id"]])
+
+    with pytest.raises(GoogleSheetsSchemaError) as error:
+        validate_required_schema(FakeSheetsService(sheets), spreadsheet_id="sheet-id")
+
+    assert "Participants" in str(error.value)
+    assert "role" in str(error.value)

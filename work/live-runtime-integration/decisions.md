@@ -66,3 +66,20 @@ Not run. Reviewer subagents require explicit user request in this runtime.
 - `python -m pytest tests/test_boundaries.py -v` -> 11 passed
 - `git diff --check` -> OK
 - `python -m pytest -v` -> 315 passed
+
+## Task 3: Google Sheets adapter and schema validation
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Added a live Google Sheets gateway implementing the existing `SheetsGateway` contract with header-based row mapping, append/update operations, required schema validation, and compatibility aliases for current service keys versus documented Sheets headers. Added fake Google service tests for participant, weekly report, insight, report-read, and schema validation behavior.
+**Deviations:** None.
+
+**Reviews:**
+
+Not run. Reviewer subagents require explicit user request in this runtime.
+
+**Verification:**
+- `python -m pytest tests/test_participant_sheets_gateway.py tests/test_weekly_report_sheets_gateway.py tests/test_insight_sheets_gateway.py tests/test_reports_sheets_gateway.py -v` -> 31 passed
+- `git diff --check` -> OK
+- `python -m pytest -v` -> 323 passed
