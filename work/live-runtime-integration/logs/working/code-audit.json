@@ -1,0 +1,155 @@
+{
+  "task": "Task 8: Code Audit",
+  "feature": "live-runtime-integration",
+  "status": "completed_with_blocking_findings",
+  "reviewed_scope": [
+    "work/live-runtime-integration/user-spec.md",
+    "work/live-runtime-integration/tech-spec.md",
+    "work/live-runtime-integration/decisions.md",
+    "app/config.py",
+    "app/runtime.py",
+    "app/bot/clients.py",
+    "app/bot/dispatch.py",
+    "app/bot/menus.py",
+    "app/sheets/gateway.py",
+    "app/speech/transcription.py",
+    ".github/workflows/deploy-test.yml",
+    "deploy/systemd/telegram-goals-bot-test.service",
+    "docs/09_deployment_preparation.md"
+  ],
+  "summary": {
+    "blocking_findings": 3,
+    "minor_findings": 1,
+    "overall": "The feature preserves the broad service-boundary direction, but the current runtime is not ready for test-live smoke. The main blockers are missing Telegram reply markup for callback-driven flows, missing polling error containment/handled offset policy, and uncaught readiness exceptions in the CLI."
+  },
+  "findings": [
+    {
+      "id": "CA-001",
+      "severity": "critical",
+      "blocking": true,
+      "category": "runtime_interaction",
+      "title": "Live Telegram messages do not send buttons or callback data, so callback-driven smoke flows are unreachable.",
+      "locations": [
+        {
+          "path": "app/bot/clients.py",
+          "line": 70
+        },
+        {
+          "path": "app/services/participant_flows.py",
+          "line": 46
+        },
+        {
+          "path": "app/services/weekly_reports.py",
+          "line": 66
+        },
+        {
+          "path": "app/services/insights.py",
+          "line": 46
+        },
+        {
+          "path": "app/services/participant_models.py",
+          "line": 73
+        }
+      ],
+      "details": "Flow services build FlowResponse objects with buttons/menu_items, for example consent, weekly status, and insight actions. However, the services call main_bot.send_message(chat_id, text) and LiveTelegramBotClient.send_message only posts chat_id/text to Telegram. No reply_markup or callback_data is ever sent. The dispatcher can parse callbacks, but live users cannot trigger them from Telegram buttons, which blocks consent, menu navigation, weekly status selection, insight done/skip, and captain manual report callbacks in the approved smoke.",
+      "impact": "Test-live interactive smoke cannot pass beyond plain text and /start paths. This violates user-spec acceptance for consent, menus, weekly report actions, insights, and captain smoke.",
+      "recommendation": "Introduce an outbound Telegram UI contract that carries buttons/menu_items with stable callback_data, update BotClient/LiveTelegramBotClient to send inline or reply keyboard markup, and update services or a response-sending layer so FlowResponse buttons are actually delivered to Telegram."
+    },
+    {
+      "id": "CA-002",
+      "severity": "major",
+      "blocking": true,
+      "category": "runtime_lifecycle",
+      "title": "Polling loop does not catch dispatch or polling errors and therefore can crash on one malformed update or transient API failure.",
+      "locations": [
+        {
+          "path": "app/runtime.py",
+          "line": 238
+        },
+        {
+          "path": "app/runtime.py",
+          "line": 241
+        },
+        {
+          "path": "app/runtime.py",
+          "line": 246
+        },
+        {
+          "path": "app/bot/dispatch.py",
+          "line": 90
+        }
+      ],
+      "details": "TelegramPollingRunner.run calls get_updates and dispatcher.dispatch_update without any exception boundary. dispatch_update only handles TelegramCallbackError after a callback was successfully parsed; TelegramUpdateParseError, service exceptions, Sheets errors, SQLite errors, TelegramApiError, and other runtime exceptions escape the loop. The tech spec explicitly says offsets advance after dispatch returns or after the runtime catches the error and reports a sanitized admin error.",
+      "impact": "One malformed Telegram update, stale dialog state, transient Sheets/Telegram failure, or service exception can terminate the systemd process and be retried indefinitely after restart. This undermines the live-runtime goal and can block all users during smoke.",
+      "recommendation": "Add a per-update error boundary in TelegramPollingRunner that catches parse/dispatch/service errors, sends sanitized technical errors through NotificationRouter, decides whether the update is handled, and advances offset according to the approved policy. Add a separate retry/backoff boundary for getUpdates failures."
+    },
+    {
+      "id": "CA-003",
+      "severity": "major",
+      "blocking": true,
+      "category": "readiness_cli",
+      "title": "check-config only catches ConfigurationError, so Google schema/readiness failures can produce uncaught tracebacks instead of clear readiness failures.",
+      "locations": [
+        {
+          "path": "app/runtime.py",
+          "line": 314
+        },
+        {
+          "path": "app/runtime.py",
+          "line": 322
+        },
+        {
+          "path": "app/sheets/gateway.py",
+          "line": 382
+        }
+      ],
+      "details": "main() calls validate_runtime_readiness() for check-config, but only catches ConfigurationError. validate_required_schema raises GoogleSheetsSchemaError, and Google API construction/execute can raise GoogleSheetsError or Google client exceptions. Those exceptions are not normalized or caught by main(), so check-config can exit via traceback instead of a clear sanitized message and exit code.",
+      "impact": "This violates the approved requirement that missing Google Sheets schema fails fast and clearly during check-config/startup. It also makes CI/CD test deploy diagnostics noisy and potentially less sanitized.",
+      "recommendation": "Normalize readiness exceptions into ConfigurationError or introduce a RuntimeReadinessError caught by main(). Ensure GoogleSheetsSchemaError and GoogleSheetsError produce concise stderr output and exit code 2 without stack traces."
+    },
+    {
+      "id": "CA-004",
+      "severity": "minor",
+      "blocking": false,
+      "category": "resource_management",
+      "title": "Runtime readiness and composition duplicate live client construction and do not close HTTP clients.",
+      "locations": [
+        {
+          "path": "app/runtime.py",
+          "line": 105
+        },
+        {
+          "path": "app/runtime.py",
+          "line": 113
+        },
+        {
+          "path": "app/runtime.py",
+          "line": 123
+        },
+        {
+          "path": "app/runtime.py",
+          "line": 125
+        },
+        {
+          "path": "app/runtime.py",
+          "line": 163
+        }
+      ],
+      "details": "run_bot validates readiness with one Google service and a temporary httpx.Client for transcriber construction, then compose_runtime creates another Google service and multiple long-lived httpx.Client instances. The temporary readiness httpx.Client is not closed. The long-lived clients are not explicitly closed on shutdown.",
+      "impact": "This is not currently a functional blocker, but it adds unnecessary client creation and leaves lifecycle ownership unclear. It can complicate future diagnostics and graceful shutdown behavior.",
+      "recommendation": "Create a runtime-owned resource lifecycle: either reuse the readiness service during composition or make readiness explicitly construct-and-dispose resources. Add shutdown cleanup for long-lived httpx clients when polling stops."
+    }
+  ],
+  "positive_observations": [
+    "The core architecture keeps live adapters outside business services and routes final facts through existing SheetsGateway and SQLite repositories.",
+    "Test-live deployment artifacts are separate from production service/app-dir names and are guarded by static tests.",
+    "Yandex and Telegram adapter tests use mocked HTTP instead of live credentials.",
+    "Google Sheets schema validation allows extra columns while requiring core headers."
+  ],
+  "residual_risks": [
+    "Live Telegram callback UX is not verifiable until outbound reply markup exists.",
+    "Manual test-live deploy has not been run; deploy workflow behavior remains static-tested only.",
+    "Security and test-depth reviews are intentionally deferred to Tasks 9 and 10."
+  ],
+  "recommendation": "Create a fix task before Task 11 pre-deploy QA. Address CA-001, CA-002, and CA-003 as blocking issues, then rerun code audit or at least targeted verification for live-runtime smoke readiness."
+}

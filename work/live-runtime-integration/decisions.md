@@ -153,3 +153,19 @@ Not run. Reviewer subagents require explicit user request in this runtime.
 - `python -m pytest tests/test_project_tooling.py -v` -> 8 passed
 - `git diff --check` -> OK
 - `python -m pytest -q` -> 339 passed
+
+## Task 8: Code Audit
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Completed holistic code audit for Tasks 1-7 and saved `logs/working/code-audit.json`. The audit found three blocking live-runtime readiness issues: missing outbound Telegram reply markup/callback delivery, missing polling error containment and handled-offset policy, and uncaught non-ConfigurationError readiness failures in `check-config`.
+**Deviations:** None.
+
+**Reviews:**
+
+None.
+
+**Verification:**
+- `python -m json.tool work/live-runtime-integration/logs/working/code-audit.json >/tmp/code-audit.pretty.json` -> OK
+- `test -s work/live-runtime-integration/logs/working/code-audit.json` -> OK
