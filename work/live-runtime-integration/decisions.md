@@ -234,3 +234,19 @@ None.
 **Verification:**
 - `python -m pytest tests/test_config.py tests/test_boundaries.py tests/test_voice_processing_boundaries.py tests/test_voice_processing_service.py tests/test_runtime_entrypoint.py tests/test_project_tooling.py tests/test_participant_sheets_gateway.py tests/test_weekly_report_sheets_gateway.py tests/test_insight_sheets_gateway.py tests/test_reports_sheets_gateway.py -q` -> 105 passed
 - `python -m json.tool work/live-runtime-integration/logs/working/test-audit.json >/tmp/test-audit.pretty.json` -> OK
+
+## Task 10a: Test audit fixes
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Closed both blocking test-audit gaps by adding direct live Telegram `getUpdates` adapter tests and a startup readiness failure notification test that verifies sanitized error-bot delivery. The remaining workflow YAML/shell validation note is documented as non-blocking hardening.
+**Deviations:** None.
+
+**Reviews:**
+
+Not run. This task fixes findings from the completed test audit.
+
+**Verification:**
+- `python -m pytest tests/test_boundaries.py tests/test_runtime_entrypoint.py -v` -> 33 passed
+- `python -m pytest -q` -> 351 passed

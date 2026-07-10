@@ -264,6 +264,57 @@ def test_live_telegram_file_downloader_writes_requested_path(tmp_path: Path) -> 
     ]
 
 
+def test_live_telegram_client_get_updates_sends_polling_request() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "result": [
+                    {"update_id": 100, "message": {"message_id": 1}},
+                    "ignored malformed item",
+                    {"update_id": 101, "callback_query": {"id": "cb-1"}},
+                ],
+            },
+        )
+
+    client = LiveTelegramBotClient(
+        purpose=BotPurpose.MAIN,
+        token="poll-token-123",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    updates = client.get_updates(offset=99, timeout_seconds=20, limit=50)
+
+    assert updates == [
+        {"update_id": 100, "message": {"message_id": 1}},
+        {"update_id": 101, "callback_query": {"id": "cb-1"}},
+    ]
+    assert requests[0].url.path == "/botpoll-token-123/getUpdates"
+    assert requests[0].read().decode("utf-8") == "timeout=20&limit=50&offset=99"
+
+
+def test_live_telegram_client_get_updates_rejects_malformed_result_without_token() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"ok": True, "result": {"bad": "poll-token-123"}})
+
+    client = LiveTelegramBotClient(
+        purpose=BotPurpose.MAIN,
+        token="poll-token-123",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(TelegramApiError) as error:
+        client.get_updates(offset=None, timeout_seconds=20, limit=50)
+
+    message = str(error.value)
+    assert "malformed result" in message
+    assert "poll-token-123" not in message
+
+
 def test_live_telegram_errors_are_sanitized() -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(

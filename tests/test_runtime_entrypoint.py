@@ -6,7 +6,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.config import load_settings
+import app.runtime as runtime_module
+from app.config import ConfigurationError, load_settings
 from app.bot.clients import BotPurpose, FakeBotClient, TelegramApiError
 from app.bot.menus import CONSENT_ACCEPT_CALLBACK
 from app.runtime import (
@@ -183,6 +184,36 @@ def test_cli_check_config_returns_clear_error_for_google_schema_failure(
     assert exit_code == 2
     assert "Missing required Google Sheets tabs: Participants" in captured.err
     assert "Traceback" not in captured.err
+
+
+def test_run_bot_notifies_startup_readiness_failure_without_raw_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = load_settings(environ=runtime_env(tmp_path))
+    settings.google_sheets.application_credentials.write_text("{}", encoding="utf-8")
+    error_bot = FakeBotClient(BotPurpose.ERROR)
+
+    def fake_error_bot_client(*, purpose: BotPurpose, token: str, http_client: object) -> FakeBotClient:
+        assert purpose is BotPurpose.ERROR
+        assert token == "error-token-456"
+        return error_bot
+
+    def broken_schema_service(_settings):
+        raise GoogleSheetsSchemaError("Missing Participants yandex-api-key-123 personal report text")
+
+    monkeypatch.setattr(runtime_module, "LiveTelegramBotClient", fake_error_bot_client)
+
+    with pytest.raises(ConfigurationError):
+        run_bot(settings, google_service_factory=broken_schema_service)
+
+    assert len(error_bot.sent_messages) == 1
+    error_text = error_bot.sent_messages[0].text
+    assert "runtime_startup_readiness_failed" in error_text
+    assert "ConfigurationError" in error_text
+    assert "yandex-api-key-123" not in error_text
+    assert "personal report text" not in error_text
+    assert "Missing Participants" not in error_text
 
 
 def test_runtime_env_includes_transcription_provider_config(tmp_path: Path) -> None:
