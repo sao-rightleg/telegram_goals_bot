@@ -32,3 +32,20 @@ Review details — in JSON files via links. QA report — in logs/working/.
 - Manual check → OK
 
 -->
+
+## Task 1: Runtime configuration and provider selection
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Added typed transcription and Telegram runtime settings, including `TRANSCRIPTION_PROVIDER=yandex` validation, Yandex timeout/poll settings, Telegram polling/request settings, and redaction for transcription API keys and key paths. Updated `.env.example` with variable names/default numeric values only.
+**Deviations:** None.
+
+**Reviews:**
+
+Not run. Reviewer subagents require explicit user request in this runtime.
+
+**Verification:**
+- `python -m pytest tests/test_config.py tests/test_runtime_entrypoint.py -v` -> 24 passed
+- `git diff --check` -> OK
+- `python -m pytest -v` -> 311 passed

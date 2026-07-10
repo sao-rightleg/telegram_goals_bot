@@ -20,6 +20,9 @@ def runtime_env(tmp_path: Path) -> dict[str, str]:
         "SQLITE_DB_PATH": str(tmp_path / "data" / "sqlite" / "bot.sqlite3"),
         "AUDIO_STORAGE_DIR": str(tmp_path / "data" / "audio"),
         "PDF_STORAGE_DIR": str(tmp_path / "reports" / "pdf"),
+        "TRANSCRIPTION_PROVIDER": "yandex",
+        "TRANSCRIPTION_API_KEY": "yandex-api-key-123",
+        "YANDEX_SPEECHKIT_FOLDER_ID": "folder-123",
         "LOG_LEVEL": "INFO",
     }
 
@@ -61,3 +64,11 @@ def test_cli_check_config_uses_env_file_and_initializes_storage(tmp_path: Path) 
 
     assert exit_code == 0
     assert (tmp_path / "data" / "sqlite" / "bot.sqlite3").exists()
+
+
+def test_runtime_env_includes_transcription_provider_config(tmp_path: Path) -> None:
+    settings = load_settings(environ=runtime_env(tmp_path))
+
+    assert settings.transcription.provider == "yandex"
+    assert settings.transcription.api_key == "yandex-api-key-123"
+    assert settings.transcription.yandex_folder_id == "folder-123"

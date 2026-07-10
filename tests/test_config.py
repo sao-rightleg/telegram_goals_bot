@@ -21,8 +21,27 @@ def complete_env() -> dict[str, str]:
         "SQLITE_DB_PATH": "data/sqlite/bot.sqlite3",
         "AUDIO_STORAGE_DIR": "data/audio",
         "PDF_STORAGE_DIR": "reports/pdf",
+        "TRANSCRIPTION_PROVIDER": "fake",
         "LOG_LEVEL": "INFO",
     }
+
+
+def yandex_env() -> dict[str, str]:
+    env = complete_env()
+    env.update(
+        {
+            "TRANSCRIPTION_PROVIDER": "yandex",
+            "TRANSCRIPTION_API_KEY": "yandex-api-key-123",
+            "YANDEX_SPEECHKIT_FOLDER_ID": "folder-123",
+            "YANDEX_SPEECHKIT_SERVICE_ACCOUNT_KEY_PATH": "secrets/yandex-key.json",
+            "YANDEX_SPEECHKIT_OPERATION_TIMEOUT_SECONDS": "90",
+            "YANDEX_SPEECHKIT_POLL_INTERVAL_SECONDS": "1.5",
+            "TELEGRAM_POLL_TIMEOUT_SECONDS": "25",
+            "TELEGRAM_POLL_LIMIT": "50",
+            "TELEGRAM_REQUEST_TIMEOUT_SECONDS": "15",
+        }
+    )
+    return env
 
 
 def test_settings_load_from_fake_env() -> None:
@@ -31,6 +50,7 @@ def test_settings_load_from_fake_env() -> None:
     assert settings.telegram.main_bot_token == "main-token-123"
     assert settings.google_sheets.sheet_id == "sheet-id"
     assert settings.storage.sqlite_db_path == Path("data/sqlite/bot.sqlite3")
+    assert settings.transcription.provider == "fake"
     assert settings.runtime.log_level == "INFO"
 
 
@@ -74,6 +94,84 @@ def test_secret_values_are_redacted() -> None:
     assert "credentials.json" not in redacted_text
     assert redact_value("plain-value") == "plain-value"
     assert redact_value("main-token-123") == "[REDACTED]"
+
+
+def test_load_settings_accepts_yandex_transcription_config() -> None:
+    settings = load_settings(environ=yandex_env())
+
+    assert settings.transcription.provider == "yandex"
+    assert settings.transcription.api_key == "yandex-api-key-123"
+    assert settings.transcription.yandex_folder_id == "folder-123"
+    assert settings.transcription.yandex_service_account_key_path == Path(
+        "secrets/yandex-key.json"
+    )
+    assert settings.transcription.operation_timeout_seconds == 90
+    assert settings.transcription.poll_interval_seconds == 1.5
+    assert settings.telegram_runtime.poll_timeout_seconds == 25
+    assert settings.telegram_runtime.poll_limit == 50
+    assert settings.telegram_runtime.request_timeout_seconds == 15
+
+
+@pytest.mark.parametrize(
+    "missing_key",
+    [
+        "TRANSCRIPTION_API_KEY",
+        "YANDEX_SPEECHKIT_FOLDER_ID",
+    ],
+)
+def test_yandex_provider_requires_folder_and_credentials(missing_key: str) -> None:
+    env = yandex_env()
+    secret_value = env[missing_key]
+    env[missing_key] = ""
+
+    with pytest.raises(ConfigurationError) as error:
+        load_settings(environ=env)
+
+    message = str(error.value)
+    assert missing_key in message
+    assert secret_value not in message
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("YANDEX_SPEECHKIT_OPERATION_TIMEOUT_SECONDS", "0"),
+        ("YANDEX_SPEECHKIT_POLL_INTERVAL_SECONDS", "0"),
+        ("TELEGRAM_POLL_TIMEOUT_SECONDS", "0"),
+        ("TELEGRAM_POLL_LIMIT", "0"),
+        ("TELEGRAM_REQUEST_TIMEOUT_SECONDS", "0"),
+    ],
+)
+def test_runtime_numeric_settings_must_be_positive(key: str, value: str) -> None:
+    env = yandex_env()
+    env[key] = value
+
+    with pytest.raises(ConfigurationError) as error:
+        load_settings(environ=env)
+
+    assert key in str(error.value)
+
+
+def test_unknown_transcription_provider_fails_clearly() -> None:
+    env = complete_env()
+    env["TRANSCRIPTION_PROVIDER"] = "unknown"
+
+    with pytest.raises(ConfigurationError) as error:
+        load_settings(environ=env)
+
+    assert "TRANSCRIPTION_PROVIDER" in str(error.value)
+
+
+def test_redaction_covers_yandex_and_transcription_secrets() -> None:
+    settings = load_settings(environ=yandex_env())
+
+    redacted = redact_mapping(settings.as_dict())
+    redacted_text = repr(redacted)
+
+    assert "yandex-api-key-123" not in redacted_text
+    assert "secrets/yandex-key.json" not in redacted_text
+    assert "TRANSCRIPTION_API_KEY" in redacted_text
+    assert "[REDACTED]" in redacted_text
 
 
 def test_three_bot_tokens_are_distinct_settings() -> None:

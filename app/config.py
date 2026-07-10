@@ -12,7 +12,7 @@ class ConfigurationError(ValueError):
     """Raised when required runtime configuration is missing or invalid."""
 
 
-SECRET_KEY_PARTS = ("TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "API_KEY")
+SECRET_KEY_PARTS = ("TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "API_KEY", "KEY_PATH")
 SECRET_VALUE_PARTS = ("token", "secret", "password", "credential", "api_key")
 REDACTED = "[REDACTED]"
 
@@ -28,6 +28,20 @@ class TelegramSettings:
             "MAIN_TELEGRAM_BOT_TOKEN": self.main_bot_token,
             "ERROR_TELEGRAM_BOT_TOKEN": self.error_bot_token,
             "NOTIFICATION_TELEGRAM_BOT_TOKEN": self.notification_bot_token,
+        }
+
+
+@dataclass(frozen=True)
+class TelegramRuntimeSettings:
+    poll_timeout_seconds: int = 20
+    poll_limit: int = 100
+    request_timeout_seconds: int = 30
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            "TELEGRAM_POLL_TIMEOUT_SECONDS": self.poll_timeout_seconds,
+            "TELEGRAM_POLL_LIMIT": self.poll_limit,
+            "TELEGRAM_REQUEST_TIMEOUT_SECONDS": self.request_timeout_seconds,
         }
 
 
@@ -84,20 +98,50 @@ class RuntimeSettings:
 
 
 @dataclass(frozen=True)
+class TranscriptionSettings:
+    provider: str
+    api_key: str | None = None
+    yandex_folder_id: str | None = None
+    yandex_iam_token: str | None = None
+    yandex_service_account_key_path: Path | None = None
+    operation_timeout_seconds: int = 120
+    poll_interval_seconds: float = 2.0
+
+    def as_dict(self) -> dict[str, str | int | float | None]:
+        return {
+            "TRANSCRIPTION_PROVIDER": self.provider,
+            "TRANSCRIPTION_API_KEY": self.api_key,
+            "YANDEX_SPEECHKIT_FOLDER_ID": self.yandex_folder_id,
+            "YANDEX_SPEECHKIT_IAM_TOKEN": self.yandex_iam_token,
+            "YANDEX_SPEECHKIT_SERVICE_ACCOUNT_KEY_PATH": (
+                str(self.yandex_service_account_key_path)
+                if self.yandex_service_account_key_path is not None
+                else None
+            ),
+            "YANDEX_SPEECHKIT_OPERATION_TIMEOUT_SECONDS": self.operation_timeout_seconds,
+            "YANDEX_SPEECHKIT_POLL_INTERVAL_SECONDS": self.poll_interval_seconds,
+        }
+
+
+@dataclass(frozen=True)
 class Settings:
     telegram: TelegramSettings
+    telegram_runtime: TelegramRuntimeSettings
     google_sheets: GoogleSheetsSettings
     admin: AdminSettings
     storage: StorageSettings
     runtime: RuntimeSettings
+    transcription: TranscriptionSettings
 
     def as_dict(self) -> dict[str, object]:
         return {
             "telegram": self.telegram.as_dict(),
+            "telegram_runtime": self.telegram_runtime.as_dict(),
             "google_sheets": self.google_sheets.as_dict(),
             "admin": self.admin.as_dict(),
             "storage": self.storage.as_dict(),
             "runtime": self.runtime.as_dict(),
+            "transcription": self.transcription.as_dict(),
         }
 
 
@@ -124,6 +168,19 @@ def load_settings(
             error_bot_token=_optional_value(values, "ERROR_TELEGRAM_BOT_TOKEN"),
             notification_bot_token=_optional_value(values, "NOTIFICATION_TELEGRAM_BOT_TOKEN"),
         ),
+        telegram_runtime=TelegramRuntimeSettings(
+            poll_timeout_seconds=_positive_int(
+                values,
+                "TELEGRAM_POLL_TIMEOUT_SECONDS",
+                default=20,
+            ),
+            poll_limit=_positive_int(values, "TELEGRAM_POLL_LIMIT", default=100),
+            request_timeout_seconds=_positive_int(
+                values,
+                "TELEGRAM_REQUEST_TIMEOUT_SECONDS",
+                default=30,
+            ),
+        ),
         google_sheets=GoogleSheetsSettings(
             sheet_id=_required_value(values, "GOOGLE_SHEETS_ID"),
             application_credentials=Path(_required_value(values, "GOOGLE_APPLICATION_CREDENTIALS")),
@@ -141,6 +198,7 @@ def load_settings(
             pdf_storage_dir=Path(_required_value(values, "PDF_STORAGE_DIR")),
         ),
         runtime=RuntimeSettings(log_level=values.get("LOG_LEVEL", "INFO").upper()),
+        transcription=_load_transcription_settings(values),
     )
 
 
@@ -235,3 +293,68 @@ def _optional_int(values: Mapping[str, str], key: str) -> int | None:
         return int(value)
     except ValueError as exc:
         raise ConfigurationError(f"Setting {key} must be an integer") from exc
+
+
+def _positive_int(values: Mapping[str, str], key: str, *, default: int) -> int:
+    value = _optional_value(values, key)
+    if value is None:
+        return default
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ConfigurationError(f"Setting {key} must be a positive integer") from exc
+    if parsed <= 0:
+        raise ConfigurationError(f"Setting {key} must be a positive integer")
+    return parsed
+
+
+def _positive_float(values: Mapping[str, str], key: str, *, default: float) -> float:
+    value = _optional_value(values, key)
+    if value is None:
+        return default
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise ConfigurationError(f"Setting {key} must be a positive number") from exc
+    if parsed <= 0:
+        raise ConfigurationError(f"Setting {key} must be a positive number")
+    return parsed
+
+
+def _load_transcription_settings(values: Mapping[str, str]) -> TranscriptionSettings:
+    provider = (_optional_value(values, "TRANSCRIPTION_PROVIDER") or "fake").strip().lower()
+    if provider == "fake":
+        return TranscriptionSettings(provider=provider)
+    if provider != "yandex":
+        raise ConfigurationError(
+            "Setting TRANSCRIPTION_PROVIDER must be one of: fake, yandex"
+        )
+
+    missing = [
+        key
+        for key in ("TRANSCRIPTION_API_KEY", "YANDEX_SPEECHKIT_FOLDER_ID")
+        if _optional_value(values, key) is None
+    ]
+    if missing:
+        raise ConfigurationError(f"Missing required settings: {', '.join(missing)}")
+
+    service_account_key = _optional_value(values, "YANDEX_SPEECHKIT_SERVICE_ACCOUNT_KEY_PATH")
+    return TranscriptionSettings(
+        provider=provider,
+        api_key=_required_value(values, "TRANSCRIPTION_API_KEY"),
+        yandex_folder_id=_required_value(values, "YANDEX_SPEECHKIT_FOLDER_ID"),
+        yandex_iam_token=_optional_value(values, "YANDEX_SPEECHKIT_IAM_TOKEN"),
+        yandex_service_account_key_path=(
+            Path(service_account_key) if service_account_key is not None else None
+        ),
+        operation_timeout_seconds=_positive_int(
+            values,
+            "YANDEX_SPEECHKIT_OPERATION_TIMEOUT_SECONDS",
+            default=120,
+        ),
+        poll_interval_seconds=_positive_float(
+            values,
+            "YANDEX_SPEECHKIT_POLL_INTERVAL_SECONDS",
+            default=2.0,
+        ),
+    )
