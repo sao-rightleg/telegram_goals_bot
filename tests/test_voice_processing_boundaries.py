@@ -5,13 +5,21 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import httpx
+import pytest
+
 from app.bot.clients import BotPurpose, FakeBotClient, FakeTelegramFileDownloader
 from app.bot.messages import VOICE_PROCESSING_FAILED_TEXT, VOICE_TOO_LONG_TEXT
 from app.scheduler.calendar import TIMEZONE_NAME
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.services.participant_models import TelegramUserContext
 from app.services.voice_messages import VoiceMessageInput, VoiceMessageService
-from app.speech.transcription import TranscriptionRequest, TranscriptionResult
+from app.speech.transcription import (
+    TranscriptionRequest,
+    TranscriptionResult,
+    YandexSpeechKitError,
+    YandexSpeechKitTranscriber,
+)
 from app.storage.dialog_state import DialogStateRepository
 from app.storage.insight_drafts import InsightDraftRepository
 from app.storage.paths import StoragePathPolicy
@@ -103,6 +111,105 @@ def test_voice_artifacts_and_secrets_are_gitignored() -> None:
 
     for pattern in (".env", "*.key", "credentials.json", "secrets/", "data/audio/", "data/sqlite/"):
         assert pattern in ignored_entries
+
+
+def test_yandex_transcriber_returns_text_from_completed_operation(tmp_path: Path) -> None:
+    requests: list[httpx.Request] = []
+    audio_path = _audio_file(tmp_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/stt/v3/recognizeFileAsync"):
+            return httpx.Response(200, json={"id": "operation-1", "done": False})
+        if request.url.path == "/operations/operation-1":
+            return httpx.Response(200, json={"id": "operation-1", "done": True})
+        if request.url.path.endswith("/stt/v3/getRecognition"):
+            assert request.url.params["operation_id"] == "operation-1"
+            return httpx.Response(
+                200,
+                json={
+                    "result": {
+                        "final": {
+                            "alternatives": [
+                                {"text": "расшифрованный русский текст"},
+                            ],
+                        },
+                    },
+                },
+            )
+        return httpx.Response(404, json={"message": "unexpected request"})
+
+    transcriber = YandexSpeechKitTranscriber(
+        api_key="yandex-api-key-123",
+        folder_id="folder-123",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        operation_timeout_seconds=1,
+        poll_interval_seconds=0.01,
+    )
+
+    result = transcriber.transcribe(TranscriptionRequest(audio_path=audio_path, duration_seconds=42))
+
+    assert result == TranscriptionResult(text="расшифрованный русский текст", audio_path=audio_path)
+    assert [request.url.path for request in requests] == [
+        "/stt/v3/recognizeFileAsync",
+        "/operations/operation-1",
+        "/stt/v3/getRecognition",
+    ]
+    assert requests[0].headers["authorization"] == "Api-Key yandex-api-key-123"
+    assert requests[0].headers["x-folder-id"] == "folder-123"
+    assert requests[0].read()
+
+
+def test_yandex_transcriber_times_out_with_sanitized_error(tmp_path: Path) -> None:
+    audio_path = _audio_file(tmp_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/stt/v3/recognizeFileAsync"):
+            return httpx.Response(200, json={"id": "operation-timeout", "done": False})
+        if request.url.path == "/operations/operation-timeout":
+            return httpx.Response(200, json={"id": "operation-timeout", "done": False})
+        return httpx.Response(404, json={"message": "unexpected request"})
+
+    transcriber = YandexSpeechKitTranscriber(
+        api_key="yandex-api-key-123",
+        folder_id="folder-123",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        operation_timeout_seconds=0.01,
+        poll_interval_seconds=0.01,
+    )
+
+    with pytest.raises(YandexSpeechKitError) as error:
+        transcriber.transcribe(TranscriptionRequest(audio_path=audio_path, duration_seconds=42))
+
+    error_text = str(error.value)
+    assert "timed out" in error_text
+    assert "yandex-api-key-123" not in error_text
+    assert "folder-123" not in error_text
+
+
+def test_yandex_transcriber_failure_does_not_expose_credentials(tmp_path: Path) -> None:
+    audio_path = _audio_file(tmp_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/stt/v3/recognizeFileAsync"):
+            return httpx.Response(401, json={"message": "bad api key yandex-api-key-123"})
+        return httpx.Response(404, json={"message": "unexpected request"})
+
+    transcriber = YandexSpeechKitTranscriber(
+        api_key="yandex-api-key-123",
+        folder_id="folder-123",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        operation_timeout_seconds=1,
+        poll_interval_seconds=0.01,
+    )
+
+    with pytest.raises(YandexSpeechKitError) as error:
+        transcriber.transcribe(TranscriptionRequest(audio_path=audio_path, duration_seconds=42))
+
+    error_text = str(error.value)
+    assert "Yandex SpeechKit request failed" in error_text
+    assert "yandex-api-key-123" not in error_text
+    assert "folder-123" not in error_text
 
 
 def _service(
@@ -203,6 +310,12 @@ def _voice_input(
         telegram_message_id=telegram_message_id,
         now=NOW,
     )
+
+
+def _audio_file(tmp_path: Path) -> Path:
+    audio_path = tmp_path / "voice.ogg"
+    audio_path.write_bytes(b"ogg opus bytes")
+    return audio_path
 
 
 @dataclass

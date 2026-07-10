@@ -83,3 +83,20 @@ Not run. Reviewer subagents require explicit user request in this runtime.
 - `python -m pytest tests/test_participant_sheets_gateway.py tests/test_weekly_report_sheets_gateway.py tests/test_insight_sheets_gateway.py tests/test_reports_sheets_gateway.py -v` -> 31 passed
 - `git diff --check` -> OK
 - `python -m pytest -v` -> 323 passed
+
+## Task 4: Yandex SpeechKit transcriber
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Added a synchronous `YandexSpeechKitTranscriber` behind the existing `SpeechTranscriber` protocol. It submits local OGG Opus audio to SpeechKit v3, polls a bounded operation timeout, reads recognition results, and maps timeout, HTTP, failed-operation, empty-result, missing-file, and invalid-config cases to sanitized `YandexSpeechKitError` exceptions.
+**Deviations:** None.
+
+**Reviews:**
+
+Not run. Reviewer subagents require explicit user request in this runtime.
+
+**Verification:**
+- `python -m pytest tests/test_voice_processing_service.py tests/test_voice_processing_boundaries.py -v` -> 13 passed
+- `git diff --check` -> OK
+- `python -m pytest -q` -> 326 passed
