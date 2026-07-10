@@ -100,3 +100,22 @@ Not run. Reviewer subagents require explicit user request in this runtime.
 - `python -m pytest tests/test_voice_processing_service.py tests/test_voice_processing_boundaries.py -v` -> 13 passed
 - `git diff --check` -> OK
 - `python -m pytest -q` -> 326 passed
+
+## Task 5: Telegram update parsing and dispatcher
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Added Telegram update DTO parsing and a runtime dispatcher surface that routes `/start`, consent/menu/action callbacks, active weekly/insight/captain text, and weekly/insight voice metadata into existing services. Added stable callback constants and sanitized malformed-callback admin notifications without including raw callback payloads.
+**Deviations:** None.
+
+**Reviews:**
+
+Not run. Reviewer subagents require explicit user request in this runtime.
+
+**Verification:**
+- `python -m pytest tests/test_runtime_entrypoint.py -v` -> 10 passed
+- `python -m pytest tests/test_participant_start_flow.py tests/test_weekly_report_start_flow.py tests/test_insight_add_flow.py tests/test_captain_team_flow.py tests/test_captain_manual_report_flow.py tests/test_runtime_entrypoint.py -v` -> 49 passed
+- `python -m pytest tests/test_participant_start_flow.py tests/test_weekly_report_start_flow.py tests/test_insight_add_flow.py tests/test_captain_team_flow.py tests/test_captain_manual_report_flow.py -v` -> 39 passed
+- `git diff --check` -> OK
+- `python -m pytest -q` -> 332 passed

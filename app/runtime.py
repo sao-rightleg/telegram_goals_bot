@@ -10,6 +10,7 @@ from typing import Sequence
 
 from app.config import ConfigurationError, Settings, load_settings
 from app.logging import setup_logging
+from app.bot.dispatch import TelegramUpdate, TelegramUpdateDispatcher, parse_telegram_update
 from app.storage.sqlite import REQUIRED_TECHNICAL_TABLES, initialize_schema, list_tables
 
 

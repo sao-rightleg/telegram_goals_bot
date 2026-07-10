@@ -17,6 +17,30 @@ class MenuAction(str, Enum):
     VIEW_TEAM_REPORT = "view_team_report"
 
 
+CONSENT_ACCEPT_CALLBACK = "consent:accept"
+
+MENU_CALLBACK_PREFIX = "menu:"
+
+WEEKLY_REPORT_START_CALLBACK = "weekly:start"
+WEEKLY_REPORT_STATUS_CALLBACK_PREFIX = "weekly:status:"
+WEEKLY_REPORT_STEPS_CALLBACK_PREFIX = "weekly:steps:"
+WEEKLY_REPORT_DONE_CALLBACK = "weekly:done"
+
+INSIGHT_MENU_CALLBACK = "insight:menu"
+INSIGHT_ADD_CALLBACK = "insight:add"
+INSIGHT_LIST_CALLBACK_PREFIX = "insight:list:"
+INSIGHT_FULL_TEXT_CALLBACK_PREFIX = "insight:full:"
+INSIGHT_DONE_CALLBACK = "insight:done"
+INSIGHT_SKIP_TITLE_CALLBACK = "insight:skip_title"
+INSIGHT_CANCEL_CALLBACK = "insight:cancel"
+
+CAPTAIN_TEAM_CALLBACK = "captain:team"
+CAPTAIN_MANUAL_REPORT_CALLBACK_PREFIX = "captain:manual:"
+CAPTAIN_STATUS_CALLBACK_PREFIX = "captain:status:"
+CAPTAIN_STEPS_CALLBACK_PREFIX = "captain:steps:"
+CAPTAIN_DONE_CALLBACK = "captain:done"
+
+
 PARTICIPANT_MENU_ITEMS = (
     MenuItem(MenuAction.VIEW_GOAL, "🎯 Моя цель"),
     MenuItem(MenuAction.VIEW_STEPS, "📍 Мои шаги"),
