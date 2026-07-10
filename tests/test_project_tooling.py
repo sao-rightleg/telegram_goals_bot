@@ -37,3 +37,10 @@ def test_console_script_points_to_runtime_entrypoint() -> None:
     pyproject = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
 
     assert pyproject["project"]["scripts"]["telegram-goals-bot"] == "app.runtime:main"
+
+
+def test_runtime_does_not_reference_runtime_not_implemented_error_path() -> None:
+    runtime_source = (PROJECT_ROOT / "app" / "runtime.py").read_text(encoding="utf-8")
+
+    assert "RuntimeNotImplementedError" not in runtime_source
+    assert "live Telegram polling runtime is not implemented" not in runtime_source

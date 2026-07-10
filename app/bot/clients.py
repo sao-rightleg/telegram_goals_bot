@@ -100,6 +100,25 @@ class LiveTelegramBotClient:
             )
         return OutgoingDocument(chat_id=chat_id, file_path=file_path, caption=caption)
 
+    def get_updates(
+        self,
+        *,
+        offset: int | None,
+        timeout_seconds: int,
+        limit: int,
+    ) -> list[dict[str, object]]:
+        data = {
+            "timeout": str(timeout_seconds),
+            "limit": str(limit),
+        }
+        if offset is not None:
+            data["offset"] = str(offset)
+        payload = self._post_api("getUpdates", data=data)
+        result = payload.get("result")
+        if not isinstance(result, list):
+            raise TelegramApiError("Telegram getUpdates failed: malformed result")
+        return [item for item in result if isinstance(item, dict)]
+
     def _post_api(
         self,
         method: str,

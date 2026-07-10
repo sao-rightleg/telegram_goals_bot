@@ -8,7 +8,15 @@ import pytest
 from app.config import load_settings
 from app.bot.clients import BotPurpose, FakeBotClient
 from app.bot.menus import CONSENT_ACCEPT_CALLBACK
-from app.runtime import RuntimeNotImplementedError, TelegramUpdateDispatcher, initialize_runtime, main, run_bot
+from app.runtime import (
+    RuntimeComponents,
+    TelegramUpdateDispatcher,
+    compose_runtime,
+    initialize_runtime,
+    main,
+    run_bot,
+    validate_runtime_readiness,
+)
 from app.scheduler.calendar import TIMEZONE_NAME
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.services.participant_models import FlowResponse, TelegramUserContext
@@ -54,13 +62,68 @@ def test_initialize_runtime_creates_storage_dirs_and_sqlite_schema(tmp_path: Pat
     )
 
 
-def test_run_bot_fails_clearly_until_live_runtime_exists(tmp_path: Path) -> None:
+def test_run_bot_starts_controlled_fake_runtime(tmp_path: Path) -> None:
     settings = load_settings(environ=runtime_env(tmp_path))
 
-    with pytest.raises(RuntimeNotImplementedError) as error:
-        run_bot(settings)
+    runner = RecordingPollingRunner()
 
-    assert "live Telegram polling runtime is not implemented" in str(error.value)
+    run_bot(
+        settings,
+        components_factory=lambda _settings: _runtime_components(tmp_path),
+        polling_runner=runner,
+    )
+
+    assert runner.started is True
+    assert isinstance(runner.components.dispatcher, TelegramUpdateDispatcher)
+
+
+def test_run_bot_no_longer_raises_not_implemented_with_fake_runtime(tmp_path: Path) -> None:
+    settings = load_settings(environ=runtime_env(tmp_path))
+    runner = RecordingPollingRunner()
+
+    run_bot(
+        settings,
+        components_factory=lambda _settings: _runtime_components(tmp_path),
+        polling_runner=runner,
+    )
+
+    assert runner.started is True
+
+
+def test_check_config_runs_google_schema_validation(tmp_path: Path) -> None:
+    settings = load_settings(environ=runtime_env(tmp_path))
+    settings.google_sheets.application_credentials.write_text("{}", encoding="utf-8")
+    service = object()
+    calls: list[tuple[object, str]] = []
+
+    validate_runtime_readiness(
+        settings,
+        google_service_factory=lambda _settings: service,
+        schema_validator=lambda google_service, *, spreadsheet_id: calls.append(
+            (google_service, spreadsheet_id)
+        ),
+    )
+
+    assert calls == [(service, "sheet-id")]
+
+
+def test_run_bot_composes_three_bot_router_and_services(tmp_path: Path) -> None:
+    settings = load_settings(environ=runtime_env(tmp_path))
+    components = compose_runtime(
+        settings,
+        google_service_factory=lambda _settings: _fake_google_service(),
+    )
+
+    assert components.main_bot.purpose is BotPurpose.MAIN
+    assert components.error_bot.purpose is BotPurpose.ERROR
+    assert components.notification_bot.purpose is BotPurpose.NOTIFICATION
+    assert components.notification_router.main_bot is components.main_bot
+    assert components.notification_router.error_bot is components.error_bot
+    assert components.notification_router.notification_bot is components.notification_bot
+    assert components.dispatcher.participant_service is components.participant_service
+    assert components.dispatcher.weekly_report_service is components.weekly_report_service
+    assert components.dispatcher.insight_service is components.insight_service
+    assert components.dispatcher.captain_service is components.captain_service
 
 
 def test_cli_check_config_uses_env_file_and_initializes_storage(tmp_path: Path) -> None:
@@ -69,8 +132,12 @@ def test_cli_check_config_uses_env_file_and_initializes_storage(tmp_path: Path) 
         "\n".join(f"{key}={value}" for key, value in runtime_env(tmp_path).items()),
         encoding="utf-8",
     )
+    (tmp_path / "credentials.json").write_text("{}", encoding="utf-8")
 
-    exit_code = main(["--env-file", str(env_file), "check-config"])
+    exit_code = main(
+        ["--env-file", str(env_file), "check-config"],
+        google_service_factory=lambda _settings: _fake_google_service(),
+    )
 
     assert exit_code == 0
     assert (tmp_path / "data" / "sqlite" / "bot.sqlite3").exists()
@@ -331,3 +398,24 @@ class RecordingInsightService:
 
 class RecordingCaptainService:
     pass
+
+
+class RecordingPollingRunner:
+    def __init__(self) -> None:
+        self.started = False
+        self.components: RuntimeComponents | None = None
+
+    def run(self, components: RuntimeComponents) -> None:
+        self.started = True
+        self.components = components
+
+
+def _runtime_components(tmp_path: Path) -> RuntimeComponents:
+    settings = load_settings(environ=runtime_env(tmp_path))
+    return compose_runtime(settings, google_service_factory=lambda _settings: _fake_google_service())
+
+
+def _fake_google_service() -> object:
+    from tests.test_sheets_live_helpers import FakeSheetsService, minimal_live_sheets
+
+    return FakeSheetsService(minimal_live_sheets())

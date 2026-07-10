@@ -119,3 +119,20 @@ Not run. Reviewer subagents require explicit user request in this runtime.
 - `python -m pytest tests/test_participant_start_flow.py tests/test_weekly_report_start_flow.py tests/test_insight_add_flow.py tests/test_captain_team_flow.py tests/test_captain_manual_report_flow.py -v` -> 39 passed
 - `git diff --check` -> OK
 - `python -m pytest -q` -> 332 passed
+
+## Task 6: Runtime composition and readiness
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Replaced the not-implemented runtime path with live runtime composition for Telegram bots, Google Sheets, Yandex/fake transcription, SQLite repositories, notification routing, voice service, business services, dispatcher, and a controlled Telegram polling runner. Added readiness validation for Google credentials, Google Sheets schema, provider construction, and sanitized startup readiness admin notifications.
+**Deviations:** None.
+
+**Reviews:**
+
+Not run. Reviewer subagents require explicit user request in this runtime.
+
+**Verification:**
+- `python -m pytest tests/test_runtime_entrypoint.py tests/test_project_tooling.py -v` -> 18 passed
+- `git diff --check` -> OK
+- `python -m pytest -q` -> 336 passed
