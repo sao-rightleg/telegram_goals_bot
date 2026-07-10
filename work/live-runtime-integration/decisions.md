@@ -49,3 +49,20 @@ Not run. Reviewer subagents require explicit user request in this runtime.
 - `python -m pytest tests/test_config.py tests/test_runtime_entrypoint.py -v` -> 24 passed
 - `git diff --check` -> OK
 - `python -m pytest -v` -> 311 passed
+
+## Task 2: Live Telegram Bot API clients
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Added concrete Telegram Bot API message/document clients and file downloader behind the existing bot boundaries. The live adapters use injectable `httpx` clients for testability and sanitize bot tokens in Telegram API errors.
+**Deviations:** None.
+
+**Reviews:**
+
+Not run. Reviewer subagents require explicit user request in this runtime.
+
+**Verification:**
+- `python -m pytest tests/test_boundaries.py -v` -> 11 passed
+- `git diff --check` -> OK
+- `python -m pytest -v` -> 315 passed

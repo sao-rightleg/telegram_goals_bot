@@ -1,7 +1,18 @@
 import ast
 from pathlib import Path
 
-from app.bot.clients import BotPurpose, FakeBotClient, FakeTelegramFileDownloader, TelegramFileDownload
+import httpx
+import pytest
+
+from app.bot.clients import (
+    BotPurpose,
+    FakeBotClient,
+    FakeTelegramFileDownloader,
+    LiveTelegramBotClient,
+    LiveTelegramFileDownloader,
+    TelegramApiError,
+    TelegramFileDownload,
+)
 from app.reports.generator import FakeReportGenerator, ReportRequest, ReportType
 from app.services.notifications import (
     NotificationCategory,
@@ -118,6 +129,115 @@ def test_fake_telegram_file_downloader_writes_requested_local_file(tmp_path: Pat
     assert downloader.downloads == [
         TelegramFileDownload(telegram_file_id="telegram-file-1", destination_path=destination)
     ]
+
+
+def test_live_telegram_client_sends_message_request() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 77}})
+
+    client = LiveTelegramBotClient(
+        purpose=BotPurpose.MAIN,
+        token="secret-token-123",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    message = client.send_message(chat_id="1001", text="Привет")
+
+    assert message.chat_id == "1001"
+    assert message.text == "Привет"
+    assert len(requests) == 1
+    assert requests[0].url.path == "/botsecret-token-123/sendMessage"
+    assert requests[0].read().decode("utf-8") == "chat_id=1001&text=%D0%9F%D1%80%D0%B8%D0%B2%D0%B5%D1%82"
+
+
+def test_live_telegram_client_sends_document_request(tmp_path: Path) -> None:
+    requests: list[httpx.Request] = []
+    document_path = tmp_path / "report.pdf"
+    document_path.write_bytes(b"pdf bytes")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        body = request.read()
+        assert b"name=\"chat_id\"" in body
+        assert b"1001" in body
+        assert b"name=\"caption\"" in body
+        assert b"Report" in body
+        assert b'name="document"; filename="report.pdf"' in body
+        assert b"pdf bytes" in body
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 78}})
+
+    client = LiveTelegramBotClient(
+        purpose=BotPurpose.NOTIFICATION,
+        token="document-token-123",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    document = client.send_document(chat_id="1001", file_path=document_path, caption="Report")
+
+    assert document.chat_id == "1001"
+    assert document.file_path == document_path
+    assert document.caption == "Report"
+    assert requests[0].url.path == "/botdocument-token-123/sendDocument"
+
+
+def test_live_telegram_file_downloader_writes_requested_path(tmp_path: Path) -> None:
+    requests: list[httpx.Request] = []
+    destination = tmp_path / "audio" / "voice.ogg"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/getFile"):
+            return httpx.Response(
+                200,
+                json={"ok": True, "result": {"file_path": "voice/file_123.ogg"}},
+            )
+        if request.url.path == "/file/botdownload-token-123/voice/file_123.ogg":
+            return httpx.Response(200, content=b"voice bytes")
+        return httpx.Response(404, json={"ok": False, "description": "not found"})
+
+    downloader = LiveTelegramFileDownloader(
+        token="download-token-123",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    result = downloader.download_file(
+        TelegramFileDownload(
+            telegram_file_id="telegram-file-1",
+            destination_path=destination,
+        )
+    )
+
+    assert result == destination
+    assert destination.read_bytes() == b"voice bytes"
+    assert [request.url.path for request in requests] == [
+        "/botdownload-token-123/getFile",
+        "/file/botdownload-token-123/voice/file_123.ogg",
+    ]
+
+
+def test_live_telegram_errors_are_sanitized() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"ok": False, "description": "bad secret-token-123 request"},
+        )
+
+    client = LiveTelegramBotClient(
+        purpose=BotPurpose.ERROR,
+        token="secret-token-123",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(TelegramApiError) as error:
+        client.send_message(chat_id="1001", text="test")
+
+    message = str(error.value)
+    assert "sendMessage" in message
+    assert "secret-token-123" not in message
+    assert "bad [REDACTED] request" in message
 
 
 def test_boundary_modules_do_not_import_live_sdks() -> None:
