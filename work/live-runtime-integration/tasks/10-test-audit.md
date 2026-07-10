@@ -1,5 +1,5 @@
 ---
-status: planned
+status: done
 depends_on: [7]
 wave: 5
 skills: [test-master]
@@ -31,11 +31,11 @@ This is an analysis task. Do not change application code or tests unless a separ
 
 ## Acceptance Criteria
 
-- [ ] Audit covers unit, integration, smoke, and deferred live E2E verification strategy.
-- [ ] Findings include concrete missing/weak tests with file references.
-- [ ] Report distinguishes blocking test gaps from acceptable deferred live smoke.
-- [ ] Report is saved at the expected path.
-- [ ] No tests or application code are changed directly by this audit task.
+- [x] Audit covers unit, integration, smoke, and deferred live E2E verification strategy.
+- [x] Findings include concrete missing/weak tests with file references.
+- [x] Report distinguishes blocking test gaps from acceptable deferred live smoke.
+- [x] Report is saved at the expected path.
+- [x] No tests or application code are changed directly by this audit task.
 
 ## Context Files
 
@@ -80,5 +80,5 @@ None.
 
 ## Post-completion
 
-- [ ] Write a brief report in `decisions.md` per the template.
-- [ ] If you found blocking issues, request/follow a fix task before final QA.
+- [x] Write a brief report in `decisions.md` per the template.
+- [x] If you found blocking issues, request/follow a fix task before final QA.

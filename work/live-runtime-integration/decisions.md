@@ -218,3 +218,19 @@ Not run. This task fixes findings from the completed security audit.
 - `python -m pytest tests/test_runtime_entrypoint.py tests/test_project_tooling.py -v` -> 28 passed
 - `uv tool run pip-audit -r <generated requirements from pyproject>` -> No known vulnerabilities found
 - `python -m pytest -q` -> 348 passed
+
+## Task 10: Test Audit
+
+**Status:** Done
+**Commit:** this commit
+**Agent:** main agent
+**Summary:** Completed test coverage/quality audit for live runtime integration and saved `logs/working/test-audit.json`. The audit found two blocking high-severity coverage gaps before final QA: missing direct tests for the live Telegram `getUpdates` adapter and missing tests for startup readiness failure notification via the error bot; one low non-blocking workflow static-test limitation remains documented.
+**Deviations:** None.
+
+**Reviews:**
+
+None.
+
+**Verification:**
+- `python -m pytest tests/test_config.py tests/test_boundaries.py tests/test_voice_processing_boundaries.py tests/test_voice_processing_service.py tests/test_runtime_entrypoint.py tests/test_project_tooling.py tests/test_participant_sheets_gateway.py tests/test_weekly_report_sheets_gateway.py tests/test_insight_sheets_gateway.py tests/test_reports_sheets_gateway.py -q` -> 105 passed
+- `python -m json.tool work/live-runtime-integration/logs/working/test-audit.json >/tmp/test-audit.pretty.json` -> OK

@@ -1,0 +1,172 @@
+{
+  "task": "10-test-audit",
+  "status": "failed",
+  "auditor": "main agent",
+  "created_at": "2026-07-10",
+  "scope": {
+    "feature": "live-runtime-integration",
+    "documents_reviewed": [
+      "work/live-runtime-integration/user-spec.md",
+      "work/live-runtime-integration/tech-spec.md",
+      "work/live-runtime-integration/decisions.md",
+      "/root/.codex/skills/test-master/SKILL.md",
+      "/root/.codex/skills/test-master/references/test-quality-review.md"
+    ],
+    "tests_reviewed": [
+      "tests/test_config.py",
+      "tests/test_boundaries.py",
+      "tests/test_voice_processing_boundaries.py",
+      "tests/test_voice_processing_service.py",
+      "tests/test_runtime_entrypoint.py",
+      "tests/test_project_tooling.py",
+      "tests/test_participant_sheets_gateway.py",
+      "tests/test_weekly_report_sheets_gateway.py",
+      "tests/test_insight_sheets_gateway.py",
+      "tests/test_reports_sheets_gateway.py"
+    ],
+    "implementation_surfaces_checked": [
+      "app/config.py",
+      "app/bot/clients.py",
+      "app/bot/dispatch.py",
+      "app/runtime.py",
+      "app/sheets/gateway.py",
+      "app/speech/transcription.py",
+      "app/services/voice_messages.py",
+      ".github/workflows/deploy-test.yml",
+      "deploy/systemd/telegram-goals-bot-test.service"
+    ]
+  },
+  "summary": {
+    "blocking_findings": 2,
+    "non_blocking_findings": 1,
+    "result": "Tests are broadly meaningful and mostly integration-oriented, but two live-runtime critical paths need focused tests before final QA."
+  },
+  "findings": [
+    {
+      "id": "TA-001",
+      "severity": "high",
+      "blocking": true,
+      "category": "missing_coverage",
+      "title": "Live Telegram getUpdates adapter is not directly tested",
+      "implementation_location": [
+        {
+          "file": "app/bot/clients.py",
+          "line": 158
+        }
+      ],
+      "test_location": [
+        {
+          "file": "tests/test_boundaries.py",
+          "line": 137
+        },
+        {
+          "file": "tests/test_runtime_entrypoint.py",
+          "line": 281
+        }
+      ],
+      "evidence": "Telegram sendMessage, sendDocument, file download, and Telegram API error sanitization are tested with `httpx.MockTransport`, but `LiveTelegramBotClient.get_updates()` has no direct request/response test. Polling tests use fake `PollingBot`/`FailingPollingBot`, so they validate loop behavior but not the live adapter request body, offset/timeout/limit encoding, result filtering, or malformed Telegram getUpdates responses.",
+      "impact": "A regression in the live polling adapter could keep all local tests green while the test-live service cannot receive Telegram updates or advances offset incorrectly.",
+      "recommended_fix": "Add focused `tests/test_boundaries.py` cases for `LiveTelegramBotClient.get_updates(offset=..., timeout_seconds=..., limit=...)`: assert the `/getUpdates` request body includes offset/timeout/limit, valid Telegram result returns only dict updates, and malformed `result` raises `TelegramApiError` without leaking the bot token."
+    },
+    {
+      "id": "TA-002",
+      "severity": "high",
+      "blocking": true,
+      "category": "missing_coverage",
+      "title": "Startup readiness failure admin notification path is untested",
+      "implementation_location": [
+        {
+          "file": "app/runtime.py",
+          "line": 298
+        },
+        {
+          "file": "app/runtime.py",
+          "line": 395
+        }
+      ],
+      "test_location": [
+        {
+          "file": "tests/test_runtime_entrypoint.py",
+          "line": 163
+        }
+      ],
+      "evidence": "`check-config` schema failure is tested for exit code 2/no traceback, and polling runtime errors are tested for sanitized error-bot messages. The `run_bot()` branch that catches readiness failure, calls `_notify_startup_readiness_failure()`, and sends `runtime_startup_readiness_failed` through the error bot is not tested.",
+      "impact": "A startup failure in test-live could fail silently from the operator's Telegram error channel while local tests still pass, violating the user-spec acceptance criterion that startup/readiness failures notify admin when the error bot is available.",
+      "recommended_fix": "Add a runtime-entrypoint test that injects or otherwise observes the startup error bot path during a `run_bot()` readiness failure. Prefer a small injectable factory/client seam for `_notify_startup_readiness_failure()` over network calls; assert the message contains `runtime_startup_readiness_failed` and only the error type, not schema text, credentials, tokens, or raw exception details."
+    },
+    {
+      "id": "TA-003",
+      "severity": "low",
+      "blocking": false,
+      "category": "test_quality",
+      "title": "Deploy workflow tests are static substring checks rather than YAML/shell validation",
+      "implementation_location": [
+        {
+          "file": ".github/workflows/deploy-test.yml",
+          "line": 1
+        }
+      ],
+      "test_location": [
+        {
+          "file": "tests/test_project_tooling.py",
+          "line": 57
+        }
+      ],
+      "evidence": "Deploy tests assert important strings such as `environment: test`, test-scoped secret names, `install -d -m 700`, and test service paths. These are meaningful guardrails for test/prod isolation, but they do not parse YAML or validate remote shell syntax.",
+      "impact": "A YAML indentation or shell syntax regression could evade local tests and fail only in GitHub Actions.",
+      "recommended_fix": "Keep current static isolation checks, and optionally add a lightweight YAML parse check if PyYAML or a standard workflow linter is later introduced. This is not blocking because the current tests cover the highest-risk production/test mixing strings."
+    }
+  ],
+  "coverage_assessment": {
+    "unit_tests": {
+      "status": "pass_with_gaps",
+      "notes": [
+        "Config validation covers required settings, three bot tokens, Yandex provider settings, positive numeric runtime settings, unknown provider, env file loading, timezone non-config, and redaction.",
+        "Telegram send/document/download and error sanitization are covered.",
+        "Yandex submit/poll/getRecognition success, timeout, and credential-redaction failures are covered.",
+        "Gap TA-001 remains for live Telegram getUpdates."
+      ]
+    },
+    "integration_tests": {
+      "status": "pass_with_gaps",
+      "notes": [
+        "Runtime composition tests verify three bot router wiring, concrete service composition, controlled run path, check-config success/failure, storage permissions, dispatcher text/voice/consent routing, polling recovery, and sanitized polling errors.",
+        "Google Sheets fake/live-like tests cover participant lookup, consent update, goal/step/report/insight filtering, appends, close step behavior, schema validation, aliases, copies, missing columns, and extra columns.",
+        "Voice service tests use real SQLite repositories and filesystem-backed fake downloader/transcriber to validate draft preservation, append ordering, over-limit rejection, failed audio cleanup, and error routing.",
+        "Gap TA-002 remains for startup readiness error-bot notification."
+      ]
+    },
+    "smoke_tests": {
+      "status": "pass",
+      "notes": [
+        "Project smoke tests cover package import, console script entrypoint, absence of RuntimeNotImplementedError, forbidden infrastructure dependencies, dev dependency security floor, test deploy environment, test-scoped secrets, private shared dirs, test systemd paths, and restrictive umask."
+      ]
+    },
+    "deferred_live_e2e": {
+      "status": "acceptable_deferred",
+      "notes": [
+        "Manual test-live E2E with real Telegram, test Google Sheet, and Yandex SpeechKit is correctly deferred to Tasks 12-13 because it requires secrets and external systems.",
+        "Deferred checks must include known participant `/start`, consent, menu, goal, steps, progress, weekly report text, insight text, unknown user plus admin error, one Russian voice transcription, and captain own-team manual report.",
+        "Scheduler/reports/PDF live checks are explicitly out of this feature's first live smoke and remain later pre-production scope."
+      ]
+    }
+  },
+  "quality_notes": [
+    "Reviewed tests generally assert state changes/results, not only mock calls.",
+    "Fake service usage is appropriate for this backend/runtime feature because tests use real SQLite repositories, real filesystem paths, and `httpx.MockTransport` for external HTTP boundaries.",
+    "No reviewed tests require real Telegram, Google, or Yandex credentials.",
+    "Fake values look synthetic and are used to assert redaction boundaries."
+  ],
+  "verification": {
+    "commands": [
+      {
+        "command": "python -m pytest tests/test_config.py tests/test_boundaries.py tests/test_voice_processing_boundaries.py tests/test_voice_processing_service.py tests/test_runtime_entrypoint.py tests/test_project_tooling.py tests/test_participant_sheets_gateway.py tests/test_weekly_report_sheets_gateway.py tests/test_insight_sheets_gateway.py tests/test_reports_sheets_gateway.py -q",
+        "result": "105 passed in 2.10s"
+      }
+    ]
+  },
+  "task_required": {
+    "needed": true,
+    "reason": "Two high-severity missing-coverage findings affect critical live-runtime readiness before final QA."
+  }
+}
