@@ -293,3 +293,5 @@ None.
 **External actions:** GitHub Actions `Deploy Test` workflow was started. No direct SSH/VPS access, live Telegram/Google/Yandex smoke, production workflow, production service, production secrets, or production app directory action was performed.
 
 **Retry 2026-07-12:** After the user updated `TEST_VPS_SSH_KEY`, reran `Deploy Test` as run `29183791812` for the same ref. It failed again at `Upload archive` with the same sanitized `Load key "/home/runner/.ssh/deploy_key": error in libcrypto` error, so the blocker remains the private key secret format/content.
+
+**Retry 2026-07-12 via gh secret update:** The user reported updating `TEST_VPS_SSH_KEY` through `gh`. Local key file `~/.ssh/telegram_goals_bot_test` validates with `ssh-keygen -y`, but run `29202403697` still failed at `Upload archive` with the same `error in libcrypto`. GitHub environment secret metadata shows `TEST_VPS_SSH_KEY updated_at: 2026-07-12T17:34:44Z`. Next safest fix is setting the environment secret directly from this workspace with `gh secret set ... --body-file`.

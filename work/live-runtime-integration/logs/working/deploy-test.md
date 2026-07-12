@@ -95,3 +95,39 @@ Process completed with exit code 255.
 ```
 
 Interpretation: the updated `TEST_VPS_SSH_KEY` still is not parseable by OpenSSH as a private key. This failure happens before a normal public-key authorization check, so the next fix should focus on the exact secret value format.
+
+## Retry: 2026-07-12 via gh secret update
+
+Run ID: `29202403697`
+Run URL: `https://github.com/sao-rightleg/telegram_goals_bot/actions/runs/29202403697`
+
+The user reported updating `TEST_VPS_SSH_KEY` through `gh`. The local private key file `~/.ssh/telegram_goals_bot_test` was validated with:
+
+```text
+ssh-keygen -y -f ~/.ssh/telegram_goals_bot_test >/dev/null && echo OK
+```
+
+Result: `OK`.
+
+The workflow was rerun for the same approved ref.
+
+Result: failed again at `Upload archive`.
+
+Sanitized failure summary:
+
+```text
+Load key "/home/runner/.ssh/deploy_key": error in libcrypto
+Permission denied, please try again.
+Permission denied, please try again.
+***@***: Permission denied (publickey,password).
+scp: Connection closed
+Process completed with exit code 255.
+```
+
+Environment secret metadata:
+
+```text
+TEST_VPS_SSH_KEY updated_at: 2026-07-12T17:34:44Z
+```
+
+Interpretation: the local key file is valid, but the GitHub environment secret value still reaches the runner in a form OpenSSH cannot parse. A direct `gh secret set ... --body-file ~/.ssh/telegram_goals_bot_test --env test` from this authenticated workspace is the next safest fix because it avoids browser copy/paste corruption.
