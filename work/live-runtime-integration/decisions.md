@@ -277,7 +277,7 @@ None.
 **Status:** Blocked
 **Commit:** not completed
 **Agent:** main agent
-**Summary:** The user approved test-live deployment through GitHub Actions for ref `d835d88aa1efb860ece5592028838dc915d83d0a`, but the workflow could not be started from this workspace because no `remote.origin` is configured and GitHub CLI is unavailable or not authenticated.
+**Summary:** Test-live deployment was approved and started through GitHub Actions run `29183251404` for ref `c174fd2fd7d38b1b5c549bf256419664105142e1`. The workflow passed checkout, Python setup, runner tests, test secret validation, archive creation, and SSH setup, then failed at `Upload archive` before install/restart. The sanitized error is `Load key "/home/runner/.ssh/deploy_key": error in libcrypto` followed by SSH permission denial, indicating the test deploy private key secret is malformed/unreadable or does not match the VPS authorized key.
 **Deviations:** None.
 
 **Reviews:**
@@ -285,9 +285,9 @@ None.
 None.
 
 **Verification:**
-- `git config --get remote.origin.url || true` -> no configured remote
-- `command -v gh && gh auth status 2>&1 || true` -> GitHub CLI unavailable or not authenticated
-- `git rev-parse HEAD` -> `d835d88aa1efb860ece5592028838dc915d83d0a`
+- `gh workflow run "Deploy Test" --repo sao-rightleg/telegram_goals_bot --ref main -f ref=c174fd2fd7d38b1b5c549bf256419664105142e1` -> run `29183251404` started
+- `gh run view 29183251404 --repo sao-rightleg/telegram_goals_bot` -> failed at `Upload archive`
+- `gh run view 29183251404 --repo sao-rightleg/telegram_goals_bot --log-failed` -> sanitized SSH key load failure and permission denial
 - Deploy log: `work/live-runtime-integration/logs/working/deploy-test.md`
 
-**External actions:** No workflow, push, SSH/VPS access, live Telegram/Google/Yandex call, or production action was performed.
+**External actions:** GitHub Actions `Deploy Test` workflow was started. No direct SSH/VPS access, live Telegram/Google/Yandex smoke, production workflow, production service, production secrets, or production app directory action was performed.

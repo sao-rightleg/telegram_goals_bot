@@ -32,12 +32,12 @@ Production service, production app directory, production secrets, and production
 
 ## Acceptance Criteria
 
-- [ ] User explicitly approves test-live deploy before the workflow runs.
-- [ ] Deploy uses GitHub CI/CD, not direct normal SSH.
-- [ ] Workflow uses GitHub environment `test`.
-- [ ] Test app dir and test systemd service are used.
-- [ ] Production service and production secrets are not touched.
-- [ ] Deploy result is recorded in the working log.
+- [x] User explicitly approves test-live deploy before the workflow runs.
+- [x] Deploy uses GitHub CI/CD, not direct normal SSH.
+- [x] Workflow uses GitHub environment `test`.
+- [x] Test app dir and test systemd service are used.
+- [x] Production service and production secrets are not touched.
+- [x] Deploy result is recorded in the working log.
 
 ## Context Files
 
@@ -80,5 +80,5 @@ None.
 
 ## Post-completion
 
-- [ ] Write a brief report in `decisions.md` per the template.
-- [ ] If deploy failed, record blocker and stop before post-deploy smoke.
+- [x] Write a brief report in `decisions.md` per the template.
+- [x] If deploy failed, record blocker and stop before post-deploy smoke.
