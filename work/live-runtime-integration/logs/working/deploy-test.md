@@ -64,3 +64,34 @@ Most likely cause: `TEST_VPS_SSH_KEY` is not a valid unencrypted private key in 
 Fix the test deployment SSH credential setup, then rerun `Deploy Test` for ref `c174fd2fd7d38b1b5c549bf256419664105142e1`.
 
 Do not paste secret values in chat. Store the corrected private key only in GitHub environment secret `TEST_VPS_SSH_KEY`, and ensure its matching public key is installed on the VPS for `TEST_VPS_USER`.
+
+## Retry: 2026-07-12
+
+Run ID: `29183791812`
+Run URL: `https://github.com/sao-rightleg/telegram_goals_bot/actions/runs/29183791812`
+
+The user updated `TEST_VPS_SSH_KEY` and requested a recheck. The workflow was rerun for the same approved ref.
+
+Result: failed at the same `Upload archive` step.
+
+Passed again:
+
+- GitHub runner checkout.
+- Python setup.
+- Pre-deploy test suite.
+- Test deployment secret validation.
+- Archive creation.
+- SSH setup and host key scan.
+
+Sanitized failure summary:
+
+```text
+Load key "/home/runner/.ssh/deploy_key": error in libcrypto
+Permission denied, please try again.
+Permission denied, please try again.
+***@***: Permission denied (publickey,password).
+scp: Connection closed
+Process completed with exit code 255.
+```
+
+Interpretation: the updated `TEST_VPS_SSH_KEY` still is not parseable by OpenSSH as a private key. This failure happens before a normal public-key authorization check, so the next fix should focus on the exact secret value format.

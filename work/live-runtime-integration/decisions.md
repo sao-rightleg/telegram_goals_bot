@@ -291,3 +291,5 @@ None.
 - Deploy log: `work/live-runtime-integration/logs/working/deploy-test.md`
 
 **External actions:** GitHub Actions `Deploy Test` workflow was started. No direct SSH/VPS access, live Telegram/Google/Yandex smoke, production workflow, production service, production secrets, or production app directory action was performed.
+
+**Retry 2026-07-12:** After the user updated `TEST_VPS_SSH_KEY`, reran `Deploy Test` as run `29183791812` for the same ref. It failed again at `Upload archive` with the same sanitized `Load key "/home/runner/.ssh/deploy_key": error in libcrypto` error, so the blocker remains the private key secret format/content.
