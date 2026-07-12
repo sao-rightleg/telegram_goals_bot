@@ -131,3 +131,46 @@ TEST_VPS_SSH_KEY updated_at: 2026-07-12T17:34:44Z
 ```
 
 Interpretation: the local key file is valid, but the GitHub environment secret value still reaches the runner in a form OpenSSH cannot parse. A direct `gh secret set ... --body-file ~/.ssh/telegram_goals_bot_test --env test` from this authenticated workspace is the next safest fix because it avoids browser copy/paste corruption.
+
+## Retry: 2026-07-12 secret set from workspace
+
+Run ID: `29202529683`
+Run URL: `https://github.com/sao-rightleg/telegram_goals_bot/actions/runs/29202529683`
+
+The user approved updating `TEST_VPS_SSH_KEY` directly from this workspace. The installed GitHub CLI does not support `--body-file`, so the equivalent stdin form was used:
+
+```text
+gh secret set TEST_VPS_SSH_KEY --repo sao-rightleg/telegram_goals_bot --env test < ~/.ssh/telegram_goals_bot_test
+```
+
+Environment secret metadata after update:
+
+```text
+TEST_VPS_SSH_KEY updated_at: 2026-07-12T17:43:10Z
+```
+
+Result: SSH key parsing and authentication blocker was fixed.
+
+Passed gates:
+
+- GitHub runner checkout.
+- Python setup.
+- Pre-deploy test suite.
+- Test deployment secret validation.
+- Archive creation.
+- SSH setup and host key scan.
+- Archive upload to VPS.
+- Remote release install started.
+- Remote package install completed.
+- Remote VPS test suite passed: `351 passed in 15.41s`.
+
+Failure moved to `check-config` in `Install test release and restart test service`.
+
+Sanitized failure summary:
+
+```text
+Missing required settings: MAIN_TELEGRAM_BOT_TOKEN, ERROR_TELEGRAM_BOT_TOKEN, NOTIFICATION_TELEGRAM_BOT_TOKEN, GOOGLE_SHEETS_ID, GOOGLE_APPLICATION_CREDENTIALS, ADMIN_TELEGRAM_ID, ADMIN_ERROR_CHAT_ID, SITNIKOV_TELEGRAM_ID, SQLITE_DB_PATH, AUDIO_STORAGE_DIR, PDF_STORAGE_DIR
+Process completed with exit code 2.
+```
+
+Interpretation: the deploy key is now correct. The remaining blocker is the test VPS runtime environment file at `/opt/telegram_goals_bot_test/shared/.env`: required runtime settings are missing. The workflow stopped before updating `current` and before restarting `telegram-goals-bot-test.service`.
