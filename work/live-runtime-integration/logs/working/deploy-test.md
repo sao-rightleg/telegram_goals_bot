@@ -1,6 +1,6 @@
 # Deploy Test: live-runtime-integration
 
-Status: failed
+Status: passed
 Date: 2026-07-12
 Repository: `sao-rightleg/telegram_goals_bot`
 Workflow: `Deploy Test`
@@ -311,3 +311,53 @@ Process completed with exit code 5.
 ```
 
 Interpretation: application readiness is now passing. The remaining blocker is VPS service setup: `telegram-goals-bot-test.service` is not installed or not visible to systemd on the test VPS.
+
+## Workflow fix: 2026-07-19
+
+Commit: `f5cbccf827199c922d61835e77a5843ec8ec2b3d`
+
+The test deployment workflow was updated to install and reload the test systemd unit through GitHub Actions before restarting it:
+
+- ensure system group `telegram-goals-bot-test`;
+- ensure system user `telegram-goals-bot-test`;
+- chown shared runtime directories to the test service user/group;
+- install `deploy/systemd/telegram-goals-bot-test.service` to `/etc/systemd/system/telegram-goals-bot-test.service`;
+- run `systemctl daemon-reload`;
+- restart and status-check `telegram-goals-bot-test.service`.
+
+Verification before push:
+
+```text
+python -m pytest tests/test_project_tooling.py -v -> 12 passed
+git diff --check -> OK
+```
+
+The first workflow retry for this fix, run `29698704095`, failed at checkout because an incorrect full SHA was supplied. No deploy action reached the VPS in that run.
+
+## Success: 2026-07-19
+
+Run ID: `29698760750`
+Run URL: `https://github.com/sao-rightleg/telegram_goals_bot/actions/runs/29698760750`
+Ref: `f5cbccf827199c922d61835e77a5843ec8ec2b3d`
+
+Result: passed.
+
+Passed gates:
+
+- GitHub runner checkout.
+- Python setup.
+- Pre-deploy test suite.
+- Test deployment secret validation.
+- Archive creation.
+- SSH setup and host key scan.
+- Archive upload to VPS.
+- Remote release install.
+- Remote VPS test suite: `352 passed in 14.94s`.
+- Runtime storage readiness.
+- Google Sheets schema validation.
+- Test systemd unit installation.
+- `systemctl daemon-reload`.
+- `telegram-goals-bot-test.service` restart.
+- `telegram-goals-bot-test.service` status: `active (running)`.
+
+Production workflow, production service, production secrets, and production app directory were not touched.

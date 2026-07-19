@@ -1,5 +1,5 @@
 ---
-status: blocked
+status: done
 depends_on: [11]
 wave: 7
 skills: [deploy-pipeline]

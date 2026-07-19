@@ -274,10 +274,10 @@ None.
 
 ## Task 12: Deploy test-live
 
-**Status:** Blocked
-**Commit:** not completed
+**Status:** Done
+**Commit:** f5cbccf
 **Agent:** main agent
-**Summary:** Test-live deployment was approved and started through GitHub Actions run `29183251404` for ref `c174fd2fd7d38b1b5c549bf256419664105142e1`. The workflow passed checkout, Python setup, runner tests, test secret validation, archive creation, and SSH setup, then failed at `Upload archive` before install/restart. The sanitized error is `Load key "/home/runner/.ssh/deploy_key": error in libcrypto` followed by SSH permission denial, indicating the test deploy private key secret is malformed/unreadable or does not match the VPS authorized key.
+**Summary:** Test-live deployment is complete. After resolving SSH key formatting, test `.env`, Google Sheets access/schema, and missing test systemd unit setup, GitHub Actions run `29698760750` deployed ref `f5cbccf827199c922d61835e77a5843ec8ec2b3d` to the separate test VPS environment and reported `telegram-goals-bot-test.service` as `active (running)`.
 **Deviations:** None.
 
 **Reviews:**
@@ -305,3 +305,7 @@ None.
 **Retry 2026-07-19 Google Sheets ID updated:** After the user updated `GOOGLE_SHEETS_ID`, reran `Deploy Test` as run `29698054667`. The workflow passed upload, remote install, VPS tests (`351 passed in 15.95s`), runtime storage readiness, and Google Sheets access progressed past the previous `HttpError`. `check-config` now fails schema validation because the spreadsheet is missing required tabs: `Goals`, `Insights`, `Participants`, `PlannedSteps`, `Teams`, `Trackers`, `WeeklyReportSteps`, and `WeeklyReports`.
 
 **Retry 2026-07-19 schema created:** With user approval, used the service account to create required test spreadsheet tabs and header rows. Reran `Deploy Test` as run `29698243321`. The workflow passed upload, remote install, VPS tests (`351 passed in 14.90s`), runtime storage readiness, and Google Sheets schema validation. The run reached service restart and failed because the test systemd unit is not installed/visible on the VPS: sanitized `Failed to restart ***: Unit *** not found`.
+
+**Workflow fix 2026-07-19:** Updated `.github/workflows/deploy-test.yml` to install the test systemd unit through GitHub Actions before restart, with explicit test service user/group setup and shared directory ownership. Verified locally with `python -m pytest tests/test_project_tooling.py -v` -> 12 passed, then pushed `f5cbccf827199c922d61835e77a5843ec8ec2b3d` to `main`.
+
+**Success 2026-07-19:** Reran `Deploy Test` as run `29698760750` for ref `f5cbccf827199c922d61835e77a5843ec8ec2b3d`. The workflow passed checkout, Python setup, runner tests, test secret validation, archive creation, SSH setup, archive upload, remote install, VPS tests (`352 passed in 14.94s`), runtime storage readiness, Google Sheets schema validation, test systemd unit installation, `systemctl daemon-reload`, service restart, and service status. `telegram-goals-bot-test.service` was reported `active (running)`. Production workflow, service, secrets, and app directory were not touched.
