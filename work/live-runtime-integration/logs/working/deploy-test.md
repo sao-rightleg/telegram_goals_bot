@@ -238,3 +238,36 @@ Process completed with exit code 2.
 ```
 
 Interpretation: `.env` now contains enough runtime settings to pass provider and storage validation. The remaining blocker is Google Sheets access/readiness: likely `GOOGLE_SHEETS_ID`, service account access to the spreadsheet, enabled Google Sheets API, or spreadsheet schema/tab names.
+
+## Retry: 2026-07-19 Google Sheets ID updated
+
+Run ID: `29698054667`
+Run URL: `https://github.com/sao-rightleg/telegram_goals_bot/actions/runs/29698054667`
+
+The user reported updating `GOOGLE_SHEETS_ID` to the spreadsheet shared with the service account. The workflow was rerun for the same approved ref.
+
+Passed gates:
+
+- GitHub runner checkout.
+- Python setup.
+- Pre-deploy test suite.
+- Test deployment secret validation.
+- Archive creation.
+- SSH setup and host key scan.
+- Archive upload to VPS.
+- Remote release install started.
+- Remote package install completed.
+- Remote VPS test suite passed: `351 passed in 15.95s`.
+- Runtime storage readiness passed.
+- Google Sheets API access progressed past the previous `HttpError`.
+
+Failure moved to Google Sheets schema validation.
+
+Sanitized failure summary:
+
+```text
+Missing required Google Sheets tabs: Goals, Insights, Participants, PlannedSteps, Teams, Trackers, WeeklyReportSteps, WeeklyReports
+Process completed with exit code 2.
+```
+
+Interpretation: Google Sheets credentials and spreadsheet access are now good enough for schema inspection. The remaining blocker is creating the required tabs in the test spreadsheet with the expected schema.
