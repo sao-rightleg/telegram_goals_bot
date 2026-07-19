@@ -205,3 +205,36 @@ Process completed with exit code 2.
 ```
 
 Interpretation: required environment values and Google credentials are now present enough to reach provider validation. The test VPS `.env` should use `TRANSCRIPTION_PROVIDER=fake` for test-live without Yandex credentials, or `TRANSCRIPTION_PROVIDER=yandex` with valid Yandex settings.
+
+## Retry: 2026-07-19 provider fixed
+
+Run ID: `29697791616`
+Run URL: `https://github.com/sao-rightleg/telegram_goals_bot/actions/runs/29697791616`
+
+The user reported fixing `TRANSCRIPTION_PROVIDER`. The workflow was rerun for the same approved ref.
+
+Passed gates:
+
+- GitHub runner checkout.
+- Python setup.
+- Pre-deploy test suite.
+- Test deployment secret validation.
+- Archive creation.
+- SSH setup and host key scan.
+- Archive upload to VPS.
+- Remote release install started.
+- Remote package install completed.
+- Remote VPS test suite passed: `351 passed in 15.72s`.
+- Runtime storage readiness passed.
+
+Failure moved to Google Sheets readiness in `check-config`.
+
+Sanitized failure summary:
+
+```text
+INFO:telegram_goals_bot:runtime storage ready
+Google Sheets request failed: HttpError
+Process completed with exit code 2.
+```
+
+Interpretation: `.env` now contains enough runtime settings to pass provider and storage validation. The remaining blocker is Google Sheets access/readiness: likely `GOOGLE_SHEETS_ID`, service account access to the spreadsheet, enabled Google Sheets API, or spreadsheet schema/tab names.
