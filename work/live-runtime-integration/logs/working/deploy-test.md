@@ -271,3 +271,43 @@ Process completed with exit code 2.
 ```
 
 Interpretation: Google Sheets credentials and spreadsheet access are now good enough for schema inspection. The remaining blocker is creating the required tabs in the test spreadsheet with the expected schema.
+
+## Retry: 2026-07-19 schema created
+
+Run ID: `29698243321`
+Run URL: `https://github.com/sao-rightleg/telegram_goals_bot/actions/runs/29698243321`
+
+With user approval, the service account was used from this workspace to create the required test spreadsheet tabs and header rows:
+
+```text
+Participants, Teams, Trackers, Goals, PlannedSteps, WeeklyReports, WeeklyReportSteps, Insights
+```
+
+The workflow was rerun for the same approved ref.
+
+Passed gates:
+
+- GitHub runner checkout.
+- Python setup.
+- Pre-deploy test suite.
+- Test deployment secret validation.
+- Archive creation.
+- SSH setup and host key scan.
+- Archive upload to VPS.
+- Remote release install started.
+- Remote package install completed.
+- Remote VPS test suite passed: `351 passed in 14.90s`.
+- Runtime storage readiness passed.
+- Google Sheets schema validation passed.
+- Release symlink update was reached before service restart.
+
+Failure moved to test systemd service installation.
+
+Sanitized failure summary:
+
+```text
+Failed to restart ***: Unit *** not found.
+Process completed with exit code 5.
+```
+
+Interpretation: application readiness is now passing. The remaining blocker is VPS service setup: `telegram-goals-bot-test.service` is not installed or not visible to systemd on the test VPS.
