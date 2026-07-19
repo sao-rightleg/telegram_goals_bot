@@ -174,3 +174,34 @@ Process completed with exit code 2.
 ```
 
 Interpretation: the deploy key is now correct. The remaining blocker is the test VPS runtime environment file at `/opt/telegram_goals_bot_test/shared/.env`: required runtime settings are missing. The workflow stopped before updating `current` and before restarting `telegram-goals-bot-test.service`.
+
+## Retry: 2026-07-19 credentials configured
+
+Run ID: `29697217640`
+Run URL: `https://github.com/sao-rightleg/telegram_goals_bot/actions/runs/29697217640`
+
+The user reported that the Google credentials JSON was configured. The workflow was rerun for the same approved ref.
+
+Passed gates:
+
+- GitHub runner checkout.
+- Python setup.
+- Pre-deploy test suite.
+- Test deployment secret validation.
+- Archive creation.
+- SSH setup and host key scan.
+- Archive upload to VPS.
+- Remote release install started.
+- Remote package install completed.
+- Remote VPS test suite passed: `351 passed in 15.99s`.
+
+Failure remained in `check-config`, but moved from missing required settings to invalid transcription provider value.
+
+Sanitized failure summary:
+
+```text
+Setting TRANSCRIPTION_PROVIDER must be one of: fake, yandex
+Process completed with exit code 2.
+```
+
+Interpretation: required environment values and Google credentials are now present enough to reach provider validation. The test VPS `.env` should use `TRANSCRIPTION_PROVIDER=fake` for test-live without Yandex credentials, or `TRANSCRIPTION_PROVIDER=yandex` with valid Yandex settings.
