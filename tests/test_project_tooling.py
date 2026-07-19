@@ -85,6 +85,18 @@ def test_deploy_test_workflow_creates_sensitive_shared_dirs_private() -> None:
     assert "mkdir -p \\\n            \"$TEST_APP_DIR/shared/data/audio\"" not in workflow
 
 
+def test_deploy_test_workflow_installs_test_systemd_unit() -> None:
+    workflow = DEPLOY_TEST_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "TEST_SERVICE_USER=\"telegram-goals-bot-test\"" in workflow
+    assert "sudo groupadd --system \"$TEST_SERVICE_GROUP\"" in workflow
+    assert "sudo useradd --system --gid \"$TEST_SERVICE_GROUP\"" in workflow
+    assert "sudo chown -R \"$TEST_SERVICE_USER:$TEST_SERVICE_GROUP\" \"$TEST_APP_DIR/shared\"" in workflow
+    assert "sudo install -m 644 deploy/systemd/telegram-goals-bot-test.service" in workflow
+    assert "sudo systemctl daemon-reload" in workflow
+    assert "sudo systemctl restart \"$TEST_SERVICE_NAME\"" in workflow
+
+
 def test_test_systemd_unit_targets_test_app_dir_and_service() -> None:
     unit = TEST_SYSTEMD_UNIT.read_text(encoding="utf-8")
 

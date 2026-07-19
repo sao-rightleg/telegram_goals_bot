@@ -82,6 +82,8 @@ jobs:
           test "$TEST_APP_DIR" = "/opt/telegram_goals_bot_test"
           test "$TEST_SERVICE_NAME" = "telegram-goals-bot-test.service"
 
+          TEST_SERVICE_USER="telegram-goals-bot-test"
+          TEST_SERVICE_GROUP="telegram-goals-bot-test"
           RELEASE_DIR="$TEST_APP_DIR/releases/$GITHUB_SHA"
           mkdir -p "$RELEASE_DIR" "$TEST_APP_DIR/shared"
           tar -xzf "/tmp/telegram-goals-bot-test-$GITHUB_SHA.tgz" -C "$RELEASE_DIR"
@@ -105,6 +107,15 @@ jobs:
           ./.venv/bin/telegram-goals-bot --env-file "$TEST_APP_DIR/shared/.env" check-config
 
           ln -sfn "$RELEASE_DIR" "$TEST_APP_DIR/current"
+          if ! getent group "$TEST_SERVICE_GROUP" >/dev/null 2>&1; then
+            sudo groupadd --system "$TEST_SERVICE_GROUP"
+          fi
+          if ! id -u "$TEST_SERVICE_USER" >/dev/null 2>&1; then
+            sudo useradd --system --gid "$TEST_SERVICE_GROUP" --home-dir "$TEST_APP_DIR" --shell /usr/sbin/nologin "$TEST_SERVICE_USER"
+          fi
+          sudo chown -R "$TEST_SERVICE_USER:$TEST_SERVICE_GROUP" "$TEST_APP_DIR/shared"
+          sudo install -m 644 deploy/systemd/telegram-goals-bot-test.service "/etc/systemd/system/$TEST_SERVICE_NAME"
+          sudo systemctl daemon-reload
           sudo systemctl restart "$TEST_SERVICE_NAME"
           sudo systemctl status "$TEST_SERVICE_NAME" --no-pager
           REMOTE
