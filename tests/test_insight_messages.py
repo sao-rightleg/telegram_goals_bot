@@ -84,7 +84,7 @@ def test_title_fallback_uses_first_100_characters_without_breaking_words() -> No
     assert title.endswith("...")
 
 
-def test_insight_page_formatting_includes_read_full_action() -> None:
+def test_insight_page_formatting_includes_preview_without_fake_action() -> None:
     item = InsightListItem(
         insight_id="I001",
         insight_date="2026-06-23",
@@ -101,7 +101,8 @@ def test_insight_page_formatting_includes_read_full_action() -> None:
     assert "Твои инсайты: 1-10 из 16" in text
     assert "23.06.2026" in text
     assert "Инсайт: Нехватка планирования замедляет меня" in text
-    assert f"...{INSIGHT_READ_FULL_TEXT}" in text
+    assert INSIGHT_READ_FULL_TEXT not in text
+    assert text.endswith("...")
     assert page.has_older is True
     assert page.has_newer is False
 

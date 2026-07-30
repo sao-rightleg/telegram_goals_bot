@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import uuid4
 
-from app.bot.clients import BotClient
-from app.bot.menus import build_role_menu
+from app.bot.clients import BotClient, TelegramInlineButton
+from app.bot.menus import INSIGHT_FULL_TEXT_CALLBACK_PREFIX, build_role_menu
 from app.bot.messages import (
     CONSENT_ACCEPT_BUTTON,
     CONSENT_TEXT,
@@ -15,6 +15,7 @@ from app.bot.messages import (
     INSIGHT_EMPTY_TEXT,
     INSIGHT_MISSING_ACTIVE_GOAL_TEXT,
     INSIGHT_MISSING_TEXT,
+    INSIGHT_READ_FULL_TEXT,
     INSIGHT_SUCCESS_TEXT,
     INSIGHT_TITLE_PROMPT_TEXT,
     INSIGHT_TITLE_TOO_LONG_TEXT,
@@ -200,7 +201,7 @@ class InsightService:
             page_size=page_size,
             total_count=len(rows),
         )
-        return self._send(user, text=format_insight_page(page))
+        return self._send(user, text=format_insight_page(page), buttons=_read_full_buttons(items))
 
     def get_full_text(
         self,
@@ -435,10 +436,21 @@ def _bounded_page_index(page_index: int, *, total_count: int, page_size: int) ->
 
 def _insight_item_from_row(row: SheetRow) -> InsightListItem:
     text = str(row.get("insight_text") or row.get("transcription_text") or "")
+    title = str(row.get("insight_title") or "").strip() or make_insight_title_fallback(text)
     return InsightListItem(
         insight_id=_string_value(row.get("insight_id")),
         insight_date=str(row.get("insight_date") or ""),
-        title=str(row.get("insight_title") or ""),
+        title=title,
         text_preview=text,
         full_text=text,
+    )
+
+
+def _read_full_buttons(items: tuple[InsightListItem, ...]) -> tuple[TelegramInlineButton, ...]:
+    return tuple(
+        TelegramInlineButton(
+            text=f"{INSIGHT_READ_FULL_TEXT}: {item.title or 'инсайт'}",
+            callback_data=f"{INSIGHT_FULL_TEXT_CALLBACK_PREFIX}{item.insight_id}",
+        )
+        for item in items
     )

@@ -183,7 +183,7 @@ def format_insight_page(page: InsightPage) -> str:
                 "",
                 _format_insight_date(item.insight_date),
                 f"Инсайт: {item.title}",
-                f"{_truncate_insight_preview(item.text_preview)}...{INSIGHT_READ_FULL_TEXT}",
+                f"{_truncate_insight_preview(item.text_preview)}...",
             )
         )
 

@@ -3,6 +3,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from app.bot.clients import BotPurpose, FakeBotClient
+from app.bot.menus import INSIGHT_FULL_TEXT_CALLBACK_PREFIX
 from app.bot.messages import INSIGHT_EMPTY_LIST_TEXT, INSIGHT_MISSING_TEXT
 from app.services.insights import InsightService
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
@@ -44,6 +45,52 @@ def test_list_shows_current_participant_latest_10_first(tmp_path: Path) -> None:
     assert "03.07.2026" in response.text
     assert "02.07.2026" not in response.text
     assert "20.07.2026" not in response.text
+
+
+def test_list_sends_read_full_buttons_for_visible_insights(tmp_path: Path) -> None:
+    service, _gateway, main_bot, _error_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        insights=[
+            _insight("I001", "P001", "2026-07-02", text="Первый полный текст."),
+            _insight("I002", "P001", "2026-07-03", text="Второй полный текст."),
+        ],
+    )
+
+    response = service.list_insights(USER, page_index=0, now=NOW)
+
+    assert response.buttons == main_bot.sent_messages[-1].buttons
+    assert [button.text for button in response.buttons] == [
+        "читать целиком: Инсайт I002",
+        "читать целиком: Инсайт I001",
+    ]
+    assert [button.callback_data for button in response.buttons] == [
+        f"{INSIGHT_FULL_TEXT_CALLBACK_PREFIX}I002",
+        f"{INSIGHT_FULL_TEXT_CALLBACK_PREFIX}I001",
+    ]
+
+
+def test_list_uses_text_fallback_when_insight_title_is_empty(tmp_path: Path) -> None:
+    service, _gateway, main_bot, _error_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        insights=[
+            _insight(
+                "I001",
+                "P001",
+                "2026-07-02",
+                title="",
+                text="Не хватает планирования. Завтра начну с конкретного дела.",
+            ),
+        ],
+    )
+
+    response = service.list_insights(USER, page_index=0, now=NOW)
+
+    assert "Инсайт: Не хватает планирования. Завтра начну с конкретного дела." in response.text
+    assert main_bot.sent_messages[-1].buttons[0].text == (
+        "читать целиком: Не хватает планирования. Завтра начну с конкретного дела."
+    )
 
 
 def test_pagination_over_16_insights_is_bounded(tmp_path: Path) -> None:
@@ -152,6 +199,7 @@ def _insight(
     insight_date: str,
     *,
     text: str | None = None,
+    title: str | None = None,
 ) -> dict[str, object]:
     return {
         "insight_id": insight_id,
@@ -159,7 +207,7 @@ def _insight(
         "goal_id": "G001",
         "week_number": 4,
         "insight_scope": "current_week",
-        "insight_title": f"Инсайт {insight_id}",
+        "insight_title": f"Инсайт {insight_id}" if title is None else title,
         "insight_date": insight_date,
         "insight_text": text or f"Текст инсайта {insight_id}",
         "created_by_id": participant_id,
