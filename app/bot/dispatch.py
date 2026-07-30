@@ -28,7 +28,7 @@ from app.bot.menus import (
     WEEKLY_REPORT_STEPS_CALLBACK_PREFIX,
     MenuAction,
 )
-from app.bot.messages import NOT_AVAILABLE_TEXT
+from app.bot.messages import MESSAGE_WITHOUT_FLOW_TEXT, NOT_AVAILABLE_TEXT
 from app.scheduler.calendar import TIMEZONE_NAME
 from app.services.notifications import NotificationCategory, NotificationRouter
 from app.services.participant_models import FlowResponse, TelegramUserContext
@@ -123,7 +123,7 @@ class TelegramUpdateDispatcher:
     ) -> FlowResponse | None:
         state = self.dialog_states.get(user.telegram_id)
         if state is None:
-            return None
+            return self._send_message_without_flow(user)
 
         if state.flow == "weekly_report":
             return self.weekly_report_service.add_text_message(
@@ -154,6 +154,11 @@ class TelegramUpdateDispatcher:
             )
 
         return None
+
+    def _send_message_without_flow(self, user: TelegramUserContext) -> FlowResponse:
+        response = FlowResponse(chat_id=user.chat_id, text=MESSAGE_WITHOUT_FLOW_TEXT)
+        self.notification_router.main_bot.send_message(chat_id=user.chat_id, text=response.text)
+        return response
 
     def _dispatch_voice(
         self,

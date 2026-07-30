@@ -9,6 +9,7 @@ import pytest
 import app.runtime as runtime_module
 from app.config import ConfigurationError, load_settings
 from app.bot.clients import BotPurpose, FakeBotClient, TelegramApiError
+from app.bot.messages import MESSAGE_WITHOUT_FLOW_TEXT
 from app.bot.menus import CONSENT_ACCEPT_CALLBACK
 from app.runtime import (
     RuntimeComponents,
@@ -267,6 +268,19 @@ def test_dispatcher_routes_menu_command_to_participant_flow(tmp_path: Path) -> N
             NOW.isoformat(),
         )
     ]
+
+
+def test_dispatcher_replies_to_text_without_active_flow(tmp_path: Path) -> None:
+    dispatcher, services, _error_bot = _dispatcher(tmp_path)
+
+    response = dispatcher.dispatch_update(_message_update(text="Просто сообщение", message_id=605))
+
+    main_bot = dispatcher.notification_router.main_bot
+    assert response == FlowResponse(chat_id="chat-1001", text=MESSAGE_WITHOUT_FLOW_TEXT)
+    assert main_bot.sent_messages[-1].text == MESSAGE_WITHOUT_FLOW_TEXT
+    assert services.participant.starts == []
+    assert services.weekly.text_messages == []
+    assert services.insights.text_messages == []
 
 
 def test_dispatcher_routes_weekly_text_to_active_report(tmp_path: Path) -> None:
