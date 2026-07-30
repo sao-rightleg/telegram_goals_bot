@@ -126,7 +126,7 @@ Trigger:
 Bot shows:
 - progress percent
 - all planned steps with visual status
-- current weekly focus marker after the focused step title
+- current weekly focus marker after the focused step number and before the title
 - current progress percent
 
 No participant-created steps in MVP.
@@ -136,14 +136,15 @@ Example:
 ```text
 Прогресс: 33%
 
-🟩 Шаг 1: Найти клиента
-⬜ Шаг 4: Провести встречу 🎯
-⬜ Шаг 5: Подписать договор
+🟩 Шаг 1. Найти клиента
+⬜ Шаг 4. 🎯 Провести встречу
+⬜ Шаг 5. Подписать договор
 ```
 
+Step description is shown under the title as a Telegram expandable quote with a 15-character visible preview.
+
 Buttons:
-- `Отчитаться: {step}` for open steps
-- `Редактировать отчёт: {step}` for closed steps
+- `Шаг {number}. {step_title}` for each step; open steps start a report, closed steps edit the existing report
 
 ## Weekly Focus Flow
 
@@ -187,7 +188,7 @@ Bot shows:
 ### Start
 
 Flow can start from:
-- `Отчитаться: {step}` button on an open planned step
+- `Шаг {number}. {step_title}` button on an open planned step
 - Sunday 18:00 check-in
 - reminder button if implemented
 
@@ -219,7 +220,7 @@ Confirmation:
 ### Edit Step Report
 
 Trigger:
-- `Редактировать отчёт: {step}` button on a closed step
+- `Шаг {number}. {step_title}` button on a closed step
 
 Bot asks:
 

@@ -19,6 +19,7 @@ from app.bot.messages import (
     format_captain_team_member_line,
     format_goal_view,
     format_missing_data_message,
+    format_planned_steps_view,
     format_progress_view,
 )
 from app.services.participant_models import Goal, PlannedStep, WeeklyStatus
@@ -109,6 +110,26 @@ def test_progress_formatter_uses_six_cells_and_percent() -> None:
     assert text.count("■") == 3
     assert text.count("□") == 3
     assert "🟩" in text
+
+
+def test_steps_formatter_renders_focus_and_expandable_description() -> None:
+    steps = [
+        PlannedStep(
+            step_id="S001",
+            participant_id="P001",
+            goal_id="G001",
+            step_number=2,
+            step_title="Созвон с клиентом",
+            step_description="Подробно описать следующий шаг и критерий готовности",
+            step_status="open",
+        )
+    ]
+
+    text = format_planned_steps_view(steps, focus_step_id="S001")
+
+    assert "⬜ Шаг 2. 🎯 Созвон с клиентом" in text
+    assert "<blockquote expandable>" in text
+    assert "Подробно\nПодробно описать следующий шаг и критерий готовности" in text
 
 
 def test_missing_data_message_hides_internal_fields() -> None:

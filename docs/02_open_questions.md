@@ -73,7 +73,7 @@ Codex must treat these decisions as current source of truth. If older documents 
 - Weekly focus cannot be changed inside the same week.
 - If the focused step is closed before week end, bot does not require selecting a new focus.
 - Weekly focus does not prevent reporting another step in the same week.
-- Weekly focus is shown in `Мои шаги` with `🎯` after the focused step title.
+- Weekly focus is shown in `Мои шаги` with `🎯` after the focused step number and before the title.
 - Weekly focus is shown to captains and trackers in reports.
 
 ## 6. Captain Manual Report

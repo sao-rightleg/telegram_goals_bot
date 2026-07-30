@@ -16,8 +16,7 @@ from app.bot.menus import (
 from app.bot.messages import (
     CONSENT_ACCEPT_BUTTON,
     CONSENT_TEXT,
-    WEEKLY_REPORT_EDIT_STEP_BUTTON,
-    WEEKLY_REPORT_START_STEP_BUTTON,
+    TELEGRAM_HTML_PARSE_MODE,
     build_insight_menu_buttons,
     MISSING_DATA_TEXT,
     NOT_AVAILABLE_TEXT,
@@ -264,6 +263,7 @@ class ParticipantFlowService:
                 step="render",
                 occurred_at=occurred_at,
                 buttons=_step_action_buttons(steps),
+                parse_mode=TELEGRAM_HTML_PARSE_MODE,
             )
 
         if normalized_action is MenuAction.VIEW_PROGRESS:
@@ -325,8 +325,9 @@ class ParticipantFlowService:
         step: str,
         occurred_at: str,
         buttons: tuple[object, ...] = (),
+        parse_mode: str | None = None,
     ) -> FlowResponse:
-        response = FlowResponse(chat_id=user.chat_id, text=text, buttons=buttons)
+        response = FlowResponse(chat_id=user.chat_id, text=text, buttons=buttons, parse_mode=parse_mode)
         self.dialog_states.upsert(
             _dialog_state_for(
                 user=user,
@@ -336,7 +337,7 @@ class ParticipantFlowService:
                 occurred_at=occurred_at,
             )
         )
-        self.main_bot.send_message(chat_id=user.chat_id, text=text, buttons=buttons)
+        self.main_bot.send_message(chat_id=user.chat_id, text=text, buttons=buttons, parse_mode=parse_mode)
         return response
 
     def _handle_missing_data(
@@ -565,7 +566,7 @@ def _weekly_status_from_row(row: SheetRow) -> WeeklyStatus:
 def _step_action_buttons(steps: list[PlannedStep]) -> tuple[TelegramInlineButton, ...]:
     return tuple(
         TelegramInlineButton(
-            text=f"{_step_action_label(step)}: {_short_step_title(step.step_title)}",
+            text=_step_button_text(step),
             callback_data=f"{_step_action_callback_prefix(step)}{step.step_id}",
         )
         for step in sorted(steps, key=lambda item: item.step_number)
@@ -575,17 +576,15 @@ def _step_action_buttons(steps: list[PlannedStep]) -> tuple[TelegramInlineButton
 def _weekly_focus_buttons(steps: list[PlannedStep]) -> tuple[TelegramInlineButton, ...]:
     return tuple(
         TelegramInlineButton(
-            text=f"⬜ Шаг {step.step_number}: {_short_step_title(step.step_title)}",
+            text=_step_button_text(step),
             callback_data=f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}{step.step_id}",
         )
         for step in sorted(steps, key=lambda item: item.step_number)
     )
 
 
-def _step_action_label(step: PlannedStep) -> str:
-    if step.step_status == "closed":
-        return WEEKLY_REPORT_EDIT_STEP_BUTTON
-    return WEEKLY_REPORT_START_STEP_BUTTON
+def _step_button_text(step: PlannedStep) -> str:
+    return f"Шаг {step.step_number}. {_short_step_title(step.step_title)}"
 
 
 def _step_action_callback_prefix(step: PlannedStep) -> str:

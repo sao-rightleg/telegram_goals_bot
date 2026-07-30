@@ -2,7 +2,7 @@ from pathlib import Path
 
 from app.bot.clients import BotPurpose, FakeBotClient
 from app.bot.menus import MenuAction, WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX, WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX
-from app.bot.messages import CONSENT_TEXT, MISSING_DATA_TEXT, NOT_AVAILABLE_TEXT
+from app.bot.messages import CONSENT_TEXT, MISSING_DATA_TEXT, NOT_AVAILABLE_TEXT, TELEGRAM_HTML_PARSE_MODE
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.services.participant_flows import ParticipantFlowService
 from app.services.participant_models import TelegramUserContext
@@ -42,7 +42,15 @@ def test_steps_view_shows_current_participant_steps_only(tmp_path: Path) -> None
         participants=[_participant("P001", 1001), _participant("P002", 1002)],
         goals=[_goal("G001", "P001", "Моя цель"), _goal("G002", "P002", "Чужая цель")],
         planned_steps=[
-            _step("S001", "P001", "G001", 1, "Мой открытый шаг", "open"),
+            _step(
+                "S001",
+                "P001",
+                "G001",
+                1,
+                "Мой открытый шаг",
+                "open",
+                description="Подробное описание открытого шага",
+            ),
             _step("S002", "P001", "G001", 2, "Мой закрытый шаг", "closed"),
             _step("S003", "P002", "G002", 1, "Чужой шаг", "closed"),
         ],
@@ -58,17 +66,21 @@ def test_steps_view_shows_current_participant_steps_only(tmp_path: Path) -> None
     assert "Мой открытый шаг" in response.text
     assert "Мой закрытый шаг" in response.text
     assert "Чужой шаг" not in response.text
-    assert "⬜ Шаг 1: Мой открытый шаг" in response.text
-    assert "🟩 Шаг 2: Мой закрытый шаг" in response.text
+    assert "⬜ Шаг 1. Мой открытый шаг" in response.text
+    assert "🟩 Шаг 2. Мой закрытый шаг" in response.text
+    assert "<blockquote expandable>" in response.text
+    assert "Подробное\nПодробное описание открытого шага" in response.text
+    assert response.parse_mode == TELEGRAM_HTML_PARSE_MODE
     assert [button.text for button in response.buttons] == [
-        "Отчитаться: Мой открытый шаг",
-        "Редактировать отчёт: Мой закрытый шаг",
+        "Шаг 1. Мой открытый шаг",
+        "Шаг 2. Мой закрытый шаг",
     ]
     assert [button.callback_data for button in response.buttons] == [
         f"{WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX}S001",
         "weekly:edit_step:S002",
     ]
     assert main_bot.sent_messages[-1].buttons == response.buttons
+    assert main_bot.sent_messages[-1].parse_mode == TELEGRAM_HTML_PARSE_MODE
     assert gateway.list_planned_steps("P001", "G001") == before
 
 
@@ -128,7 +140,7 @@ def test_select_weekly_focus_saves_business_fact_and_locks_week(tmp_path: Path) 
     }
 
 
-def test_steps_view_marks_current_week_focus_after_step_title(tmp_path: Path) -> None:
+def test_steps_view_marks_current_week_focus_after_step_number(tmp_path: Path) -> None:
     service, _gateway, _main_bot, _error_bot, _notification_bot = _build_service(
         tmp_path,
         participants=[_participant("P001", 1001)],
@@ -155,8 +167,9 @@ def test_steps_view_marks_current_week_focus_after_step_title(tmp_path: Path) ->
         occurred_at=NOW,
     )
 
-    assert "⬜ Шаг 4: Шаг 4 🎯" in response.text
+    assert "⬜ Шаг 4. 🎯 Шаг 4" in response.text
     assert "⬜ 🎯 Шаг 4" not in response.text
+    assert "Шаг 4: Шаг 4 🎯" not in response.text
 
 
 def test_steps_view_keeps_open_step_report_buttons_after_current_week_report(tmp_path: Path) -> None:
@@ -189,8 +202,8 @@ def test_steps_view_keeps_open_step_report_buttons_after_current_week_report(tmp
     assert "Шаг 5" in response.text
     assert "Отчёт за эту неделю уже принят." not in response.text
     assert [button.text for button in response.buttons] == [
-        "Отчитаться: Шаг 4",
-        "Отчитаться: Шаг 5",
+        "Шаг 4. Шаг 4",
+        "Шаг 5. Шаг 5",
     ]
     assert main_bot.sent_messages[-1].buttons == response.buttons
 
@@ -380,6 +393,8 @@ def _step(
     number: int,
     title: str,
     status: str,
+    *,
+    description: str = "",
 ) -> dict[str, object]:
     return {
         "step_id": step_id,
@@ -387,6 +402,6 @@ def _step(
         "goal_id": goal_id,
         "step_number": number,
         "step_title": title,
-        "step_description": "",
+        "step_description": description,
         "step_status": status,
     }

@@ -315,5 +315,17 @@ def _format_step_lines(steps: Sequence[PlannedStep], *, focus_step_id: str | Non
     for step in steps:
         symbol = "🟩" if step.step_status == "closed" else "⬜"
         focus_marker = " 🎯" if step.step_id == focus_step_id else ""
-        lines.append(f"{symbol} Шаг {step.step_number}: {step.step_title}{focus_marker}")
+        title = escape(step.step_title)
+        lines.append(f"{symbol} Шаг {step.step_number}.{focus_marker} {title}")
+        description = step.step_description.strip()
+        if description:
+            lines.append(_format_step_description(description))
     return lines
+
+
+def _format_step_description(text: str) -> str:
+    preview = _truncate_insight_preview(text, limit=15)
+    normalized = " ".join(text.split())
+    if preview == normalized:
+        return _format_expandable_blockquote(text)
+    return _format_expandable_blockquote(f"{preview}\n{text}")
