@@ -55,6 +55,12 @@ class TelegramInlineButton:
 
 
 @dataclass(frozen=True)
+class BotCommand:
+    command: str
+    description: str
+
+
+@dataclass(frozen=True)
 class OutgoingDocument:
     chat_id: str
     file_path: Path
@@ -82,6 +88,9 @@ class BotClient(Protocol):
         caption: str | None = None,
     ) -> OutgoingDocument:
         """Send a document through a concrete bot client."""
+
+    def set_commands(self, commands: tuple[BotCommand, ...]) -> None:
+        """Register Telegram bot commands shown in the client command menu."""
 
 
 @dataclass(frozen=True)
@@ -174,6 +183,21 @@ class LiveTelegramBotClient:
             raise TelegramApiError("Telegram getUpdates failed: malformed result")
         return [item for item in result if isinstance(item, dict)]
 
+    def set_commands(self, commands: tuple[BotCommand, ...]) -> None:
+        self._post_api(
+            "setMyCommands",
+            data={
+                "commands": json.dumps(
+                    [
+                        {"command": command.command, "description": command.description}
+                        for command in commands
+                    ],
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+            },
+        )
+
     def _post_api(
         self,
         method: str,
@@ -244,6 +268,7 @@ class FakeBotClient:
     purpose: BotPurpose
     sent_messages: list[OutgoingMessage] = field(default_factory=list)
     sent_documents: list[OutgoingDocument] = field(default_factory=list)
+    commands: tuple[BotCommand, ...] = ()
 
     def send_message(
         self,
@@ -272,6 +297,9 @@ class FakeBotClient:
         document = OutgoingDocument(chat_id=chat_id, file_path=file_path, caption=caption)
         self.sent_documents.append(document)
         return document
+
+    def set_commands(self, commands: tuple[BotCommand, ...]) -> None:
+        self.commands = commands
 
 
 @dataclass

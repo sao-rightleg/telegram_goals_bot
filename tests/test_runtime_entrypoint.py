@@ -95,6 +95,24 @@ def test_run_bot_starts_controlled_fake_runtime(tmp_path: Path) -> None:
     assert isinstance(runner.components.dispatcher, TelegramUpdateDispatcher)
 
 
+def test_run_bot_registers_main_bot_commands_before_polling(tmp_path: Path) -> None:
+    settings = load_settings(environ=runtime_env(tmp_path))
+    runner = RecordingPollingRunner()
+
+    run_bot(
+        settings,
+        components_factory=lambda _settings: _runtime_components(tmp_path),
+        polling_runner=runner,
+    )
+
+    assert runner.components is not None
+    assert [command.command for command in runner.components.main_bot.commands] == ["start", "menu"]
+    assert [command.description for command in runner.components.main_bot.commands] == [
+        "Главное меню",
+        "Показать меню",
+    ]
+
+
 def test_run_bot_no_longer_raises_not_implemented_with_fake_runtime(tmp_path: Path) -> None:
     settings = load_settings(environ=runtime_env(tmp_path))
     runner = RecordingPollingRunner()
@@ -228,6 +246,20 @@ def test_dispatcher_routes_start_to_participant_flow(tmp_path: Path) -> None:
     dispatcher, services, _error_bot = _dispatcher(tmp_path)
 
     dispatcher.dispatch_update(_message_update(text="/start"))
+
+    assert services.participant.starts == [
+        (
+            TelegramUserContext(telegram_id=1001, chat_id="chat-1001", username="p001"),
+            NOW.isoformat(),
+        )
+    ]
+
+
+def test_dispatcher_routes_menu_command_to_participant_flow(tmp_path: Path) -> None:
+    dispatcher, services, _error_bot = _dispatcher(tmp_path)
+    _state(dispatcher.dialog_states, flow="insight", step="awaiting_text")
+
+    dispatcher.dispatch_update(_message_update(text="/menu"))
 
     assert services.participant.starts == [
         (
@@ -590,7 +622,16 @@ class RecordingPollingRunner:
 
 def _runtime_components(tmp_path: Path) -> RuntimeComponents:
     settings = load_settings(environ=runtime_env(tmp_path))
-    return compose_runtime(settings, google_service_factory=lambda _settings: _fake_google_service())
+    components = compose_runtime(settings, google_service_factory=lambda _settings: _fake_google_service())
+    main_bot = FakeBotClient(BotPurpose.MAIN)
+    error_bot = FakeBotClient(BotPurpose.ERROR)
+    notification_bot = FakeBotClient(BotPurpose.NOTIFICATION)
+    return components.with_replacements(
+        main_bot=main_bot,
+        error_bot=error_bot,
+        notification_bot=notification_bot,
+        notification_router=_router(error_bot=error_bot),
+    )
 
 
 def _fake_google_service() -> object:

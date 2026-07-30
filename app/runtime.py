@@ -12,7 +12,7 @@ from typing import Callable, Protocol, Sequence
 
 import httpx
 
-from app.bot.clients import BotPurpose, LiveTelegramBotClient, LiveTelegramFileDownloader
+from app.bot.clients import BotCommand, BotPurpose, LiveTelegramBotClient, LiveTelegramFileDownloader
 from app.logging import setup_logging
 from app.bot.dispatch import TelegramUpdate, TelegramUpdateDispatcher, parse_telegram_update
 from app.config import ConfigurationError, Settings, load_settings
@@ -304,6 +304,7 @@ def run_bot(
         )
 
     components = components_factory(settings)
+    register_main_bot_commands(components)
     if polling_runner is None:
         stop_event = Event()
         _install_shutdown_handlers(stop_event)
@@ -313,6 +314,15 @@ def run_bot(
             stop_event=stop_event,
         )
     polling_runner.run(components)
+
+
+def register_main_bot_commands(components: RuntimeComponents) -> None:
+    components.main_bot.set_commands(
+        (
+            BotCommand("start", "Главное меню"),
+            BotCommand("menu", "Показать меню"),
+        )
+    )
 
 
 def main(

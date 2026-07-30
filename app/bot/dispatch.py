@@ -103,7 +103,7 @@ class TelegramUpdateDispatcher:
 
     def _dispatch_message(self, message: TelegramMessage, *, now: datetime) -> FlowResponse | None:
         user = _user_from_message(message)
-        if message.command == "/start":
+        if message.command in {"/start", "/menu"}:
             return self.participant_service.handle_start(user, occurred_at=now.isoformat())
 
         if message.voice_file_id is not None and message.voice_duration_seconds is not None:
