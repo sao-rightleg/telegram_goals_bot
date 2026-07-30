@@ -10,7 +10,7 @@ import app.runtime as runtime_module
 from app.config import ConfigurationError, load_settings
 from app.bot.clients import BotPurpose, FakeBotClient, TelegramApiError
 from app.bot.messages import MESSAGE_WITHOUT_FLOW_TEXT
-from app.bot.menus import CONSENT_ACCEPT_CALLBACK
+from app.bot.menus import CONSENT_ACCEPT_CALLBACK, MENU_CALLBACK_PREFIX, MenuAction
 from app.runtime import (
     RuntimeComponents,
     TelegramUpdateDispatcher,
@@ -283,6 +283,19 @@ def test_dispatcher_replies_to_text_without_active_flow(tmp_path: Path) -> None:
     assert services.insights.text_messages == []
 
 
+def test_dispatcher_routes_weekly_report_menu_action_to_weekly_flow(tmp_path: Path) -> None:
+    dispatcher, services, _error_bot = _dispatcher(tmp_path)
+
+    response = dispatcher.dispatch_update(
+        _callback_update(data=f"{MENU_CALLBACK_PREFIX}{MenuAction.START_WEEKLY_REPORT.value}")
+    )
+
+    assert response == FlowResponse(chat_id="chat-1001", text="weekly start")
+    assert services.weekly.starts == [
+        TelegramUserContext(telegram_id=1001, chat_id="chat-1001", username="p001")
+    ]
+
+
 def test_dispatcher_routes_weekly_text_to_active_report(tmp_path: Path) -> None:
     dispatcher, services, _error_bot = _dispatcher(tmp_path)
     _state(dispatcher.dialog_states, flow="weekly_report", step="text")
@@ -518,8 +531,13 @@ class RecordingParticipantService:
 
 class RecordingWeeklyReportService:
     def __init__(self) -> None:
+        self.starts: list[TelegramUserContext] = []
         self.text_messages: list[tuple[TelegramUserContext, str, int | None]] = []
         self.voices: list[tuple[TelegramUserContext, str, int, int | None]] = []
+
+    def start_report(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
+        self.starts.append(user)
+        return FlowResponse(chat_id=user.chat_id, text="weekly start")
 
     def add_text_message(
         self,

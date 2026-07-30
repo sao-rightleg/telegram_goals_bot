@@ -44,6 +44,7 @@ def test_participant_menu_contains_approved_buttons_only() -> None:
         MenuAction.VIEW_GOAL,
         MenuAction.VIEW_STEPS,
         MenuAction.VIEW_PROGRESS,
+        MenuAction.START_WEEKLY_REPORT,
         MenuAction.VIEW_INSIGHTS,
     ]
 

@@ -11,6 +11,7 @@ class MenuAction(str, Enum):
     VIEW_GOAL = "view_goal"
     VIEW_STEPS = "view_steps"
     VIEW_PROGRESS = "view_progress"
+    START_WEEKLY_REPORT = "start_weekly_report"
     VIEW_INSIGHTS = "view_insights"
     VIEW_TEAM = "view_team"
     CAPTAIN_MANUAL_REPORT = "captain_manual_report"
@@ -45,6 +46,7 @@ PARTICIPANT_MENU_ITEMS = (
     MenuItem(MenuAction.VIEW_GOAL, "🎯 Моя цель"),
     MenuItem(MenuAction.VIEW_STEPS, "📍 Мои шаги"),
     MenuItem(MenuAction.VIEW_PROGRESS, "📊 Мой прогресс"),
+    MenuItem(MenuAction.START_WEEKLY_REPORT, "📝 Отчёт за неделю"),
     MenuItem(MenuAction.VIEW_INSIGHTS, "💡 Мои инсайты"),
 )
 

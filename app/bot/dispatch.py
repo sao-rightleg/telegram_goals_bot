@@ -265,6 +265,8 @@ class TelegramUpdateDispatcher:
         except ValueError as exc:
             raise TelegramCallbackError("unknown menu action") from exc
 
+        if action is MenuAction.START_WEEKLY_REPORT:
+            return self.weekly_report_service.start_report(user, now=now)
         if action is MenuAction.VIEW_TEAM:
             return self.captain_service.show_team(user, occurred_at=now.isoformat())
         if action is MenuAction.CAPTAIN_MANUAL_REPORT:
