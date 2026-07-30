@@ -68,7 +68,7 @@ class InsightService:
         )
         return self._send(
             user,
-            text="Отправь инсайт текстом. Когда закончишь — нажми ✅ Готово.",
+            text="Отправь инсайт текстом. Когда закончишь — нажми ✅ Инсайт готов.",
             buttons=build_insight_text_buttons(),
         )
 
@@ -92,7 +92,7 @@ class InsightService:
             occurred_at=_occurred_at(now),
             telegram_message_id=telegram_message_id,
         )
-        return self._send(user, text="Текст добавлен. Можно отправить ещё или нажать ✅ Готово.")
+        return self._send(user, text="Текст добавлен. Можно отправить ещё или нажать ✅ Инсайт готов.")
 
     def add_voice_message(
         self,

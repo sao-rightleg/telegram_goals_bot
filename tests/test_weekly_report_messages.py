@@ -62,7 +62,7 @@ def test_weekly_report_validation_messages_are_short_and_safe() -> None:
         assert "draft_" not in text
 
     assert WEEKLY_REPORT_LATE_TEXT == "Дедлайн недели уже прошёл. Отчёт не может изменить статус."
-    assert WEEKLY_REPORT_EMPTY_TEXT == "Отправь текст отчёта, потом нажми «✅ Готово»."
+    assert WEEKLY_REPORT_EMPTY_TEXT == "Отправь текст отчёта, потом нажми «✅ Отчёт готов»."
 
 
 def test_voice_not_available_message_does_not_create_voice_state_contract() -> None:

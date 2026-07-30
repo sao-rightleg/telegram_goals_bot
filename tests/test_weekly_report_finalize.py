@@ -108,9 +108,9 @@ def test_add_text_message_returns_done_button(tmp_path: Path) -> None:
 
     response = service.add_text_message(user, "Не успел", now=NOW)
 
-    assert response.text == "Текст добавлен. Можно отправить ещё или нажать «✅ Готово»."
+    assert response.text == "Текст добавлен. Можно отправить ещё или нажать «✅ Отчёт готов»."
     assert response.buttons == (
-        TelegramInlineButton(text="✅ Готово", callback_data=WEEKLY_REPORT_DONE_CALLBACK),
+        TelegramInlineButton(text="✅ Отчёт готов", callback_data=WEEKLY_REPORT_DONE_CALLBACK),
     )
     assert main_bot.sent_messages[-1].buttons == response.buttons
 

@@ -26,7 +26,7 @@ def test_insight_menu_copy_matches_user_spec() -> None:
     assert INSIGHT_ADD_BUTTON == "➕ Добавить инсайт"
     assert INSIGHT_LIST_BUTTON == "📜 Посмотреть инсайты"
     assert INSIGHT_CANCEL_BUTTON == "Отмена"
-    assert INSIGHT_DONE_BUTTON == "✅ Готово"
+    assert INSIGHT_DONE_BUTTON == "✅ Инсайт готов"
 
     assert build_insight_menu_buttons() == (INSIGHT_ADD_BUTTON, INSIGHT_LIST_BUTTON)
     assert build_insight_text_buttons() == (INSIGHT_DONE_BUTTON, INSIGHT_CANCEL_BUTTON)
@@ -43,7 +43,7 @@ def test_insight_status_and_validation_copy_matches_user_spec() -> None:
     )
     assert (
         INSIGHT_EMPTY_TEXT
-        == "Я не получил текст инсайта. Отправь инсайт текстом и нажми ✅ Готово."
+        == "Я не получил текст инсайта. Отправь инсайт текстом и нажми ✅ Инсайт готов."
     )
     assert INSIGHT_TITLE_PROMPT_TEXT == "Как кратко озаглавить твой инсайт?"
     assert "120" in INSIGHT_TITLE_TOO_LONG_TEXT

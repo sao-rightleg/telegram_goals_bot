@@ -200,7 +200,7 @@ class WeeklyReportService:
         )
         return self._send(
             user,
-            text="Текст добавлен. Можно отправить ещё или нажать «✅ Готово».",
+            text="Текст добавлен. Можно отправить ещё или нажать «✅ Отчёт готов».",
             buttons=_weekly_report_text_buttons(),
         )
 
@@ -417,7 +417,7 @@ def _format_start_text(open_steps: list[SheetRow]) -> str:
 def _weekly_report_text_buttons() -> tuple[TelegramInlineButton, ...]:
     return (
         TelegramInlineButton(
-            text="✅ Готово",
+            text="✅ Отчёт готов",
             callback_data=WEEKLY_REPORT_DONE_CALLBACK,
         ),
     )
