@@ -74,5 +74,5 @@ class FlowResponse:
     chat_id: str
     text: str
     menu_items: tuple[MenuItem, ...] = field(default_factory=tuple)
-    buttons: tuple[str, ...] = field(default_factory=tuple)
+    buttons: tuple[object, ...] = field(default_factory=tuple)
     parse_mode: str | None = None

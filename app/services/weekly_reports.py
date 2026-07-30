@@ -69,6 +69,41 @@ class WeeklyReportService:
             buttons=build_weekly_report_status_buttons(),
         )
 
+    def start_report_for_step(
+        self,
+        user: TelegramUserContext,
+        *,
+        step_id: str,
+        now: datetime,
+    ) -> FlowResponse:
+        context = self._resolve_context(user, now=now)
+        if isinstance(context, FlowResponse):
+            return context
+
+        participant, participant_id, team_id, goal, week_number = context
+        goal_id = _string_value(goal.get("goal_id"))
+        steps = self.sheets.list_planned_steps(participant_id, goal_id)
+        open_steps = [row for row in steps if row.get("step_status") != "closed"]
+        valid_open_step_ids = {_string_value(row.get("step_id")) for row in open_steps}
+        if step_id not in valid_open_step_ids:
+            return self._send(user, text=WEEKLY_REPORT_GREEN_STEP_REQUIRED_TEXT)
+
+        self.drafts.create_draft(
+            draft_id=_draft_id(participant_id, week_number),
+            telegram_id=user.telegram_id,
+            participant_id=participant_id,
+            team_id=team_id,
+            goal_id=goal_id,
+            week_number=week_number,
+            occurred_at=_occurred_at(now),
+        )
+        self.drafts.preselect_steps(user.telegram_id, [step_id], occurred_at=_occurred_at(now))
+        return self._send(
+            user,
+            text=_format_start_text(open_steps),
+            buttons=build_weekly_report_status_buttons(),
+        )
+
     def select_status(
         self,
         user: TelegramUserContext,
@@ -80,6 +115,7 @@ class WeeklyReportService:
         if isinstance(context, FlowResponse):
             return context
 
+        _participant, participant_id, _team_id, goal, _week_number = context
         draft = self.drafts.get_active_draft(user.telegram_id)
         if draft is None:
             raise KeyError(f"Active weekly report draft not found for telegram_id={user.telegram_id}")
@@ -88,7 +124,19 @@ class WeeklyReportService:
             self.drafts.update_status_and_steps(user.telegram_id, status, [], occurred_at=_occurred_at(now))
             return self._send(user, text="Что помешало сделать победу недели?")
 
-        self.drafts.update_status_and_steps(user.telegram_id, status, [], occurred_at=_occurred_at(now))
+        selected_step_ids = _valid_selected_step_ids(
+            self.sheets.list_planned_steps(participant_id, _string_value(goal.get("goal_id"))),
+            draft.selected_step_ids,
+            require_open=status is WeeklyReportStatus.GREEN,
+        )
+        self.drafts.update_status_and_steps(
+            user.telegram_id,
+            status,
+            selected_step_ids,
+            occurred_at=_occurred_at(now),
+        )
+        if selected_step_ids:
+            return self._send(user, text=_text_prompt(status))
         return self._send(user, text=_step_required_text(status))
 
     def select_steps(
@@ -367,6 +415,16 @@ def _valid_step_ids(rows: list[SheetRow], *, require_open: bool) -> set[str]:
         for row in rows
         if not require_open or row.get("step_status") != "closed"
     }
+
+
+def _valid_selected_step_ids(
+    rows: list[SheetRow],
+    selected_step_ids: tuple[str, ...],
+    *,
+    require_open: bool,
+) -> list[str]:
+    valid_step_ids = _valid_step_ids(rows, require_open=require_open)
+    return [step_id for step_id in selected_step_ids if step_id in valid_step_ids]
 
 
 def _status_from_code(value: str | None) -> WeeklyReportStatus | None:

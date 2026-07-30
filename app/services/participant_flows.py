@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.bot.clients import BotClient
-from app.bot.menus import MenuAction, build_role_menu
+from app.bot.clients import BotClient, TelegramInlineButton
+from app.bot.menus import MenuAction, WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX, build_role_menu
 from app.bot.messages import (
     CONSENT_ACCEPT_BUTTON,
     CONSENT_TEXT,
@@ -176,6 +176,7 @@ class ParticipantFlowService:
             )
 
         if normalized_action is MenuAction.VIEW_STEPS:
+            buttons = _weekly_report_buttons_for_open_steps(steps)
             return self._send_simple_response(
                 user,
                 participant=participant,
@@ -183,6 +184,7 @@ class ParticipantFlowService:
                 flow="view_steps",
                 step="render",
                 occurred_at=occurred_at,
+                buttons=buttons,
             )
 
         if normalized_action is MenuAction.VIEW_PROGRESS:
@@ -239,7 +241,7 @@ class ParticipantFlowService:
         flow: str,
         step: str,
         occurred_at: str,
-        buttons: tuple[str, ...] = (),
+        buttons: tuple[object, ...] = (),
     ) -> FlowResponse:
         response = FlowResponse(chat_id=user.chat_id, text=text, buttons=buttons)
         self.dialog_states.upsert(
@@ -406,6 +408,24 @@ def _weekly_status_from_row(row: SheetRow) -> WeeklyStatus:
         status_code=str(row.get("status_code") or ""),
         submitted_at=_optional_string_value(row.get("submitted_at")),
     )
+
+
+def _weekly_report_buttons_for_open_steps(steps: list[PlannedStep]) -> tuple[TelegramInlineButton, ...]:
+    return tuple(
+        TelegramInlineButton(
+            text=f"📝 Отчитаться: {_short_step_title(step.step_title)}",
+            callback_data=f"{WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX}{step.step_id}",
+        )
+        for step in sorted(steps, key=lambda item: item.step_number)
+        if step.step_status != "closed"
+    )
+
+
+def _short_step_title(title: str, *, limit: int = 42) -> str:
+    normalized = " ".join(title.split())
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[: limit - 3].rstrip()}..."
 
 
 def _string_value(value: object) -> str:

@@ -10,7 +10,12 @@ import app.runtime as runtime_module
 from app.config import ConfigurationError, load_settings
 from app.bot.clients import BotPurpose, FakeBotClient, TelegramApiError
 from app.bot.messages import MESSAGE_WITHOUT_FLOW_TEXT
-from app.bot.menus import CONSENT_ACCEPT_CALLBACK, MENU_CALLBACK_PREFIX, MenuAction
+from app.bot.menus import (
+    CONSENT_ACCEPT_CALLBACK,
+    MENU_CALLBACK_PREFIX,
+    WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX,
+    MenuAction,
+)
 from app.runtime import (
     RuntimeComponents,
     TelegramUpdateDispatcher,
@@ -296,6 +301,17 @@ def test_dispatcher_routes_weekly_report_menu_action_to_weekly_flow(tmp_path: Pa
     ]
 
 
+def test_dispatcher_routes_step_report_callback_to_weekly_flow(tmp_path: Path) -> None:
+    dispatcher, services, _error_bot = _dispatcher(tmp_path)
+
+    response = dispatcher.dispatch_update(_callback_update(data=f"{WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX}S001"))
+
+    assert response == FlowResponse(chat_id="chat-1001", text="weekly start for step")
+    assert services.weekly.step_starts == [
+        (TelegramUserContext(telegram_id=1001, chat_id="chat-1001", username="p001"), "S001")
+    ]
+
+
 def test_dispatcher_routes_weekly_text_to_active_report(tmp_path: Path) -> None:
     dispatcher, services, _error_bot = _dispatcher(tmp_path)
     _state(dispatcher.dialog_states, flow="weekly_report", step="text")
@@ -532,12 +548,17 @@ class RecordingParticipantService:
 class RecordingWeeklyReportService:
     def __init__(self) -> None:
         self.starts: list[TelegramUserContext] = []
+        self.step_starts: list[tuple[TelegramUserContext, str]] = []
         self.text_messages: list[tuple[TelegramUserContext, str, int | None]] = []
         self.voices: list[tuple[TelegramUserContext, str, int, int | None]] = []
 
     def start_report(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
         self.starts.append(user)
         return FlowResponse(chat_id=user.chat_id, text="weekly start")
+
+    def start_report_for_step(self, user: TelegramUserContext, *, step_id: str, now: datetime) -> FlowResponse:
+        self.step_starts.append((user, step_id))
+        return FlowResponse(chat_id=user.chat_id, text="weekly start for step")
 
     def add_text_message(
         self,

@@ -7,6 +7,7 @@ from app.bot.messages import CONSENT_TEXT, MISSING_DATA_TEXT, UNKNOWN_USER_TEXT,
 from app.scheduler.calendar import TIMEZONE_NAME
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.services.participant_models import TelegramUserContext
+from app.services.weekly_report_models import WeeklyReportStatus
 from app.services.weekly_reports import WeeklyReportService
 from app.sheets.gateway import FakeSheetsGateway
 from app.storage.sqlite import initialize_schema
@@ -36,6 +37,32 @@ def test_start_report_identifies_participant_by_telegram_id(tmp_path: Path) -> N
     assert draft.participant_id == "P001"
     assert draft.week_number == 4
     assert gateway.list_weekly_reports() == []
+
+
+def test_start_report_for_step_preselects_open_step(tmp_path: Path) -> None:
+    service, _gateway, drafts, _main_bot, _error_bot = _service(tmp_path)
+    user = _user()
+
+    response = service.start_report_for_step(user, step_id="S001", now=NOW)
+
+    draft = drafts.get_active_draft(1001)
+    assert "Выбери статус недели." in response.text
+    assert draft is not None
+    assert draft.selected_step_ids == ("S001",)
+
+    status_response = service.select_status(user, WeeklyReportStatus.GREEN, now=NOW)
+
+    assert status_response.text == "Что именно ты сделал?"
+    assert drafts.get_active_draft(1001).selected_step_ids == ("S001",)
+
+
+def test_start_report_for_step_rejects_closed_step(tmp_path: Path) -> None:
+    service, _gateway, drafts, _main_bot, _error_bot = _service(tmp_path)
+
+    response = service.start_report_for_step(_user(), step_id="S003", now=NOW)
+
+    assert response.text == "Выбери один или несколько открытых шагов."
+    assert drafts.get_active_draft(1001) is None
 
 
 def test_unknown_user_cannot_start_weekly_report(tmp_path: Path) -> None:

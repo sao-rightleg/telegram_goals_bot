@@ -24,6 +24,7 @@ from app.bot.menus import (
     MENU_CALLBACK_PREFIX,
     WEEKLY_REPORT_DONE_CALLBACK,
     WEEKLY_REPORT_START_CALLBACK,
+    WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX,
     WEEKLY_REPORT_STATUS_CALLBACK_PREFIX,
     WEEKLY_REPORT_STEPS_CALLBACK_PREFIX,
     MenuAction,
@@ -201,6 +202,12 @@ class TelegramUpdateDispatcher:
 
         if data == WEEKLY_REPORT_START_CALLBACK:
             return self.weekly_report_service.start_report(user, now=now)
+        if data.startswith(WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX):
+            return self.weekly_report_service.start_report_for_step(
+                user,
+                step_id=_required_suffix(data, WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX),
+                now=now,
+            )
         if data.startswith(WEEKLY_REPORT_STATUS_CALLBACK_PREFIX):
             status = _status_from_callback(data, WEEKLY_REPORT_STATUS_CALLBACK_PREFIX)
             return self.weekly_report_service.select_status(user, status, now=now)

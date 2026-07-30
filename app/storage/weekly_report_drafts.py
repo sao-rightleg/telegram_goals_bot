@@ -298,6 +298,39 @@ class WeeklyReportDraftRepository:
                 (status.code, serialized_step_ids or None, occurred_at, telegram_id),
             )
 
+    def preselect_steps(
+        self,
+        telegram_id: int,
+        selected_step_ids: list[str] | tuple[str, ...],
+        *,
+        occurred_at: str,
+    ) -> None:
+        draft_id = self._get_dialog_draft_id(telegram_id)
+        if draft_id is None:
+            raise KeyError(f"Active weekly report draft not found for telegram_id={telegram_id}")
+
+        serialized_step_ids = _serialize_step_ids(selected_step_ids)
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE draft_reports
+                SET selected_step_ids = ?, updated_at = ?
+                WHERE draft_id = ?
+                """,
+                (serialized_step_ids or None, occurred_at, draft_id),
+            )
+            connection.execute(
+                """
+                UPDATE dialog_states
+                SET
+                    step = 'step_preselected',
+                    selected_step_ids = ?,
+                    updated_at = ?
+                WHERE telegram_id = ?
+                """,
+                (serialized_step_ids or None, occurred_at, telegram_id),
+            )
+
     def append_text_message(
         self,
         telegram_id: int,

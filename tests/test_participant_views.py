@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from app.bot.clients import BotPurpose, FakeBotClient
-from app.bot.menus import MenuAction
+from app.bot.menus import MenuAction, WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX
 from app.bot.messages import CONSENT_TEXT, MISSING_DATA_TEXT, NOT_AVAILABLE_TEXT
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.services.participant_flows import ParticipantFlowService
@@ -37,7 +37,7 @@ def test_goal_view_shows_current_participant_goal_only(tmp_path: Path) -> None:
 
 
 def test_steps_view_shows_current_participant_steps_only(tmp_path: Path) -> None:
-    service, gateway, _main_bot, _error_bot, _notification_bot = _build_service(
+    service, gateway, main_bot, _error_bot, _notification_bot = _build_service(
         tmp_path,
         participants=[_participant("P001", 1001), _participant("P002", 1002)],
         goals=[_goal("G001", "P001", "Моя цель"), _goal("G002", "P002", "Чужая цель")],
@@ -58,6 +58,11 @@ def test_steps_view_shows_current_participant_steps_only(tmp_path: Path) -> None
     assert "Мой открытый шаг" in response.text
     assert "Мой закрытый шаг" in response.text
     assert "Чужой шаг" not in response.text
+    assert [button.text for button in response.buttons] == ["📝 Отчитаться: Мой открытый шаг"]
+    assert [button.callback_data for button in response.buttons] == [
+        f"{WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX}S001"
+    ]
+    assert main_bot.sent_messages[-1].buttons == response.buttons
     assert gateway.list_planned_steps("P001", "G001") == before
 
 
