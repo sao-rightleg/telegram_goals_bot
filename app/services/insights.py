@@ -208,7 +208,6 @@ class InsightService:
         return self._send(
             user,
             text=format_insight_page(page),
-            buttons=_read_full_buttons(items),
             parse_mode=TELEGRAM_HTML_PARSE_MODE,
         )
 

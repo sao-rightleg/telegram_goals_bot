@@ -47,7 +47,7 @@ def test_list_shows_current_participant_latest_10_first(tmp_path: Path) -> None:
     assert "20.07.2026" not in response.text
 
 
-def test_list_sends_read_full_buttons_for_visible_insights(tmp_path: Path) -> None:
+def test_list_does_not_send_read_full_buttons_for_visible_insights(tmp_path: Path) -> None:
     service, _gateway, main_bot, _error_bot = _build_service(
         tmp_path,
         participants=[_participant("P001", 1001)],
@@ -60,14 +60,7 @@ def test_list_sends_read_full_buttons_for_visible_insights(tmp_path: Path) -> No
     response = service.list_insights(USER, page_index=0, now=NOW)
 
     assert response.buttons == main_bot.sent_messages[-1].buttons
-    assert [button.text for button in response.buttons] == [
-        "читать целиком: Инсайт I002",
-        "читать целиком: Инсайт I001",
-    ]
-    assert [button.callback_data for button in response.buttons] == [
-        f"{INSIGHT_FULL_TEXT_CALLBACK_PREFIX}I002",
-        f"{INSIGHT_FULL_TEXT_CALLBACK_PREFIX}I001",
-    ]
+    assert response.buttons == ()
 
 
 def test_list_uses_untitled_copy_when_insight_title_is_empty(tmp_path: Path) -> None:
@@ -92,7 +85,7 @@ def test_list_uses_untitled_copy_when_insight_title_is_empty(tmp_path: Path) -> 
     assert "Инсайт: Не хватает планирования" not in response.text
     assert response.text.count("Не хватает планирования") == 1
     assert "<blockquote expandable>" in response.text
-    assert main_bot.sent_messages[-1].buttons[0].text == "читать целиком: Инсайт без названия 01"
+    assert main_bot.sent_messages[-1].buttons == ()
     assert main_bot.sent_messages[-1].parse_mode == "HTML"
 
 
