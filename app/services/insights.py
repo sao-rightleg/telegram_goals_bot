@@ -132,6 +132,7 @@ class InsightService:
             raise KeyError(f"Active insight draft not found for telegram_id={user.telegram_id}")
         if not draft.insight_text.strip():
             return self._send(user, text=INSIGHT_EMPTY_TEXT)
+        self.drafts.request_title(user.telegram_id, occurred_at=_occurred_at(now))
         return self._send(user, text=INSIGHT_TITLE_PROMPT_TEXT)
 
     def set_title_and_save(

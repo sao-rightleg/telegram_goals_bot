@@ -1,6 +1,7 @@
 from datetime import datetime
 from dataclasses import replace
 from pathlib import Path
+import sqlite3
 from zoneinfo import ZoneInfo
 
 from app.bot.clients import BotPurpose, FakeBotClient
@@ -80,6 +81,21 @@ def test_current_week_text_insight_is_saved_to_sheets(tmp_path: Path) -> None:
     assert insights[0]["created_by_id"] == "P001"
     assert insights[0]["created_by_role"] == "participant"
     assert drafts.get_active_draft(1001) is None
+
+
+def test_request_title_marks_draft_as_awaiting_title(tmp_path: Path) -> None:
+    service, _gateway, _main_bot, _error_bot, _notification_bot, drafts = _build_insight_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        goals=[_goal("G001", "P001")],
+    )
+
+    service.start_add(USER, now=NOW)
+    service.add_text_message(USER, "Инсайт текстом", now=NOW, telegram_message_id=501)
+    response = service.request_title(USER, now=LATER)
+
+    assert response.text == INSIGHT_TITLE_PROMPT_TEXT
+    assert _dialog_step(drafts, USER.telegram_id) == "awaiting_title"
 
 
 def test_voice_insight_final_save_includes_transcription_and_audio_path(tmp_path: Path) -> None:
@@ -437,6 +453,16 @@ def _goal(goal_id: str, participant_id: str) -> dict[str, object]:
         "goal_title": "Цель",
         "goal_status": "active",
     }
+
+
+def _dialog_step(drafts: InsightDraftRepository, telegram_id: int) -> str:
+    with sqlite3.connect(drafts._db_path) as connection:
+        row = connection.execute(
+            "SELECT step FROM dialog_states WHERE telegram_id = ?",
+            (telegram_id,),
+        ).fetchone()
+    assert row is not None
+    return str(row[0])
 
 
 def _iso(value: datetime) -> str:

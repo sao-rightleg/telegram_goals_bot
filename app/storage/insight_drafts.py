@@ -272,6 +272,25 @@ class InsightDraftRepository:
                 (occurred_at, telegram_id),
             )
 
+    def request_title(self, telegram_id: int, *, occurred_at: str) -> None:
+        draft = self.get_active_draft(telegram_id)
+        if draft is None:
+            raise KeyError(f"Active insight draft not found for telegram_id={telegram_id}")
+
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE draft_sessions SET updated_at = ? WHERE draft_id = ?",
+                (occurred_at, draft.draft_id),
+            )
+            connection.execute(
+                "UPDATE draft_insights SET updated_at = ? WHERE draft_id = ?",
+                (occurred_at, draft.draft_id),
+            )
+            connection.execute(
+                "UPDATE dialog_states SET step = 'awaiting_title', updated_at = ? WHERE telegram_id = ?",
+                (occurred_at, telegram_id),
+            )
+
     def mark_saved(self, telegram_id: int, *, saved_insight_id: str, saved_at: str) -> None:
         draft = self.get_active_draft(telegram_id)
         if draft is None:
