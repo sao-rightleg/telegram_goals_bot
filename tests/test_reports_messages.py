@@ -39,6 +39,7 @@ def _participant_section(
         planned_steps=("Найти клиента", "Провести встречу"),
         completed_steps=("Найти клиента",),
         partial_steps=("Провести встречу",),
+        weekly_focus_step="Провести встречу",
         report_text="Провела встречу и согласовала следующий шаг.",
         transcription_text="Голосовая расшифровка отчёта.",
         insights=("Лучше заранее фиксировать договорённости.",),
@@ -88,6 +89,7 @@ def test_participant_line_contains_progress_status_goal_and_report_text() -> Non
     assert "🟩" in text
     assert "■■■□□□ 50%" in text
     assert "Новый контракт" in text
+    assert "Фокус недели: Провести встречу" in text
     assert "Провела встречу" in text
     assert "Голосовая расшифровка" in text
     assert "Лучше заранее" in text

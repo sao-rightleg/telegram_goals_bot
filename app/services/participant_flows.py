@@ -6,10 +6,18 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.bot.clients import BotClient, TelegramInlineButton
-from app.bot.menus import MenuAction, WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX, build_role_menu
+from app.bot.menus import (
+    MenuAction,
+    WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX,
+    WEEKLY_REPORT_EDIT_STEP_CALLBACK_PREFIX,
+    WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX,
+    build_role_menu,
+)
 from app.bot.messages import (
     CONSENT_ACCEPT_BUTTON,
     CONSENT_TEXT,
+    WEEKLY_REPORT_EDIT_STEP_BUTTON,
+    WEEKLY_REPORT_START_STEP_BUTTON,
     build_insight_menu_buttons,
     MISSING_DATA_TEXT,
     NOT_AVAILABLE_TEXT,
@@ -18,7 +26,7 @@ from app.bot.messages import (
     format_planned_steps_view,
     format_progress_view,
 )
-from app.scheduler.calendar import current_challenge_week_number
+from app.scheduler.calendar import challenge_week_date_range, current_challenge_week_number
 from app.services.notifications import NotificationCategory, NotificationRouter
 from app.services.participant_models import (
     FlowResponse,
@@ -83,6 +91,72 @@ class ParticipantFlowService:
         participant["consent_given"] = True
         participant["consent_given_at"] = consent_given_at
         return self._show_menu(user, participant=participant, occurred_at=consent_given_at)
+
+    def select_weekly_focus(
+        self,
+        user: TelegramUserContext,
+        *,
+        step_id: str,
+        occurred_at: str,
+    ) -> FlowResponse:
+        participant = self.sheets.find_participant_by_telegram_id(user.telegram_id)
+        if participant is None:
+            return self._handle_unknown_user(user, occurred_at=occurred_at)
+        if not _consent_is_given(participant):
+            return self._send_consent_response(user, participant=participant, occurred_at=occurred_at)
+
+        participant_id = _string_value(participant.get("participant_id"))
+        goal_row = self.sheets.get_active_goal(participant_id)
+        if goal_row is None:
+            return self._handle_missing_data(
+                user,
+                participant=participant,
+                missing_type="active_goal",
+                occurred_at=occurred_at,
+            )
+
+        goal = _goal_from_row(goal_row)
+        week_number = current_challenge_week_number(datetime.fromisoformat(occurred_at))
+        existing = self.sheets.find_weekly_focus(participant_id, week_number=week_number)
+        if existing is not None:
+            return self._send_simple_response(
+                user,
+                participant=participant,
+                text="Фокус этой недели уже выбран. Внутри недели его нельзя менять.",
+                flow="idle",
+                step="weekly_focus_locked",
+                occurred_at=occurred_at,
+            )
+
+        steps = [_planned_step_from_row(row) for row in self.sheets.list_planned_steps(participant_id, goal.goal_id)]
+        selected_step = _step_by_id([step for step in steps if step.step_status != "closed"], step_id)
+        start_date, end_date = challenge_week_date_range(datetime.fromisoformat(occurred_at))
+        self.sheets.append_weekly_focus(
+            {
+                "focus_id": _weekly_focus_id(participant_id, week_number),
+                "participant_id": participant_id,
+                "goal_id": goal.goal_id,
+                "step_id": step_id,
+                "week_number": week_number,
+                "week_start_date": start_date.isoformat(),
+                "week_end_date": end_date.isoformat(),
+                "focus_status": "active",
+                "selected_at": occurred_at,
+                "updated_at": occurred_at,
+            }
+        )
+        return self._send_simple_response(
+            user,
+            participant=participant,
+            text=(
+                f"Фокус недели {week_number} "
+                f"(с {_format_date(start_date)} по {_format_date(end_date)}) сохранён: "
+                f"Шаг {selected_step.step_number}"
+            ),
+            flow="idle",
+            step="weekly_focus_saved",
+            occurred_at=occurred_at,
+        )
 
     def handle_menu_action(
         self,
@@ -178,29 +252,18 @@ class ParticipantFlowService:
             )
 
         if normalized_action is MenuAction.VIEW_STEPS:
-            text = format_planned_steps_view(steps)
-            buttons = ()
-            if self.sheets.find_weekly_report(
+            focus = self.sheets.find_weekly_focus(
                 participant_id,
                 week_number=current_challenge_week_number(datetime.fromisoformat(occurred_at)),
-            ) is None:
-                buttons = _weekly_report_buttons_for_open_steps(steps)
-            else:
-                text = "\n".join(
-                    (
-                        text,
-                        "",
-                        "Отчёт за эту неделю уже принят. Следующий отчёт можно будет отправить на новой неделе.",
-                    )
-                )
+            )
             return self._send_simple_response(
                 user,
                 participant=participant,
-                text=text,
+                text=format_planned_steps_view(steps, focus_step_id=_focus_step_id(focus)),
                 flow="view_steps",
                 step="render",
                 occurred_at=occurred_at,
-                buttons=buttons,
+                buttons=_step_action_buttons(steps),
             )
 
         if normalized_action is MenuAction.VIEW_PROGRESS:
@@ -233,6 +296,10 @@ class ParticipantFlowService:
         participant: SheetRow,
         occurred_at: str,
     ) -> FlowResponse:
+        focus_response = self._maybe_prompt_weekly_focus(user, participant=participant, occurred_at=occurred_at)
+        if focus_response is not None:
+            return focus_response
+
         menu_items = build_role_menu(_role(participant))
         text = _menu_text(menu_items)
         response = FlowResponse(chat_id=user.chat_id, text=text, menu_items=menu_items)
@@ -294,6 +361,75 @@ class ParticipantFlowService:
             recipients=(),
         )
         return response
+
+    def _send_consent_response(
+        self,
+        user: TelegramUserContext,
+        *,
+        participant: SheetRow,
+        occurred_at: str,
+    ) -> FlowResponse:
+        response = FlowResponse(
+            chat_id=user.chat_id,
+            text=CONSENT_TEXT,
+            buttons=(CONSENT_ACCEPT_BUTTON,),
+        )
+        self.dialog_states.upsert(
+            _dialog_state_for(
+                user=user,
+                participant=participant,
+                flow="consent",
+                step="awaiting_consent",
+                occurred_at=occurred_at,
+            )
+        )
+        self.main_bot.send_message(
+            chat_id=user.chat_id,
+            text=response.text,
+            buttons=response.buttons,
+        )
+        return response
+
+    def _maybe_prompt_weekly_focus(
+        self,
+        user: TelegramUserContext,
+        *,
+        participant: SheetRow,
+        occurred_at: str,
+    ) -> FlowResponse | None:
+        participant_id = _string_value(participant.get("participant_id"))
+        goal_row = self.sheets.get_active_goal(participant_id)
+        if goal_row is None:
+            return None
+
+        goal = _goal_from_row(goal_row)
+        now = datetime.fromisoformat(occurred_at)
+        week_number = current_challenge_week_number(now)
+        if self.sheets.find_weekly_focus(participant_id, week_number=week_number) is not None:
+            return None
+
+        steps = [_planned_step_from_row(row) for row in self.sheets.list_planned_steps(participant_id, goal.goal_id)]
+        open_steps = [step for step in steps if step.step_status != "closed"]
+        if not open_steps:
+            return None
+
+        start_date, end_date = challenge_week_date_range(now)
+        text = "\n".join(
+            (
+                f"Неделя {week_number}: с {_format_date(start_date)} по {_format_date(end_date)}.",
+                "",
+                "Выбери обязательный фокус недели.",
+            )
+        )
+        return self._send_simple_response(
+            user,
+            participant=participant,
+            text=text,
+            flow="idle",
+            step="weekly_focus",
+            occurred_at=occurred_at,
+            buttons=_weekly_focus_buttons(open_steps),
+        )
 
     def _handle_unknown_user(
         self,
@@ -426,15 +562,55 @@ def _weekly_status_from_row(row: SheetRow) -> WeeklyStatus:
     )
 
 
-def _weekly_report_buttons_for_open_steps(steps: list[PlannedStep]) -> tuple[TelegramInlineButton, ...]:
+def _step_action_buttons(steps: list[PlannedStep]) -> tuple[TelegramInlineButton, ...]:
     return tuple(
         TelegramInlineButton(
-            text=f"📝 Отчитаться: {_short_step_title(step.step_title)}",
-            callback_data=f"{WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX}{step.step_id}",
+            text=f"{_step_action_label(step)}: {_short_step_title(step.step_title)}",
+            callback_data=f"{_step_action_callback_prefix(step)}{step.step_id}",
         )
         for step in sorted(steps, key=lambda item: item.step_number)
-        if step.step_status != "closed"
     )
+
+
+def _weekly_focus_buttons(steps: list[PlannedStep]) -> tuple[TelegramInlineButton, ...]:
+    return tuple(
+        TelegramInlineButton(
+            text=f"⬜ Шаг {step.step_number}: {_short_step_title(step.step_title)}",
+            callback_data=f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}{step.step_id}",
+        )
+        for step in sorted(steps, key=lambda item: item.step_number)
+    )
+
+
+def _step_action_label(step: PlannedStep) -> str:
+    if step.step_status == "closed":
+        return WEEKLY_REPORT_EDIT_STEP_BUTTON
+    return WEEKLY_REPORT_START_STEP_BUTTON
+
+
+def _step_action_callback_prefix(step: PlannedStep) -> str:
+    if step.step_status == "closed":
+        return WEEKLY_REPORT_EDIT_STEP_CALLBACK_PREFIX
+    return WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX
+
+
+def _focus_step_id(row: SheetRow | None) -> str | None:
+    return _optional_string_value(row.get("step_id")) if row is not None else None
+
+
+def _step_by_id(steps: list[PlannedStep], step_id: str) -> PlannedStep:
+    for step in steps:
+        if step.step_id == step_id:
+            return step
+    raise ValueError("selected step is not available")
+
+
+def _weekly_focus_id(participant_id: str, week_number: int) -> str:
+    return f"WF:{participant_id}:week-{week_number:02d}"
+
+
+def _format_date(value) -> str:
+    return value.strftime("%d.%m.%Y")
 
 
 def _short_step_title(title: str, *, limit: int = 42) -> str:

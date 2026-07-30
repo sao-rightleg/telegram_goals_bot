@@ -29,6 +29,8 @@ WEEKLY_REPORT_GREEN_BUTTON = "🟩 Победа есть"
 WEEKLY_REPORT_BLUE_BUTTON = "🟦 Частично"
 WEEKLY_REPORT_RED_BUTTON = "🟥 Победы нет"
 WEEKLY_REPORT_DONE_BUTTON = "✅ Отчёт готов"
+WEEKLY_REPORT_START_STEP_BUTTON = "Отчитаться"
+WEEKLY_REPORT_EDIT_STEP_BUTTON = "Редактировать отчёт"
 
 WEEKLY_REPORT_STATUS_PROMPT_TEXT = "Выбери статус недели."
 WEEKLY_REPORT_GREEN_STEP_REQUIRED_TEXT = "Выбери один или несколько открытых шагов."
@@ -224,19 +226,13 @@ def format_goal_view(goal: Goal) -> str:
     )
 
 
-def format_planned_steps_view(steps: Sequence[PlannedStep]) -> str:
-    open_steps = [step for step in sorted(steps, key=lambda item: item.step_number) if step.step_status != "closed"]
-    closed_steps = [step for step in sorted(steps, key=lambda item: item.step_number) if step.step_status == "closed"]
+def format_planned_steps_view(steps: Sequence[PlannedStep], *, focus_step_id: str | None = None) -> str:
     progress_percent = calculate_progress_percent(steps)
     lines = [f"Прогресс: {progress_percent}%"]
 
-    if open_steps:
-        lines.append("Открытые шаги:")
-        lines.extend(_format_step_lines(open_steps))
-
-    if closed_steps:
-        lines.append("Закрытые шаги:")
-        lines.extend(_format_step_lines(closed_steps))
+    sorted_steps = sorted(steps, key=lambda item: item.step_number)
+    if sorted_steps:
+        lines.extend(_format_step_lines(sorted_steps, focus_step_id=focus_step_id))
 
     if len(lines) == 1:
         lines.append("Шаги пока не заполнены.")
@@ -314,5 +310,10 @@ def _format_expandable_blockquote(text: str) -> str:
     return f"<blockquote expandable>{escape(text.strip())}</blockquote>"
 
 
-def _format_step_lines(steps: Sequence[PlannedStep]) -> list[str]:
-    return [f"{step.step_number}. {step.step_title}" for step in steps]
+def _format_step_lines(steps: Sequence[PlannedStep], *, focus_step_id: str | None = None) -> list[str]:
+    lines = []
+    for step in steps:
+        symbol = "🟩" if step.step_status == "closed" else "⬜"
+        focus_marker = " 🎯" if step.step_id == focus_step_id else ""
+        lines.append(f"{symbol} Шаг {step.step_number}: {step.step_title}{focus_marker}")
+    return lines

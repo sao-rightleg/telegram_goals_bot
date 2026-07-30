@@ -242,7 +242,9 @@ Rules:
 - No yellow late status.
 - Late reports after Sunday 23:59 Yekaterinburg time do not change weekly status.
 - Missing report after deadline becomes `gray` / `⬜` from `system_deadline`.
-- `green` and `blue` weekly reports must have one or more related rows in `WeeklyReportSteps`.
+- Participant step reports are stored as one report per planned step.
+- Participant step report IDs include participant, week, and step ID.
+- `green` participant step reports must have exactly one related row in `WeeklyReportSteps`.
 - Late report text may be stored, but `status_code`, `status_symbol`, and `status_score` for the closed week must not change.
 - Audio file path remains in Google Sheets after audio deletion; use `audio_deleted_at` to indicate retention cleanup.
 
@@ -264,11 +266,39 @@ Allowed `relation_type` values:
 - `mentioned`
 
 Notes:
-- This sheet is mandatory for `green` and `blue` reports.
-- `green` requires one or more `closed` relations.
-- `blue` requires one or more `partial` relations.
-- Multiple rows allow one weekly report to close or partially progress several steps.
+- This sheet is mandatory for participant step reports.
+- `green` participant step reports require one `closed` relation.
+- A planned step can have only one final participant step report.
 - Bot must reject duplicate closure of already closed steps.
+
+## WeeklyFocus
+
+Stores the mandatory weekly focus selected by participant.
+
+Columns:
+- `focus_id`
+- `participant_id`
+- `goal_id`
+- `step_id`
+- `week_number`
+- `week_start_date`
+- `week_end_date`
+- `focus_status`
+- `selected_at`
+- `updated_at`
+
+Allowed `focus_status` values:
+- `active`
+- `completed`
+- `skipped`
+
+Rules:
+- Focus is mandatory when participant has open planned steps.
+- Focus can be selected only from open planned steps.
+- Focus cannot be changed inside the same week.
+- Closing the focused step does not require selecting a new focus.
+- Focus does not prevent reporting another step in the same week.
+- Captains and trackers see weekly focus in reports.
 
 ## Insights
 

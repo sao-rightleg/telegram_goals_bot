@@ -49,9 +49,10 @@ def test_start_report_for_step_preselects_open_step(tmp_path: Path) -> None:
     assert "Выбран шаг:" in response.text
     assert "1. Первый шаг" in response.text
     assert "2. Второй шаг" not in response.text
-    assert "Выбери статус недели." in response.text
+    assert "Отправь отчёт по этому шагу." in response.text
     assert draft is not None
     assert draft.selected_step_ids == ("S001",)
+    assert draft.status_code == "green"
 
     status_response = service.select_status(user, WeeklyReportStatus.GREEN, now=NOW)
 
@@ -65,6 +66,28 @@ def test_start_report_for_step_rejects_closed_step(tmp_path: Path) -> None:
     response = service.start_report_for_step(_user(), step_id="S003", now=NOW)
 
     assert response.text == "Выбери один или несколько открытых шагов."
+    assert drafts.get_active_draft(1001) is None
+
+
+def test_start_report_for_step_rejects_already_reported_step(tmp_path: Path) -> None:
+    service, _gateway, drafts, _main_bot, _error_bot = _service(
+        tmp_path,
+        weekly_reports=[
+            {"weekly_report_id": "WR:P001:week-04:step-S001", "participant_id": "P001", "week_number": 4}
+        ],
+        weekly_report_steps=[
+            {
+                "weekly_report_step_id": "WRS:WR:P001:week-04:step-S001:S001",
+                "weekly_report_id": "WR:P001:week-04:step-S001",
+                "participant_id": "P001",
+                "step_id": "S001",
+            }
+        ],
+    )
+
+    response = service.start_report_for_step(_user(), step_id="S001", now=NOW)
+
+    assert response.text == "По этому шагу отчёт уже сохранён. Нажми «Редактировать отчёт»."
     assert drafts.get_active_draft(1001) is None
 
 
@@ -102,7 +125,7 @@ def test_start_report_rejects_late_week(tmp_path: Path) -> None:
     assert main_bot.sent_messages[-1].text == WEEKLY_REPORT_LATE_TEXT
 
 
-def test_start_report_rejects_duplicate_weekly_report(tmp_path: Path) -> None:
+def test_start_report_allows_another_step_after_current_week_report(tmp_path: Path) -> None:
     service, _gateway, drafts, main_bot, _error_bot = _service(
         tmp_path,
         weekly_reports=[{"weekly_report_id": "WR001", "participant_id": "P001", "week_number": 4}],
@@ -110,9 +133,9 @@ def test_start_report_rejects_duplicate_weekly_report(tmp_path: Path) -> None:
 
     response = service.start_report(_user(), now=NOW)
 
-    assert response.text == "Отчёт за эту неделю уже принят."
-    assert drafts.get_active_draft(1001) is None
-    assert main_bot.sent_messages[-1].text == "Отчёт за эту неделю уже принят."
+    assert "На этой неделе у тебя остались незакрытые шаги:" in response.text
+    assert drafts.get_active_draft(1001) is not None
+    assert main_bot.sent_messages[-1].text == response.text
 
 
 def test_start_report_handles_missing_goal_or_steps(tmp_path: Path) -> None:
@@ -134,6 +157,7 @@ def _service(
     goals: list[dict[str, object]] | None = None,
     planned_steps: list[dict[str, object]] | None = None,
     weekly_reports: list[dict[str, object]] | None = None,
+    weekly_report_steps: list[dict[str, object]] | None = None,
 ) -> tuple[WeeklyReportService, FakeSheetsGateway, WeeklyReportDraftRepository, FakeBotClient, FakeBotClient]:
     db_path = tmp_path / "state.sqlite3"
     initialize_schema(db_path)
@@ -143,6 +167,7 @@ def _service(
         goals=goals if goals is not None else [_goal()],
         planned_steps=planned_steps if planned_steps is not None else _planned_steps(),
         weekly_reports=weekly_reports or [],
+        weekly_report_steps=weekly_report_steps or [],
     )
     main_bot = FakeBotClient(BotPurpose.MAIN)
     error_bot = FakeBotClient(BotPurpose.ERROR)

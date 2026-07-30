@@ -32,6 +32,7 @@ class ParticipantReportSection:
     planned_steps: tuple[str, ...] = field(default_factory=tuple)
     completed_steps: tuple[str, ...] = field(default_factory=tuple)
     partial_steps: tuple[str, ...] = field(default_factory=tuple)
+    weekly_focus_step: str | None = None
     report_text: str | None = None
     transcription_text: str | None = None
     insights: tuple[str, ...] = field(default_factory=tuple)

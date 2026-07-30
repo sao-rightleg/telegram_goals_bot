@@ -22,7 +22,9 @@ from app.bot.menus import (
     INSIGHT_MENU_CALLBACK,
     INSIGHT_SKIP_TITLE_CALLBACK,
     MENU_CALLBACK_PREFIX,
+    WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX,
     WEEKLY_REPORT_DONE_CALLBACK,
+    WEEKLY_REPORT_EDIT_STEP_CALLBACK_PREFIX,
     WEEKLY_REPORT_START_CALLBACK,
     WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX,
     WEEKLY_REPORT_STATUS_CALLBACK_PREFIX,
@@ -197,11 +199,23 @@ class TelegramUpdateDispatcher:
 
         if data == CONSENT_ACCEPT_CALLBACK:
             return self.participant_service.accept_consent(user, consent_given_at=now.isoformat())
+        if data.startswith(WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX):
+            return self.participant_service.select_weekly_focus(
+                user,
+                step_id=_required_suffix(data, WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX),
+                occurred_at=now.isoformat(),
+            )
         if data.startswith(MENU_CALLBACK_PREFIX):
             return self._dispatch_menu_callback(user, data, now=now)
 
         if data == WEEKLY_REPORT_START_CALLBACK:
             return self.weekly_report_service.start_report(user, now=now)
+        if data.startswith(WEEKLY_REPORT_EDIT_STEP_CALLBACK_PREFIX):
+            return self.weekly_report_service.start_edit_report_for_step(
+                user,
+                step_id=_required_suffix(data, WEEKLY_REPORT_EDIT_STEP_CALLBACK_PREFIX),
+                now=now,
+            )
         if data.startswith(WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX):
             return self.weekly_report_service.start_report_for_step(
                 user,

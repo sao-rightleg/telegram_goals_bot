@@ -37,6 +37,8 @@ def format_participant_line(section: ParticipantReportSection) -> str:
         lines.append(f"Сделано: {_join_items(section.completed_steps)}")
     if section.partial_steps:
         lines.append(f"Частично: {_join_items(section.partial_steps)}")
+    if section.weekly_focus_step:
+        lines.append(f"Фокус недели: {section.weekly_focus_step}")
     if section.report_text:
         lines.append(f"Отчёт: {section.report_text}")
     if section.transcription_text:

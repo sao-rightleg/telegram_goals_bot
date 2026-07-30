@@ -124,11 +124,52 @@ Trigger:
 - `📍 Мои шаги`
 
 Bot shows:
-- open planned steps
-- closed planned steps if useful
+- progress percent
+- all planned steps with visual status
+- current weekly focus marker after the focused step title
 - current progress percent
 
 No participant-created steps in MVP.
+
+Example:
+
+```text
+Прогресс: 33%
+
+🟩 Шаг 1: Найти клиента
+⬜ Шаг 4: Провести встречу 🎯
+⬜ Шаг 5: Подписать договор
+```
+
+Buttons:
+- `Отчитаться: {step}` for open steps
+- `Редактировать отчёт: {step}` for closed steps
+
+## Weekly Focus Flow
+
+At the beginning of each week, if participant has open planned steps and no focus for the current week, bot asks:
+
+```text
+Неделя {week_number}: с {dd.mm.yyyy} по {dd.mm.yyyy}.
+
+Выбери обязательный фокус недели.
+```
+
+Buttons:
+- `⬜ Шаг {number}: {step}`
+
+After selection:
+
+```text
+Фокус недели {week_number} (с {dd.mm.yyyy} по {dd.mm.yyyy}) сохранён: Шаг {number}
+```
+
+Rules:
+- focus is mandatory
+- focus can be selected only from open steps
+- focus cannot be changed inside the same week
+- closing the focused step does not require selecting a new focus
+- focus does not prevent reporting another step in the same week
 
 ## View Progress
 
@@ -141,61 +182,32 @@ Bot shows:
 - weekly status history separately if useful
 - current week status if available
 
-## Weekly Report Flow
+## Step Report Flow
 
 ### Start
 
 Flow can start from:
-- user action
+- `Отчитаться: {step}` button on an open planned step
 - Sunday 18:00 check-in
 - reminder button if implemented
 
-Bot shows remaining planned steps:
+Bot shows selected step:
 
 ```text
-На этой неделе у тебя остались незакрытые шаги:
-
-1. {step}
-2. {step}
-3. {step}
-
-Выбери статус недели.
+Выбран шаг:
+{number}. {step}
+Отправь отчёт по этому шагу.
 ```
 
 Buttons:
-- `🟩 Победа есть`
-- `🟦 Частично`
-- `🟥 Победы нет`
-
-### Green Status
-
-If user selects `🟩 Победа есть`:
-
-Bot asks:
-
-```text
-Что именно ты сделал?
-```
-
-Bot requires selecting one or more planned steps that were completed.
-
-If no step is selected, bot must not save `🟩` status.
-
-Then bot says:
-
-```text
-Можешь отправить одно или несколько сообщений. Когда закончишь — нажми ✅ Готово.
-```
-
-Button:
-- `✅ Готово`
+- `✅ Отчёт готов`
 
 On save:
-- save weekly report to Google Sheets
+- save report to Google Sheets
 - save status `green` / `🟩`
 - save score `1`
-- save selected step relations as `closed`
-- close selected planned steps
+- save one selected step relation as `closed`
+- close selected planned step
 - clear SQLite draft
 
 Confirmation:
@@ -204,78 +216,36 @@ Confirmation:
 Принято. Победа недели сохранена.
 ```
 
-### Blue Status
+### Edit Step Report
 
-If user selects `🟦 Частично`:
-
-Bot requires selecting one or more planned steps with partial progress.
-
-If no step is selected, bot must not save `🟦` status.
+Trigger:
+- `Редактировать отчёт: {step}` button on a closed step
 
 Bot asks:
 
 ```text
-Что получилось сделать частично?
+Отправь новый текст отчёта по этому шагу.
 ```
 
-Then:
-
-```text
-Что не хватило до полноценной победы?
-```
-
-Then:
-
-```text
-Можешь отправить одно или несколько сообщений. Когда закончишь — нажми ✅ Готово.
-```
+Button:
+- `✅ Отчёт готов`
 
 On save:
-- save weekly report to Google Sheets
-- save status `blue` / `🟦`
-- save score `0.5`
-- save selected step relations as `partial`
-- clear SQLite draft
+- update existing report text
+- update report `updated_at`
+- do not change step `closed_at`
+- do not change step `closed_week_number`
+- do not change report `submitted_at`
 
 Confirmation:
 
 ```text
-Принято. Частичная победа сохранена.
-```
-
-### Red Status
-
-If user selects `🟥 Победы нет`:
-
-Bot asks:
-
-```text
-Что помешало сделать победу недели?
-```
-
-Optional second prompt:
-
-```text
-Что понял по итогам недели?
-```
-
-This answer is not an insight unless participant explicitly adds it as insight.
-
-On save:
-- save weekly report to Google Sheets
-- save status `red` / `🟥`
-- save score `0`
-- clear SQLite draft
-
-Confirmation:
-
-```text
-Принято. Отчёт за неделю сохранён.
+Отчёт по шагу обновлён.
 ```
 
 ### No Answer
 
-If participant does not submit weekly report before Sunday 23:59 Yekaterinburg time:
+If participant does not submit any step report before Sunday 23:59 Yekaterinburg time:
 - system creates or records status `gray` / `⬜`
 - score is `0`
 - no yellow late status is created

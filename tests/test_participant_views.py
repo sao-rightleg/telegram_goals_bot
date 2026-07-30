@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from app.bot.clients import BotPurpose, FakeBotClient
-from app.bot.menus import MenuAction, WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX
+from app.bot.menus import MenuAction, WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX, WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX
 from app.bot.messages import CONSENT_TEXT, MISSING_DATA_TEXT, NOT_AVAILABLE_TEXT
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.services.participant_flows import ParticipantFlowService
@@ -58,15 +58,108 @@ def test_steps_view_shows_current_participant_steps_only(tmp_path: Path) -> None
     assert "Мой открытый шаг" in response.text
     assert "Мой закрытый шаг" in response.text
     assert "Чужой шаг" not in response.text
-    assert [button.text for button in response.buttons] == ["📝 Отчитаться: Мой открытый шаг"]
+    assert "⬜ Шаг 1: Мой открытый шаг" in response.text
+    assert "🟩 Шаг 2: Мой закрытый шаг" in response.text
+    assert [button.text for button in response.buttons] == [
+        "Отчитаться: Мой открытый шаг",
+        "Редактировать отчёт: Мой закрытый шаг",
+    ]
     assert [button.callback_data for button in response.buttons] == [
-        f"{WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX}S001"
+        f"{WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX}S001",
+        "weekly:edit_step:S002",
     ]
     assert main_bot.sent_messages[-1].buttons == response.buttons
     assert gateway.list_planned_steps("P001", "G001") == before
 
 
-def test_steps_view_hides_report_buttons_after_current_week_report(tmp_path: Path) -> None:
+def test_start_prompts_required_weekly_focus_before_menu(tmp_path: Path) -> None:
+    service, _gateway, main_bot, _error_bot, _notification_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        goals=[_goal("G001", "P001", "Моя цель")],
+        planned_steps=[
+            _step("S004", "P001", "G001", 4, "Шаг 4", "open"),
+            _step("S005", "P001", "G001", 5, "Шаг 5", "open"),
+        ],
+    )
+
+    response = service.handle_start(
+        TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+        occurred_at=NOW,
+    )
+
+    assert "Неделя 4: с 29.06.2026 по 05.07.2026." in response.text
+    assert "Выбери обязательный фокус недели." in response.text
+    assert [button.callback_data for button in response.buttons] == [
+        f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}S004",
+        f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}S005",
+    ]
+    assert main_bot.sent_messages[-1].buttons == response.buttons
+
+
+def test_select_weekly_focus_saves_business_fact_and_locks_week(tmp_path: Path) -> None:
+    service, gateway, _main_bot, _error_bot, _notification_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        goals=[_goal("G001", "P001", "Моя цель")],
+        planned_steps=[
+            _step("S004", "P001", "G001", 4, "Шаг 4", "open"),
+            _step("S005", "P001", "G001", 5, "Шаг 5", "open"),
+        ],
+    )
+    user = TelegramUserContext(telegram_id=1001, chat_id="chat-1001")
+
+    response = service.select_weekly_focus(user, step_id="S004", occurred_at=NOW)
+    locked = service.select_weekly_focus(user, step_id="S005", occurred_at=NOW)
+
+    assert response.text == "Фокус недели 4 (с 29.06.2026 по 05.07.2026) сохранён: Шаг 4"
+    assert locked.text == "Фокус этой недели уже выбран. Внутри недели его нельзя менять."
+    assert gateway.find_weekly_focus("P001", week_number=4) == {
+        "focus_id": "WF:P001:week-04",
+        "participant_id": "P001",
+        "goal_id": "G001",
+        "step_id": "S004",
+        "week_number": 4,
+        "week_start_date": "2026-06-29",
+        "week_end_date": "2026-07-05",
+        "focus_status": "active",
+        "selected_at": NOW,
+        "updated_at": NOW,
+    }
+
+
+def test_steps_view_marks_current_week_focus_after_step_title(tmp_path: Path) -> None:
+    service, _gateway, _main_bot, _error_bot, _notification_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        goals=[_goal("G001", "P001", "Моя цель")],
+        planned_steps=[
+            _step("S004", "P001", "G001", 4, "Шаг 4", "open"),
+            _step("S005", "P001", "G001", 5, "Шаг 5", "open"),
+        ],
+        weekly_focus=[
+            {
+                "focus_id": "WF:P001:week-04",
+                "participant_id": "P001",
+                "goal_id": "G001",
+                "step_id": "S004",
+                "week_number": 4,
+                "focus_status": "active",
+            }
+        ],
+    )
+
+    response = service.handle_menu_action(
+        TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+        MenuAction.VIEW_STEPS,
+        occurred_at=NOW,
+    )
+
+    assert "⬜ Шаг 4: Шаг 4 🎯" in response.text
+    assert "⬜ 🎯 Шаг 4" not in response.text
+
+
+def test_steps_view_keeps_open_step_report_buttons_after_current_week_report(tmp_path: Path) -> None:
     service, _gateway, main_bot, _error_bot, _notification_bot = _build_service(
         tmp_path,
         participants=[_participant("P001", 1001)],
@@ -94,9 +187,12 @@ def test_steps_view_hides_report_buttons_after_current_week_report(tmp_path: Pat
 
     assert "Шаг 4" in response.text
     assert "Шаг 5" in response.text
-    assert "Отчёт за эту неделю уже принят." in response.text
-    assert response.buttons == ()
-    assert main_bot.sent_messages[-1].buttons == ()
+    assert "Отчёт за эту неделю уже принят." not in response.text
+    assert [button.text for button in response.buttons] == [
+        "Отчитаться: Шаг 4",
+        "Отчитаться: Шаг 5",
+    ]
+    assert main_bot.sent_messages[-1].buttons == response.buttons
 
 
 def test_progress_view_uses_planned_steps_as_primary_progress(tmp_path: Path) -> None:
@@ -219,6 +315,7 @@ def _build_service(
     goals: list[dict[str, object]] | None = None,
     planned_steps: list[dict[str, object]] | None = None,
     weekly_reports: list[dict[str, object]] | None = None,
+    weekly_focus: list[dict[str, object]] | None = None,
 ) -> tuple[ParticipantFlowService, FakeSheetsGateway, FakeBotClient, FakeBotClient, FakeBotClient]:
     db_path = tmp_path / "state.sqlite3"
     initialize_schema(db_path)
@@ -227,6 +324,7 @@ def _build_service(
         goals=goals or [],
         planned_steps=planned_steps or [],
         weekly_reports=weekly_reports or [],
+        weekly_focus=weekly_focus or [],
     )
     main_bot = FakeBotClient(BotPurpose.MAIN)
     error_bot = FakeBotClient(BotPurpose.ERROR)

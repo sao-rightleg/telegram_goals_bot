@@ -56,13 +56,25 @@ Codex must treat these decisions as current source of truth. If older documents 
 
 ## 5. Participant Step Selection
 
-- For `🟩 Победа есть`, participant must select one or more closed steps.
-- For `🟦 Частичная победа`, participant must select one or more steps with partial progress.
-- Participant may close several steps in one week.
+- Participant reports per planned step.
+- Open steps show `⬜` and action `Отчитаться`.
+- Closed/reported steps show `🟩` and action `Редактировать отчёт`.
+- Participant may close several steps in one week by submitting one report per step.
+- One step report closes exactly one planned step.
+- A planned step can have only one final report; further changes go through report editing.
 - Participant cannot close an already closed step again.
-- If participant selects `🟩` without selecting a step, bot must not count victory.
-- Bot must technically require step selection before saving `🟩` or `🟦`.
+- Editing a step report changes report text and `updated_at`, but not `submitted_at`, `closed_at`, or `closed_week_number`.
 - Repeated action can be a separate planned step only if it differs by level, scale, or volume.
+
+## 5a. Weekly Focus
+
+- At the beginning of each week, participant must select one open planned step as weekly focus.
+- Weekly focus is mandatory while participant has open planned steps.
+- Weekly focus cannot be changed inside the same week.
+- If the focused step is closed before week end, bot does not require selecting a new focus.
+- Weekly focus does not prevent reporting another step in the same week.
+- Weekly focus is shown in `Мои шаги` with `🎯` after the focused step title.
+- Weekly focus is shown to captains and trackers in reports.
 
 ## 6. Captain Manual Report
 
@@ -268,4 +280,3 @@ If external Codex/Claude skills are imported later:
 - Do not blindly trust scripts.
 - Adapt to this project.
 - Keep project-specific rules in Project Knowledge and docs.
-

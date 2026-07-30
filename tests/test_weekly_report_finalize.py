@@ -22,7 +22,7 @@ def test_green_report_saves_weekly_report_relations_closes_steps_and_clears_draf
     assert drafts.get_active_draft(1001) is None
     assert gateway.list_weekly_reports() == [
         {
-            "weekly_report_id": "WR:P001:week-04",
+            "weekly_report_id": "WR:P001:week-04:step-S001",
             "participant_id": "P001",
             "team_id": "T001",
             "goal_id": "G001",
@@ -42,8 +42,8 @@ def test_green_report_saves_weekly_report_relations_closes_steps_and_clears_draf
     ]
     assert gateway.list_weekly_report_steps() == [
         {
-            "weekly_report_step_id": "WRS:WR:P001:week-04:S001",
-            "weekly_report_id": "WR:P001:week-04",
+            "weekly_report_step_id": "WRS:WR:P001:week-04:step-S001:S001",
+            "weekly_report_id": "WR:P001:week-04:step-S001",
             "participant_id": "P001",
             "goal_id": "G001",
             "step_id": "S001",
@@ -200,18 +200,88 @@ def test_finalize_rejects_late_report_without_final_facts(tmp_path: Path) -> Non
     assert drafts.get_active_draft(1001) is not None
 
 
-def test_finalize_rejects_duplicate_report_without_final_facts(tmp_path: Path) -> None:
+def test_finalize_rejects_duplicate_step_report_without_final_facts(tmp_path: Path) -> None:
     service, gateway, drafts, _main_bot, _error_bot = _service(tmp_path)
     user = _user()
     _prepare_green(service, user)
     service.add_text_message(user, "Сделал", now=NOW)
-    gateway.append_weekly_report({"weekly_report_id": "WR001", "participant_id": "P001", "week_number": 4})
+    gateway.append_weekly_report(
+        {"weekly_report_id": "WR:P001:week-04:step-S001", "participant_id": "P001", "week_number": 4}
+    )
+    gateway.append_weekly_report_step(
+        {
+            "weekly_report_step_id": "WRS:WR:P001:week-04:step-S001:S001",
+            "weekly_report_id": "WR:P001:week-04:step-S001",
+            "participant_id": "P001",
+            "step_id": "S001",
+        }
+    )
 
     response = service.finalize_report(user, now=NOW)
 
-    assert response.text == "Отчёт за эту неделю уже принят."
+    assert response.text == "По этому шагу отчёт уже сохранён. Нажми «Редактировать отчёт»."
     assert len(gateway.list_weekly_reports()) == 1
     assert drafts.get_active_draft(1001) is not None
+
+
+def test_edit_step_report_updates_text_without_reclosing_step(tmp_path: Path) -> None:
+    service, gateway, drafts, _main_bot, _error_bot = _service(
+        tmp_path,
+        planned_steps=[
+            {
+                "step_id": "S001",
+                "participant_id": "P001",
+                "goal_id": "G001",
+                "step_number": 1,
+                "step_title": "Первый шаг",
+                "step_status": "closed",
+                "closed_week_number": 4,
+                "closed_report_id": "WR:P001:week-04:step-S001",
+                "closed_at": "2026-07-01T10:00:00+05:00",
+            }
+        ],
+        weekly_reports=[
+            {
+                "weekly_report_id": "WR:P001:week-04:step-S001",
+                "participant_id": "P001",
+                "team_id": "T001",
+                "goal_id": "G001",
+                "week_number": 4,
+                "status_code": "green",
+                "status_symbol": "🟩",
+                "score": 1,
+                "report_text": "Старый текст",
+                "transcription_text": "",
+                "audio_file_path": "",
+                "submitted_at": "2026-07-01T10:00:00+05:00",
+                "updated_at": "2026-07-01T10:00:00+05:00",
+            }
+        ],
+        weekly_report_steps=[
+            {
+                "weekly_report_step_id": "WRS:WR:P001:week-04:step-S001:S001",
+                "weekly_report_id": "WR:P001:week-04:step-S001",
+                "participant_id": "P001",
+                "step_id": "S001",
+            }
+        ],
+    )
+    user = _user()
+
+    service.start_edit_report_for_step(user, step_id="S001", now=NOW)
+    service.add_text_message(user, "Новый текст", now=NOW)
+    response = service.finalize_report(user, now=NOW)
+
+    assert response.text == "Отчёт по шагу обновлён."
+    assert drafts.get_active_draft(1001) is None
+    assert len(gateway.list_weekly_reports()) == 1
+    report = gateway.list_weekly_reports()[0]
+    assert report["report_text"] == "Новый текст"
+    assert report["submitted_at"] == "2026-07-01T10:00:00+05:00"
+    assert report["updated_at"] == NOW.isoformat()
+    step = gateway.list_planned_steps("P001", "G001")[0]
+    assert step["closed_at"] == "2026-07-01T10:00:00+05:00"
+    assert step["closed_week_number"] == 4
 
 
 def test_voice_message_appends_to_weekly_draft(tmp_path: Path) -> None:

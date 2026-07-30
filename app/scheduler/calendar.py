@@ -39,6 +39,12 @@ def current_challenge_week_number(now: datetime) -> int:
     return max(1, min(CHALLENGE_TOTAL_WEEKS, days_since_start // 7 + 1))
 
 
+def challenge_week_date_range(now: datetime) -> tuple[date, date]:
+    local_now = _as_yekaterinburg(now)
+    start = local_now.date() - timedelta(days=local_now.weekday())
+    return start, start + timedelta(days=6)
+
+
 def weekly_report_deadline(now: datetime) -> datetime:
     local_now = _as_yekaterinburg(now)
     days_until_sunday = 6 - local_now.weekday()

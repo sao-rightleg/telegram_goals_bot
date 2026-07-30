@@ -90,7 +90,7 @@ def test_cross_participant_step_selection_is_rejected(tmp_path: Path) -> None:
     assert drafts.get_active_draft(1001).selected_step_ids == ()
 
 
-def test_select_status_rejects_duplicate_or_late_progression(tmp_path: Path) -> None:
+def test_select_status_allows_progress_when_another_step_report_exists_same_week(tmp_path: Path) -> None:
     service, gateway, drafts, _main_bot, _error_bot = _service(tmp_path)
     user = _user()
     service.start_report(user, now=NOW)
@@ -98,8 +98,8 @@ def test_select_status_rejects_duplicate_or_late_progression(tmp_path: Path) -> 
 
     response = service.select_status(user, WeeklyReportStatus.GREEN, now=NOW)
 
-    assert response.text == "Отчёт за эту неделю уже принят."
-    assert drafts.get_active_draft(1001).status_code is None
+    assert response.text == "Выбери один или несколько открытых шагов."
+    assert drafts.get_active_draft(1001).status_code == "green"
 
 
 def test_select_steps_requires_active_draft(tmp_path: Path) -> None:

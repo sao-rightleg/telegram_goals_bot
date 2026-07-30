@@ -199,28 +199,41 @@ Final goal achievement:
 - captain cannot mark final goal as achieved
 - bot must not automatically mark final goal as achieved only because all planned steps are closed
 
-## 9. Weekly report logic
+## 9. Weekly focus and step report logic
 
-Every week participant should report whether they completed a meaningful planned step or made progress.
+At the beginning of each week, each participant must select one open planned step as the weekly focus.
 
-Weekly status options:
-- 🟩 victory / completed planned step
-- 🟦 partial victory
-- 🟥 no victory
-- ⬜ no answer before deadline
+Weekly focus rules:
+- focus is mandatory when open planned steps exist
+- focus can be selected only from open planned steps
+- focus cannot be changed inside the same week
+- closing the focused step does not require selecting a new focus for the remaining week
+- focus does not prevent reporting another step in the same week
+- captains and trackers must see weekly focus in reports
 
-Participant selects status.
+Participants report per planned step.
+
+Step status display:
+- ⬜ open step / no step report yet
+- 🟩 closed step / report submitted for this step
+
+Step report actions:
+- open steps show `Отчитаться`
+- closed steps show `Редактировать отчёт`
+
+A participant may close any number of open steps in the same week by submitting one report per step.
 
 Captain may manually submit report for participant in own team before deadline.
 
 Late reports after deadline do not change weekly status.
 
 Step selection rules:
-- 🟩 requires selecting one or more closed planned steps
-- 🟦 requires selecting one or more planned steps with partial progress
-- one weekly report may close several steps
+- every submitted step report is linked to exactly one planned step
+- each planned step has at most one final report
+- participants can edit the report text for a closed step before deadline
+- editing a step report changes report text and `updated_at`
+- editing a step report must not change the original `submitted_at`, `closed_at`, or `closed_week_number`
 - already closed steps cannot be closed again
-- bot must not save 🟩 or 🟦 without selected step IDs
 
 ## 10. Deadline
 

@@ -60,15 +60,23 @@ def test_duplicate_report_never_writes_second_report_or_relations(tmp_path: Path
     service.select_status(user, WeeklyReportStatus.GREEN, now=NOW)
     service.select_steps(user, ["S001"], now=NOW)
     service.add_text_message(user, "Сделал", now=NOW)
-    gateway.append_weekly_report({"weekly_report_id": "WR001", "participant_id": "P001", "week_number": 4})
+    gateway.append_weekly_report({"weekly_report_id": "WR:P001:week-04:step-S001", "participant_id": "P001", "week_number": 4})
+    gateway.append_weekly_report_step(
+        {
+            "weekly_report_step_id": "WRS:WR:P001:week-04:step-S001:S001",
+            "weekly_report_id": "WR:P001:week-04:step-S001",
+            "participant_id": "P001",
+            "step_id": "S001",
+        }
+    )
 
     response = service.finalize_report(user, now=NOW)
 
-    assert response.text == "Отчёт за эту неделю уже принят."
+    assert response.text == "По этому шагу отчёт уже сохранён. Нажми «Редактировать отчёт»."
     assert gateway.list_weekly_reports() == [
-        {"weekly_report_id": "WR001", "participant_id": "P001", "week_number": 4}
+        {"weekly_report_id": "WR:P001:week-04:step-S001", "participant_id": "P001", "week_number": 4}
     ]
-    assert gateway.list_weekly_report_steps() == []
+    assert len(gateway.list_weekly_report_steps()) == 1
     assert drafts.get_active_draft(1001) is not None
 
 
@@ -92,8 +100,16 @@ def test_voice_does_not_bypass_deadline_or_duplicate_guards(tmp_path: Path) -> N
     duplicate_service, gateway, duplicate_drafts, _main_bot, _error_bot = _service(tmp_path / "duplicate")
     duplicate_service = replace(duplicate_service, voice_messages=ExplodingVoiceService())
     duplicate_user = _user()
-    duplicate_service.start_report(duplicate_user, now=NOW)
-    gateway.append_weekly_report({"weekly_report_id": "WR001", "participant_id": "P001", "week_number": 4})
+    duplicate_service.start_report_for_step(duplicate_user, step_id="S001", now=NOW)
+    gateway.append_weekly_report({"weekly_report_id": "WR:P001:week-04:step-S001", "participant_id": "P001", "week_number": 4})
+    gateway.append_weekly_report_step(
+        {
+            "weekly_report_step_id": "WRS:WR:P001:week-04:step-S001:S001",
+            "weekly_report_id": "WR:P001:week-04:step-S001",
+            "participant_id": "P001",
+            "step_id": "S001",
+        }
+    )
 
     duplicate_response = duplicate_service.add_voice_message(
         duplicate_user,
@@ -103,7 +119,7 @@ def test_voice_does_not_bypass_deadline_or_duplicate_guards(tmp_path: Path) -> N
         telegram_message_id=501,
     )
 
-    assert duplicate_response.text == "Отчёт за эту неделю уже принят."
+    assert duplicate_response.text == "По этому шагу отчёт уже сохранён. Нажми «Редактировать отчёт»."
     assert duplicate_drafts.get_active_draft(1001).message_count == 0
 
 

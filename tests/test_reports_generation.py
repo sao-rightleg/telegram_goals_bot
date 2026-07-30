@@ -22,6 +22,7 @@ def test_aggregation_builds_team_report_from_final_sheets_rows() -> None:
     assert anna.progress_bar == "🟩🟦⬜⬜⬜⬜"
     assert anna.progress_percent == 25
     assert anna.goal_title == "Новый контракт"
+    assert anna.weekly_focus_step == "Провести встречу"
     assert anna.report_text == "Провела встречу."
     assert anna.transcription_text == "Расшифровка отчёта."
     assert anna.insights == ("Лучше фиксировать договорённости.",)
@@ -105,6 +106,7 @@ def test_unfinished_sqlite_drafts_are_not_part_of_reports() -> None:
 def _gateway(
     *,
     weekly_reports: list[dict[str, object]] | None = None,
+    weekly_focus: list[dict[str, object]] | None = None,
     insights: list[dict[str, object]] | None = None,
 ) -> FakeSheetsGateway:
     return FakeSheetsGateway(
@@ -137,6 +139,18 @@ def _gateway(
         weekly_report_steps=[
             {"weekly_report_step_id": "WRS001", "weekly_report_id": "WR001", "step_id": "S001"},
             {"weekly_report_step_id": "WRS002", "weekly_report_id": "WR002", "step_id": "S004"},
+        ],
+        weekly_focus=weekly_focus
+        if weekly_focus is not None
+        else [
+            {
+                "focus_id": "WF:P001:week-05",
+                "participant_id": "P001",
+                "goal_id": "G001",
+                "step_id": "S002",
+                "week_number": 5,
+                "focus_status": "active",
+            }
         ],
         insights=insights
         if insights is not None

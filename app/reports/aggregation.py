@@ -34,6 +34,7 @@ def build_all_teams_report(gateway: SheetsGateway, *, week_number: int) -> AllTe
     goals = gateway.list_goals()
     planned_steps = gateway.list_planned_steps_all()
     weekly_reports = gateway.list_weekly_reports_for_week(week_number)
+    weekly_focus = gateway.list_weekly_focus_for_week(week_number)
     insights = gateway.list_insights_for_week(week_number)
 
     participants_by_team = _group_by(participants, "team_id")
@@ -41,6 +42,7 @@ def build_all_teams_report(gateway: SheetsGateway, *, week_number: int) -> AllTe
     goals_by_participant = _group_by(goals, "participant_id")
     steps_by_participant = _group_by(planned_steps, "participant_id")
     reports_by_participant = {str(row.get("participant_id")): row for row in weekly_reports}
+    focus_by_participant = {str(row.get("participant_id")): row for row in weekly_focus}
     insights_by_participant = _group_by(insights, "participant_id")
 
     team_reports = tuple(
@@ -51,6 +53,7 @@ def build_all_teams_report(gateway: SheetsGateway, *, week_number: int) -> AllTe
             goals_by_participant=goals_by_participant,
             steps_by_participant=steps_by_participant,
             reports_by_participant=reports_by_participant,
+            focus_by_participant=focus_by_participant,
             insights_by_participant=insights_by_participant,
             week_number=week_number,
         )
@@ -78,6 +81,7 @@ def _build_team_report(
     goals_by_participant: dict[str, list[SheetRow]],
     steps_by_participant: dict[str, list[SheetRow]],
     reports_by_participant: dict[str, SheetRow],
+    focus_by_participant: dict[str, SheetRow],
     insights_by_participant: dict[str, list[SheetRow]],
     week_number: int,
 ) -> TeamReportData:
@@ -87,6 +91,7 @@ def _build_team_report(
             goals=goals_by_participant.get(str(participant.get("participant_id")), []),
             steps=steps_by_participant.get(str(participant.get("participant_id")), []),
             weekly_report=reports_by_participant.get(str(participant.get("participant_id"))),
+            weekly_focus=focus_by_participant.get(str(participant.get("participant_id"))),
             insights=insights_by_participant.get(str(participant.get("participant_id")), []),
         )
         for participant in participants
@@ -118,6 +123,7 @@ def _build_participant_section(
     goals: list[SheetRow],
     steps: list[SheetRow],
     weekly_report: SheetRow | None,
+    weekly_focus: SheetRow | None,
     insights: list[SheetRow],
 ) -> ParticipantReportSection:
     goal = _active_goal(goals)
@@ -148,6 +154,7 @@ def _build_participant_section(
             for row in sorted_steps
             if row.get("step_status") == "partial"
         ),
+        weekly_focus_step=_focus_step_title(sorted_steps, weekly_focus),
         report_text=_optional_str(weekly_report.get("report_text")) if weekly_report else None,
         transcription_text=_optional_str(weekly_report.get("transcription_text")) if weekly_report else None,
         insights=tuple(_insight_text(row) for row in insights if _insight_text(row)),
@@ -235,6 +242,16 @@ def _goal_value(goal: SheetRow) -> str:
 
 def _insight_text(row: SheetRow) -> str:
     return str(row.get("insight_text") or row.get("text") or "")
+
+
+def _focus_step_title(steps: list[SheetRow], weekly_focus: SheetRow | None) -> str | None:
+    if weekly_focus is None:
+        return None
+    focus_step_id = weekly_focus.get("step_id")
+    for step in steps:
+        if step.get("step_id") == focus_step_id:
+            return _optional_str(step.get("step_title"))
+    return None
 
 
 def _optional_str(value: object) -> str | None:

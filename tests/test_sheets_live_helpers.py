@@ -150,6 +150,20 @@ def minimal_live_sheets(**overrides: list[list[object]]) -> dict[str, list[list[
         "WeeklyReportSteps": [
             ["id", "weekly_report_id", "participant_id", "step_id", "relation_type", "created_at"]
         ],
+        "WeeklyFocus": [
+            [
+                "focus_id",
+                "participant_id",
+                "goal_id",
+                "step_id",
+                "week_number",
+                "week_start_date",
+                "week_end_date",
+                "focus_status",
+                "selected_at",
+                "updated_at",
+            ]
+        ],
         "Insights": [
             [
                 "insight_id",

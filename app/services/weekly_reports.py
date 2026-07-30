@@ -88,9 +88,11 @@ class WeeklyReportService:
         valid_open_step_ids = {_string_value(row.get("step_id")) for row in open_steps}
         if step_id not in valid_open_step_ids:
             return self._send(user, text=WEEKLY_REPORT_GREEN_STEP_REQUIRED_TEXT)
+        if self.sheets.find_weekly_report_for_step(participant_id, step_id=step_id) is not None:
+            return self._send(user, text="По этому шагу отчёт уже сохранён. Нажми «Редактировать отчёт».")
 
         self.drafts.create_draft(
-            draft_id=_draft_id(participant_id, week_number),
+            draft_id=_draft_id(participant_id, week_number, step_id=step_id),
             telegram_id=user.telegram_id,
             participant_id=participant_id,
             team_id=team_id,
@@ -99,10 +101,56 @@ class WeeklyReportService:
             occurred_at=_occurred_at(now),
         )
         self.drafts.preselect_steps(user.telegram_id, [step_id], occurred_at=_occurred_at(now))
+        self.drafts.update_status_and_steps(
+            user.telegram_id,
+            WeeklyReportStatus.GREEN,
+            [step_id],
+            occurred_at=_occurred_at(now),
+        )
         return self._send(
             user,
             text=_format_step_start_text(_step_by_id(open_steps, step_id)),
-            buttons=build_weekly_report_status_buttons(),
+            buttons=_weekly_report_text_buttons(),
+        )
+
+    def start_edit_report_for_step(
+        self,
+        user: TelegramUserContext,
+        *,
+        step_id: str,
+        now: datetime,
+    ) -> FlowResponse:
+        context = self._resolve_context(user, now=now)
+        if isinstance(context, FlowResponse):
+            return context
+
+        _participant, participant_id, team_id, goal, week_number = context
+        goal_id = _string_value(goal.get("goal_id"))
+        report = self.sheets.find_weekly_report_for_step(participant_id, step_id=step_id)
+        if report is None:
+            return self._send(user, text="По этому шагу ещё нет отчёта. Нажми «Отчитаться».")
+
+        report_id = _string_value(report.get("weekly_report_id"))
+        self.drafts.create_draft(
+            draft_id=_edit_draft_id(report_id),
+            telegram_id=user.telegram_id,
+            participant_id=participant_id,
+            team_id=team_id,
+            goal_id=goal_id,
+            week_number=week_number,
+            occurred_at=_occurred_at(now),
+        )
+        self.drafts.preselect_steps(user.telegram_id, [step_id], occurred_at=_occurred_at(now))
+        self.drafts.update_status_and_steps(
+            user.telegram_id,
+            WeeklyReportStatus.GREEN,
+            [step_id],
+            occurred_at=_occurred_at(now),
+        )
+        return self._send(
+            user,
+            text="Отправь новый текст отчёта по этому шагу.",
+            buttons=_weekly_report_text_buttons(),
         )
 
     def select_status(
@@ -189,8 +237,11 @@ class WeeklyReportService:
         if isinstance(context, FlowResponse):
             return context
 
-        if self.drafts.get_active_draft(user.telegram_id) is None:
+        draft = self.drafts.get_active_draft(user.telegram_id)
+        if draft is None:
             raise KeyError(f"Active weekly report draft not found for telegram_id={user.telegram_id}")
+        if _draft_has_duplicate_step_report(self.sheets, draft):
+            return self._send(user, text="По этому шагу отчёт уже сохранён. Нажми «Редактировать отчёт».")
 
         self.drafts.append_text_message(
             user.telegram_id,
@@ -217,8 +268,11 @@ class WeeklyReportService:
         if isinstance(context, FlowResponse):
             return context
 
-        if self.drafts.get_active_draft(user.telegram_id) is None:
+        draft = self.drafts.get_active_draft(user.telegram_id)
+        if draft is None:
             raise KeyError(f"Active weekly report draft not found for telegram_id={user.telegram_id}")
+        if _draft_has_duplicate_step_report(self.sheets, draft):
+            return self._send(user, text="По этому шагу отчёт уже сохранён. Нажми «Редактировать отчёт».")
         if self.voice_messages is None:
             return self.reject_voice_message(user, now=now)
 
@@ -276,7 +330,26 @@ class WeeklyReportService:
 
         goal_id = _string_value(goal.get("goal_id"))
         submitted_at = _occurred_at(now)
-        weekly_report_id = _weekly_report_id(participant_id, week_number)
+        edit_report_id = _edit_report_id(draft.draft_id)
+        if edit_report_id is not None:
+            self.sheets.update_weekly_report_text(
+                edit_report_id,
+                report_text=draft.report_text,
+                transcription_text=_voice_transcription_text(draft),
+                audio_file_path=_voice_audio_file_path(draft),
+                updated_at=submitted_at,
+            )
+            self.drafts.clear_draft(user.telegram_id)
+            return self._send(user, text="Отчёт по шагу обновлён.")
+
+        report_step_id = draft.selected_step_ids[0] if draft.selected_step_ids else None
+        if report_step_id is not None and self.sheets.find_weekly_report_for_step(
+            participant_id,
+            step_id=report_step_id,
+        ) is not None:
+            return self._send(user, text="По этому шагу отчёт уже сохранён. Нажми «Редактировать отчёт».")
+
+        weekly_report_id = _weekly_report_id(participant_id, week_number, report_step_id)
         self.sheets.append_weekly_report(
             {
                 "weekly_report_id": weekly_report_id,
@@ -353,8 +426,6 @@ class WeeklyReportService:
             )
 
         week_number = current_challenge_week_number(now)
-        if self.sheets.find_weekly_report(participant_id, week_number=week_number) is not None:
-            return self._send(user, text=WEEKLY_REPORT_DUPLICATE_TEXT)
 
         goal = self.sheets.get_active_goal(participant_id)
         if goal is None:
@@ -428,7 +499,7 @@ def _format_step_start_text(step: SheetRow) -> str:
         (
             "Выбран шаг:",
             f"{_int_value(step.get('step_number'))}. {str(step.get('step_title') or '')}",
-            "Выбери статус недели.",
+            "Отправь отчёт по этому шагу.",
         )
     )
 
@@ -489,12 +560,36 @@ def _voice_audio_file_path(draft) -> str:
     return "\n".join(attachment.local_file_path for attachment in draft.voice_attachments)
 
 
-def _draft_id(participant_id: str, week_number: int) -> str:
-    return f"weekly-report:{participant_id}:week-{week_number:02d}"
+def _draft_has_duplicate_step_report(sheets: SheetsGateway, draft) -> bool:
+    if _edit_report_id(draft.draft_id) is not None:
+        return False
+    if len(draft.selected_step_ids) != 1:
+        return False
+    return sheets.find_weekly_report_for_step(
+        draft.participant_id,
+        step_id=draft.selected_step_ids[0],
+    ) is not None
 
 
-def _weekly_report_id(participant_id: str, week_number: int) -> str:
-    return f"WR:{participant_id}:week-{week_number:02d}"
+def _draft_id(participant_id: str, week_number: int, *, step_id: str | None = None) -> str:
+    suffix = f":step-{step_id}" if step_id else ""
+    return f"weekly-report:{participant_id}:week-{week_number:02d}{suffix}"
+
+
+def _edit_draft_id(weekly_report_id: str) -> str:
+    return f"weekly-report-edit:{weekly_report_id}"
+
+
+def _edit_report_id(draft_id: str) -> str | None:
+    prefix = "weekly-report-edit:"
+    if draft_id.startswith(prefix):
+        return draft_id[len(prefix):]
+    return None
+
+
+def _weekly_report_id(participant_id: str, week_number: int, step_id: str | None = None) -> str:
+    suffix = f":step-{step_id}" if step_id else ""
+    return f"WR:{participant_id}:week-{week_number:02d}{suffix}"
 
 
 def _weekly_report_step_id(weekly_report_id: str, step_id: str) -> str:

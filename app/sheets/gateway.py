@@ -64,6 +64,28 @@ class SheetsGateway(Protocol):
     def find_weekly_report(self, participant_id: str, *, week_number: int) -> SheetRow | None:
         """Find one weekly report for a participant/week if it already exists."""
 
+    def find_weekly_report_for_step(
+        self,
+        participant_id: str,
+        *,
+        step_id: str,
+    ) -> SheetRow | None:
+        """Find the final report linked to a planned step when it exists."""
+
+    def get_weekly_report(self, weekly_report_id: str) -> SheetRow | None:
+        """Return one weekly report by stable report ID."""
+
+    def update_weekly_report_text(
+        self,
+        weekly_report_id: str,
+        *,
+        report_text: str,
+        transcription_text: str,
+        audio_file_path: str,
+        updated_at: str,
+    ) -> None:
+        """Update editable weekly report text fields without changing original submission time."""
+
     def append_weekly_report_step(self, row: SheetRow) -> None:
         """Append a final weekly report to planned-step relation row."""
 
@@ -108,6 +130,20 @@ class SheetsGateway(Protocol):
 
     def list_weekly_report_steps_all(self) -> list[SheetRow]:
         """Return all weekly report step relation rows for report aggregation."""
+
+    def find_weekly_focus(
+        self,
+        participant_id: str,
+        *,
+        week_number: int,
+    ) -> SheetRow | None:
+        """Find the participant's selected focus step for one week."""
+
+    def append_weekly_focus(self, row: SheetRow) -> None:
+        """Append a weekly focus business row."""
+
+    def list_weekly_focus_for_week(self, week_number: int) -> list[SheetRow]:
+        """Return weekly focus rows for reports."""
 
     def list_insights_for_week(self, week_number: int) -> list[SheetRow]:
         """Return final insight rows for one week."""
@@ -155,6 +191,20 @@ REQUIRED_SHEET_COLUMNS: dict[str, frozenset[str]] = {
     ),
     "WeeklyReportSteps": frozenset(
         {"id", "weekly_report_id", "participant_id", "step_id", "relation_type", "created_at"}
+    ),
+    "WeeklyFocus": frozenset(
+        {
+            "focus_id",
+            "participant_id",
+            "goal_id",
+            "step_id",
+            "week_number",
+            "week_start_date",
+            "week_end_date",
+            "focus_status",
+            "selected_at",
+            "updated_at",
+        }
     ),
     "Insights": frozenset(
         {
@@ -262,6 +312,54 @@ class GoogleSheetsGateway:
                 return row
         return None
 
+    def find_weekly_report_for_step(
+        self,
+        participant_id: str,
+        *,
+        step_id: str,
+    ) -> SheetRow | None:
+        report_ids = {
+            str(row.get("weekly_report_id"))
+            for row in self.list_weekly_report_steps()
+            if row.get("participant_id") == participant_id and row.get("step_id") == step_id
+        }
+        for row in self.list_weekly_reports():
+            if row.get("participant_id") == participant_id and str(row.get("weekly_report_id")) in report_ids:
+                return row
+        return None
+
+    def get_weekly_report(self, weekly_report_id: str) -> SheetRow | None:
+        for row in self.list_weekly_reports():
+            if row.get("weekly_report_id") == weekly_report_id:
+                return row
+        return None
+
+    def update_weekly_report_text(
+        self,
+        weekly_report_id: str,
+        *,
+        report_text: str,
+        transcription_text: str,
+        audio_file_path: str,
+        updated_at: str,
+    ) -> None:
+        headers, rows = self._table("WeeklyReports")
+        report_id_index = _header_index(headers, "weekly_report_id")
+        report_text_index = _header_index(headers, "report_text")
+        transcription_index = _header_index(headers, "transcription_text")
+        audio_index = _header_index(headers, "audio_file_path")
+        updated_at_index = _header_index(headers, "updated_at")
+        for offset, row in enumerate(rows, start=2):
+            padded = _pad_row(row, len(headers))
+            if padded[report_id_index] == weekly_report_id:
+                padded[report_text_index] = report_text
+                padded[transcription_index] = transcription_text
+                padded[audio_index] = audio_file_path
+                padded[updated_at_index] = updated_at
+                self._update_row("WeeklyReports", offset, padded)
+                return
+        raise KeyError(f"Weekly report not found: {weekly_report_id}")
+
     def append_weekly_report_step(self, row: SheetRow) -> None:
         self._append_row("WeeklyReportSteps", row)
 
@@ -340,6 +438,27 @@ class GoogleSheetsGateway:
 
     def list_weekly_report_steps_all(self) -> list[SheetRow]:
         return self.list_weekly_report_steps()
+
+    def find_weekly_focus(
+        self,
+        participant_id: str,
+        *,
+        week_number: int,
+    ) -> SheetRow | None:
+        for row in self._list_rows("WeeklyFocus"):
+            if row.get("participant_id") == participant_id and row.get("week_number") == week_number:
+                return row
+        return None
+
+    def append_weekly_focus(self, row: SheetRow) -> None:
+        self._append_row("WeeklyFocus", row)
+
+    def list_weekly_focus_for_week(self, week_number: int) -> list[SheetRow]:
+        return [
+            row
+            for row in self._list_rows("WeeklyFocus")
+            if row.get("week_number") == week_number
+        ]
 
     def list_insights_for_week(self, week_number: int) -> list[SheetRow]:
         return [
@@ -437,6 +556,7 @@ class FakeSheetsGateway:
         planned_steps: Iterable[SheetRow] = (),
         weekly_reports: Iterable[SheetRow] = (),
         weekly_report_steps: Iterable[SheetRow] = (),
+        weekly_focus: Iterable[SheetRow] = (),
         insights: Iterable[SheetRow] = (),
     ) -> None:
         self._participants = _copy_rows(participants)
@@ -446,6 +566,7 @@ class FakeSheetsGateway:
         self._planned_steps = _copy_rows(planned_steps)
         self._weekly_reports = _copy_rows(weekly_reports)
         self._weekly_report_steps = _copy_rows(weekly_report_steps)
+        self._weekly_focus = _copy_rows(weekly_focus)
         self._insights = _copy_rows(insights)
 
     def list_participants(self) -> list[SheetRow]:
@@ -521,6 +642,46 @@ class FakeSheetsGateway:
                 return dict(row)
         return None
 
+    def find_weekly_report_for_step(
+        self,
+        participant_id: str,
+        *,
+        step_id: str,
+    ) -> SheetRow | None:
+        report_ids = {
+            str(row.get("weekly_report_id"))
+            for row in self._weekly_report_steps
+            if row.get("participant_id") == participant_id and row.get("step_id") == step_id
+        }
+        for row in self._weekly_reports:
+            if row.get("participant_id") == participant_id and str(row.get("weekly_report_id")) in report_ids:
+                return dict(row)
+        return None
+
+    def get_weekly_report(self, weekly_report_id: str) -> SheetRow | None:
+        for row in self._weekly_reports:
+            if row.get("weekly_report_id") == weekly_report_id:
+                return dict(row)
+        return None
+
+    def update_weekly_report_text(
+        self,
+        weekly_report_id: str,
+        *,
+        report_text: str,
+        transcription_text: str,
+        audio_file_path: str,
+        updated_at: str,
+    ) -> None:
+        for row in self._weekly_reports:
+            if row.get("weekly_report_id") == weekly_report_id:
+                row["report_text"] = report_text
+                row["transcription_text"] = transcription_text
+                row["audio_file_path"] = audio_file_path
+                row["updated_at"] = updated_at
+                return
+        raise KeyError(f"Weekly report not found: {weekly_report_id}")
+
     def append_weekly_report_step(self, row: SheetRow) -> None:
         self._weekly_report_steps.append(dict(row))
 
@@ -592,6 +753,27 @@ class FakeSheetsGateway:
 
     def list_weekly_report_steps_all(self) -> list[SheetRow]:
         return [dict(row) for row in self._weekly_report_steps]
+
+    def find_weekly_focus(
+        self,
+        participant_id: str,
+        *,
+        week_number: int,
+    ) -> SheetRow | None:
+        for row in self._weekly_focus:
+            if row.get("participant_id") == participant_id and row.get("week_number") == week_number:
+                return dict(row)
+        return None
+
+    def append_weekly_focus(self, row: SheetRow) -> None:
+        self._weekly_focus.append(dict(row))
+
+    def list_weekly_focus_for_week(self, week_number: int) -> list[SheetRow]:
+        return [
+            dict(row)
+            for row in self._weekly_focus
+            if row.get("week_number") == week_number
+        ]
 
     def list_insights_for_week(self, week_number: int) -> list[SheetRow]:
         return [
