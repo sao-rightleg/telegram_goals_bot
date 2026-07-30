@@ -280,6 +280,8 @@ Columns:
 - `goal_id`
 - `week_number`
 - `insight_scope`
+- `insight_title`
+- `insight_date`
 - `insight_text`
 - `transcription_text`
 - `audio_file_path`

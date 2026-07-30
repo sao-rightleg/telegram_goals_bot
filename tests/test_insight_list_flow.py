@@ -70,7 +70,7 @@ def test_list_sends_read_full_buttons_for_visible_insights(tmp_path: Path) -> No
     ]
 
 
-def test_list_uses_text_fallback_when_insight_title_is_empty(tmp_path: Path) -> None:
+def test_list_uses_untitled_copy_when_insight_title_is_empty(tmp_path: Path) -> None:
     service, _gateway, main_bot, _error_bot = _build_service(
         tmp_path,
         participants=[_participant("P001", 1001)],
@@ -87,10 +87,25 @@ def test_list_uses_text_fallback_when_insight_title_is_empty(tmp_path: Path) -> 
 
     response = service.list_insights(USER, page_index=0, now=NOW)
 
-    assert "Инсайт: Не хватает планирования. Завтра начну с конкретного дела." in response.text
-    assert main_bot.sent_messages[-1].buttons[0].text == (
-        "читать целиком: Не хватает планирования. Завтра начну с конкретного дела."
+    assert "Инсайт без названия 01" in response.text
+    assert "Инсайт: Не хватает планирования" not in response.text
+    assert response.text.count("Не хватает планирования") == 1
+    assert main_bot.sent_messages[-1].buttons[0].text == "читать целиком: Инсайт без названия 01"
+
+
+def test_full_text_uses_same_untitled_number_as_list(tmp_path: Path) -> None:
+    service, _gateway, _main_bot, _error_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        insights=[
+            _insight("I001", "P001", "2026-07-01", title=""),
+            _insight("I002", "P001", "2026-07-02", title=""),
+        ],
     )
+
+    response = service.get_full_text(USER, insight_id="I001", now=NOW)
+
+    assert "Инсайт без названия 02" in response.text
 
 
 def test_pagination_over_16_insights_is_bounded(tmp_path: Path) -> None:

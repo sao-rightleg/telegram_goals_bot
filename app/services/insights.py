@@ -25,7 +25,7 @@ from app.bot.messages import (
     build_insight_text_buttons,
     format_full_insight_text,
     format_insight_page,
-    make_insight_title_fallback,
+    format_untitled_insight_title,
 )
 from app.scheduler.calendar import current_challenge_week_number
 from app.services.notifications import NotificationCategory, NotificationRouter
@@ -154,7 +154,7 @@ class InsightService:
             if recent is not None:
                 return self._send(user, text=INSIGHT_DUPLICATE_TEXT)
             raise KeyError(f"Active insight draft not found for telegram_id={user.telegram_id}")
-        return self._save(user, title=make_insight_title_fallback(draft.insight_text), now=now)
+        return self._save(user, title="", now=now)
 
     def cancel(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
         context = self._resolve_participant(user, now=now)
@@ -194,7 +194,10 @@ class InsightService:
         page_size = 10
         bounded_page = _bounded_page_index(page_index, total_count=len(rows), page_size=page_size)
         start = bounded_page * page_size
-        items = tuple(_insight_item_from_row(row) for row in rows[start : start + page_size])
+        items = tuple(
+            _insight_item_from_row(row, position=start + offset + 1)
+            for offset, row in enumerate(rows[start : start + page_size])
+        )
         page = InsightPage(
             items=items,
             page_index=bounded_page,
@@ -215,8 +218,23 @@ class InsightService:
             return participant
 
         participant_id = _string_value(participant.get("participant_id"))
-        row = self.sheets.get_participant_insight(participant_id, insight_id)
-        if row is None:
+        rows = sorted(
+            self.sheets.list_insights_for_participant(participant_id),
+            key=lambda item: (
+                str(item.get("insight_date") or ""),
+                str(item.get("created_at") or ""),
+            ),
+            reverse=True,
+        )
+        row_with_position = next(
+            (
+                (row, index)
+                for index, row in enumerate(rows, start=1)
+                if _string_value(row.get("insight_id")) == insight_id
+            ),
+            None,
+        )
+        if row_with_position is None:
             self.notification_router.send(
                 category=NotificationCategory.TECHNICAL_ERROR,
                 text=(
@@ -230,7 +248,8 @@ class InsightService:
             )
             return self._send(user, text=INSIGHT_MISSING_TEXT)
 
-        return self._send(user, text=format_full_insight_text(_insight_item_from_row(row)))
+        row, position = row_with_position
+        return self._send(user, text=format_full_insight_text(_insight_item_from_row(row, position=position)))
 
     def _save(self, user: TelegramUserContext, *, title: str, now: datetime) -> FlowResponse:
         context = self._resolve_context(user, now=now)
@@ -434,9 +453,9 @@ def _bounded_page_index(page_index: int, *, total_count: int, page_size: int) ->
     return max(0, min(page_index, last_page))
 
 
-def _insight_item_from_row(row: SheetRow) -> InsightListItem:
+def _insight_item_from_row(row: SheetRow, *, position: int = 1) -> InsightListItem:
     text = str(row.get("insight_text") or row.get("transcription_text") or "")
-    title = str(row.get("insight_title") or "").strip() or make_insight_title_fallback(text)
+    title = str(row.get("insight_title") or "").strip() or format_untitled_insight_title(position)
     return InsightListItem(
         insight_id=_string_value(row.get("insight_id")),
         insight_date=str(row.get("insight_date") or ""),

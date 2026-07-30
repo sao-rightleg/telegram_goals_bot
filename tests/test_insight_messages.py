@@ -100,7 +100,7 @@ def test_insight_page_formatting_includes_preview_without_fake_action() -> None:
 
     assert "Твои инсайты: 1-10 из 16" in text
     assert "23.06.2026" in text
-    assert "Инсайт: Нехватка планирования замедляет меня" in text
+    assert "Нехватка планирования замедляет меня" in text
     assert INSIGHT_READ_FULL_TEXT not in text
     assert text.endswith("...")
     assert page.has_older is True
@@ -128,6 +128,25 @@ def test_full_insight_text_format_includes_title_and_text() -> None:
 
     assert text == (
         "23.06.2026\n"
-        "Инсайт: Нехватка планирования замедляет меня\n\n"
+        "Нехватка планирования замедляет меня\n\n"
         "Полный текст инсайта\nсо второй строкой."
     )
+
+
+def test_insight_page_uses_untitled_copy_without_duplicating_preview() -> None:
+    preview = (
+        "Не хватает планирования. Я придумаю какую то движуху, думаю надо ее раскачать, "
+        "завтра продолжу, а потом снова забываю."
+    )
+    page = InsightPage(
+        items=(InsightListItem(insight_id="I001", insight_date="2026-06-23", title="", text_preview=preview),),
+        page_index=0,
+        page_size=10,
+        total_count=1,
+    )
+
+    text = format_insight_page(page)
+
+    assert "Инсайт без названия 01" in text
+    assert "Инсайт: Не хватает планирования" not in text
+    assert text.count("Не хватает планирования") == 1

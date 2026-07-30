@@ -157,7 +157,22 @@ REQUIRED_SHEET_COLUMNS: dict[str, frozenset[str]] = {
         {"id", "weekly_report_id", "participant_id", "step_id", "relation_type", "created_at"}
     ),
     "Insights": frozenset(
-        {"insight_id", "participant_id", "goal_id", "week_number", "insight_scope", "insight_text"}
+        {
+            "insight_id",
+            "participant_id",
+            "goal_id",
+            "week_number",
+            "insight_scope",
+            "insight_title",
+            "insight_date",
+            "insight_text",
+            "transcription_text",
+            "audio_file_path",
+            "audio_deleted_at",
+            "created_by_id",
+            "created_by_role",
+            "created_at",
+        }
     ),
 }
 

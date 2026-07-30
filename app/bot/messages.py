@@ -55,6 +55,7 @@ INSIGHT_LIST_BUTTON = "📜 Посмотреть инсайты"
 INSIGHT_CANCEL_BUTTON = "Отмена"
 INSIGHT_DONE_BUTTON = "✅ Готово"
 INSIGHT_READ_FULL_TEXT = "читать целиком"
+INSIGHT_UNTITLED_TEXT = "Инсайт без названия 01"
 
 INSIGHT_TITLE_PROMPT_TEXT = "Как кратко озаглавить твой инсайт?"
 INSIGHT_TITLE_TOO_LONG_TEXT = "Заголовок должен быть не длиннее 120 символов. Сократи его, пожалуйста."
@@ -169,6 +170,10 @@ def make_insight_title_fallback(text: str, *, limit: int = 100) -> str:
     return f"{trimmed}{suffix}"
 
 
+def format_untitled_insight_title(position: int) -> str:
+    return f"Инсайт без названия {max(1, position):02d}"
+
+
 def format_insight_page(page: InsightPage) -> str:
     if not page.items:
         return INSIGHT_EMPTY_LIST_TEXT
@@ -178,11 +183,12 @@ def format_insight_page(page: InsightPage) -> str:
     lines = [f"Твои инсайты: {start}-{end} из {page.total_count}"]
 
     for item in page.items:
+        title = item.title.strip() or INSIGHT_UNTITLED_TEXT
         lines.extend(
             (
                 "",
                 _format_insight_date(item.insight_date),
-                f"Инсайт: {item.title}",
+                title,
                 f"{_truncate_insight_preview(item.text_preview)}...",
             )
         )
@@ -192,10 +198,11 @@ def format_insight_page(page: InsightPage) -> str:
 
 def format_full_insight_text(item: InsightListItem) -> str:
     full_text = item.full_text if item.full_text is not None else item.text_preview
+    title = item.title.strip() or INSIGHT_UNTITLED_TEXT
     return "\n".join(
         (
             _format_insight_date(item.insight_date),
-            f"Инсайт: {item.title}",
+            title,
             "",
             full_text,
         )

@@ -209,7 +209,7 @@ def test_title_over_limit_is_rejected(tmp_path: Path) -> None:
     assert drafts.get_active_draft(1001) is not None
 
 
-def test_skip_title_uses_text_fallback(tmp_path: Path) -> None:
+def test_skip_title_saves_empty_title(tmp_path: Path) -> None:
     service, gateway, _main_bot, _error_bot, _notification_bot, _drafts = _build_insight_service(
         tmp_path,
         participants=[_participant("P001", 1001)],
@@ -225,8 +225,7 @@ def test_skip_title_uses_text_fallback(tmp_path: Path) -> None:
     response = service.skip_title_and_save(USER, now=LATER)
 
     assert response.text == INSIGHT_SUCCESS_TEXT
-    assert gateway.list_insights()[0]["insight_title"].startswith("Сегодня я понял")
-    assert gateway.list_insights()[0]["insight_title"].endswith("...")
+    assert gateway.list_insights()[0]["insight_title"] == ""
 
 
 def test_cancel_clears_draft_without_saving(tmp_path: Path) -> None:
