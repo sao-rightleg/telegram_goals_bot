@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from app.bot.clients import BotClient
+from app.bot.clients import BotClient, TelegramInlineButton
+from app.bot.menus import WEEKLY_REPORT_DONE_CALLBACK
 from app.bot.messages import (
     CONSENT_ACCEPT_BUTTON,
     CONSENT_TEXT,
@@ -100,7 +101,7 @@ class WeeklyReportService:
         self.drafts.preselect_steps(user.telegram_id, [step_id], occurred_at=_occurred_at(now))
         return self._send(
             user,
-            text=_format_start_text(open_steps),
+            text=_format_step_start_text(_step_by_id(open_steps, step_id)),
             buttons=build_weekly_report_status_buttons(),
         )
 
@@ -197,7 +198,11 @@ class WeeklyReportService:
             occurred_at=_occurred_at(now),
             telegram_message_id=telegram_message_id,
         )
-        return self._send(user, text="Текст добавлен. Можно отправить ещё или нажать «✅ Готово».")
+        return self._send(
+            user,
+            text="Текст добавлен. Можно отправить ещё или нажать «✅ Готово».",
+            buttons=_weekly_report_text_buttons(),
+        )
 
     def add_voice_message(
         self,
@@ -226,7 +231,7 @@ class WeeklyReportService:
                 now=now,
             )
         )
-        return self._send(user, text=result.text)
+        return self._send(user, text=result.text, buttons=_weekly_report_text_buttons())
 
     def reject_voice_message(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
         return self._send(user, text=WEEKLY_REPORT_VOICE_NOT_AVAILABLE_TEXT)
@@ -367,7 +372,7 @@ class WeeklyReportService:
         user: TelegramUserContext,
         *,
         text: str,
-        buttons: tuple[str, ...] = (),
+        buttons: tuple[object, ...] = (),
     ) -> FlowResponse:
         response = FlowResponse(chat_id=user.chat_id, text=text, buttons=buttons)
         self.main_bot.send_message(chat_id=user.chat_id, text=text, buttons=buttons)
@@ -407,6 +412,32 @@ def _format_start_text(open_steps: list[SheetRow]) -> str:
     )
     lines.append("Выбери статус недели.")
     return "\n".join(lines)
+
+
+def _weekly_report_text_buttons() -> tuple[TelegramInlineButton, ...]:
+    return (
+        TelegramInlineButton(
+            text="✅ Готово",
+            callback_data=WEEKLY_REPORT_DONE_CALLBACK,
+        ),
+    )
+
+
+def _format_step_start_text(step: SheetRow) -> str:
+    return "\n".join(
+        (
+            "Выбран шаг:",
+            f"{_int_value(step.get('step_number'))}. {str(step.get('step_title') or '')}",
+            "Выбери статус недели.",
+        )
+    )
+
+
+def _step_by_id(rows: list[SheetRow], step_id: str) -> SheetRow:
+    for row in rows:
+        if row.get("step_id") == step_id:
+            return row
+    raise ValueError("selected step is not available")
 
 
 def _valid_step_ids(rows: list[SheetRow], *, require_open: bool) -> set[str]:

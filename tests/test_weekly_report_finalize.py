@@ -1,6 +1,8 @@
 from dataclasses import replace
 from pathlib import Path
 
+from app.bot.clients import TelegramInlineButton
+from app.bot.menus import WEEKLY_REPORT_DONE_CALLBACK
 from app.bot.messages import VOICE_ACCEPTED_TEXT, WEEKLY_REPORT_EMPTY_TEXT, WEEKLY_REPORT_LATE_TEXT
 from app.services.voice_messages import StoredVoiceAttachment, VoiceMessageInput, VoiceMessageResult
 from app.services.weekly_report_models import WeeklyReportStatus
@@ -96,6 +98,21 @@ def test_red_report_saves_without_selected_steps_or_relations(tmp_path: Path) ->
         "open",
         "closed",
     ]
+
+
+def test_add_text_message_returns_done_button(tmp_path: Path) -> None:
+    service, _gateway, _drafts, main_bot, _error_bot = _service(tmp_path)
+    user = _user()
+    service.start_report(user, now=NOW)
+    service.select_status(user, WeeklyReportStatus.RED, now=NOW)
+
+    response = service.add_text_message(user, "Не успел", now=NOW)
+
+    assert response.text == "Текст добавлен. Можно отправить ещё или нажать «✅ Готово»."
+    assert response.buttons == (
+        TelegramInlineButton(text="✅ Готово", callback_data=WEEKLY_REPORT_DONE_CALLBACK),
+    )
+    assert main_bot.sent_messages[-1].buttons == response.buttons
 
 
 def test_finalize_without_text_does_not_create_weekly_report(tmp_path: Path) -> None:

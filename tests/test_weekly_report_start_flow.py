@@ -46,6 +46,9 @@ def test_start_report_for_step_preselects_open_step(tmp_path: Path) -> None:
     response = service.start_report_for_step(user, step_id="S001", now=NOW)
 
     draft = drafts.get_active_draft(1001)
+    assert "Выбран шаг:" in response.text
+    assert "1. Первый шаг" in response.text
+    assert "2. Второй шаг" not in response.text
     assert "Выбери статус недели." in response.text
     assert draft is not None
     assert draft.selected_step_ids == ("S001",)
