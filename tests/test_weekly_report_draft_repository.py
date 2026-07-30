@@ -42,6 +42,40 @@ def test_create_weekly_report_draft_writes_technical_state(tmp_path: Path) -> No
     assert draft.selected_participant_id is None
 
 
+def test_create_weekly_report_draft_replaces_stale_same_id_session(tmp_path: Path) -> None:
+    db_path = tmp_path / "state.sqlite3"
+    initialize_schema(db_path)
+    repository = WeeklyReportDraftRepository(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO draft_sessions (
+                draft_id, draft_type, participant_id, telegram_id, flow_source, status,
+                created_at, updated_at
+            )
+            VALUES ('draft-1', 'weekly_report', 'P001', 1001, 'participant_bot', 'active', ?, ?)
+            """,
+            (NOW, NOW),
+        )
+
+    repository.create_draft(
+        draft_id="draft-1",
+        telegram_id=1001,
+        participant_id="P001",
+        team_id="T001",
+        goal_id="G001",
+        week_number=2,
+        occurred_at=LATER,
+    )
+
+    draft = repository.get_active_draft(1001)
+
+    assert draft is not None
+    assert draft.draft_id == "draft-1"
+    assert draft.created_at == LATER
+
+
 def test_create_captain_manual_report_draft_writes_selected_participant_state(tmp_path: Path) -> None:
     db_path = tmp_path / "state.sqlite3"
     initialize_schema(db_path)

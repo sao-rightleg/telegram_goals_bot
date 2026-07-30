@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass, replace
+import logging
 import signal
 import sys
 from pathlib import Path
@@ -29,6 +30,9 @@ from app.storage.insight_drafts import InsightDraftRepository
 from app.storage.paths import StoragePathPolicy
 from app.storage.sqlite import REQUIRED_TECHNICAL_TABLES, initialize_schema, list_tables
 from app.storage.weekly_report_drafts import WeeklyReportDraftRepository
+
+
+logger = logging.getLogger("telegram_goals_bot")
 
 
 @dataclass(frozen=True)
@@ -435,11 +439,22 @@ def _notify_polling_error(
     parts = [event, f"error_type={type(error).__name__}"]
     if update_id is not None:
         parts.append(f"update_id={update_id}")
-    router.send(
-        category=NotificationCategory.TECHNICAL_ERROR,
-        text=" ".join(parts),
-        recipients=(),
-    )
+    try:
+        router.send(
+            category=NotificationCategory.TECHNICAL_ERROR,
+            text=" ".join(parts),
+            recipients=(),
+        )
+    except Exception as notify_error:
+        logger.exception(
+            "failed to notify polling error",
+            extra={
+                "event": event,
+                "error_type": type(error).__name__,
+                "notify_error_type": type(notify_error).__name__,
+                "update_id": update_id,
+            },
+        )
 
 
 def _install_shutdown_handlers(stop_event: Event) -> None:

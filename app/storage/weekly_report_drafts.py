@@ -61,6 +61,7 @@ class WeeklyReportDraftRepository:
     ) -> None:
         self.clear_draft(telegram_id)
         with self._connect() as connection:
+            connection.execute("DELETE FROM draft_sessions WHERE draft_id = ?", (draft_id,))
             connection.execute(
                 """
                 INSERT INTO draft_sessions (
@@ -166,6 +167,7 @@ class WeeklyReportDraftRepository:
     ) -> None:
         self.clear_draft(telegram_id)
         with self._connect() as connection:
+            connection.execute("DELETE FROM draft_sessions WHERE draft_id = ?", (draft_id,))
             connection.execute(
                 """
                 INSERT INTO draft_sessions (

@@ -413,6 +413,30 @@ def test_polling_runner_reports_dispatch_error_and_continues_without_raw_update(
     assert services.participant.starts
 
 
+def test_polling_runner_survives_error_bot_send_failure(tmp_path: Path) -> None:
+    components = _runtime_components(tmp_path)
+    dispatcher, services, _dispatcher_error_bot = _dispatcher(tmp_path)
+    error_bot = FailingSendBot(BotPurpose.ERROR)
+    components = components.with_replacements(
+        main_bot=PollingBot(
+            updates=[
+                _message_update(text="/boom", message_id=701, update_id=100),
+                _message_update(text="/start", message_id=702, update_id=101),
+            ]
+        ),
+        error_bot=error_bot,
+        notification_router=_router(error_bot=error_bot),
+        dispatcher=FailingOnceDispatcher(dispatcher),
+    )
+    runner = TelegramPollingRunner(poll_timeout_seconds=1, poll_limit=100, stop_event=StopAfterCalls(limit=2))
+
+    runner.run(components)
+
+    assert components.main_bot.offsets == [None, 101]
+    assert error_bot.send_attempts == 1
+    assert services.participant.starts
+
+
 def test_polling_runner_does_not_advance_offset_when_get_updates_fails(tmp_path: Path) -> None:
     components = _runtime_components(tmp_path)
     error_bot = FakeBotClient(BotPurpose.ERROR)
@@ -649,6 +673,16 @@ class FailingPollingBot(FakeBotClient):
     def get_updates(self, *, offset: int | None, timeout_seconds: int, limit: int) -> list[dict[str, object]]:
         self.offsets.append(offset)
         raise TelegramApiError("Telegram getUpdates request failed: poll-token-123")
+
+
+class FailingSendBot(FakeBotClient):
+    def __init__(self, purpose: BotPurpose) -> None:
+        super().__init__(purpose)
+        self.send_attempts = 0
+
+    def send_message(self, *args: object, **kwargs: object) -> None:
+        self.send_attempts += 1
+        raise TelegramApiError("Telegram sendMessage request failed: error-token-456")
 
 
 @dataclass
