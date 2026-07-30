@@ -84,7 +84,7 @@ def test_title_fallback_uses_first_100_characters_without_breaking_words() -> No
     assert title.endswith("...")
 
 
-def test_insight_page_formatting_includes_preview_without_fake_action() -> None:
+def test_insight_page_formatting_includes_expandable_full_text_without_fake_action() -> None:
     item = InsightListItem(
         insight_id="I001",
         insight_date="2026-06-23",
@@ -102,7 +102,8 @@ def test_insight_page_formatting_includes_preview_without_fake_action() -> None:
     assert "23.06.2026" in text
     assert "Нехватка планирования замедляет меня" in text
     assert INSIGHT_READ_FULL_TEXT not in text
-    assert text.endswith("...")
+    assert "<blockquote expandable>" in text
+    assert "снова погружаюсь в ежедневную рутину.</blockquote>" in text
     assert page.has_older is True
     assert page.has_newer is False
 
@@ -129,7 +130,7 @@ def test_full_insight_text_format_includes_title_and_text() -> None:
     assert text == (
         "23.06.2026\n"
         "Нехватка планирования замедляет меня\n\n"
-        "Полный текст инсайта\nсо второй строкой."
+        "<blockquote expandable>Полный текст инсайта\nсо второй строкой.</blockquote>"
     )
 
 
@@ -150,3 +151,19 @@ def test_insight_page_uses_untitled_copy_without_duplicating_preview() -> None:
     assert "Инсайт без названия 01" in text
     assert "Инсайт: Не хватает планирования" not in text
     assert text.count("Не хватает планирования") == 1
+    assert "<blockquote expandable>" in text
+
+
+def test_insight_expandable_blockquote_escapes_user_text() -> None:
+    item = InsightListItem(
+        insight_id="I001",
+        insight_date="2026-06-23",
+        title="План <важно>",
+        text_preview="5 < 7 & тег <b>не должен стать HTML</b>",
+        full_text="5 < 7 & тег <b>не должен стать HTML</b>",
+    )
+
+    text = format_full_insight_text(item)
+
+    assert "План &lt;важно&gt;" in text
+    assert "<blockquote expandable>5 &lt; 7 &amp; тег &lt;b&gt;не должен стать HTML&lt;/b&gt;</blockquote>" in text

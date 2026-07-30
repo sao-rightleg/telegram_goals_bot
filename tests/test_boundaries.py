@@ -185,6 +185,25 @@ def test_live_telegram_client_sends_inline_keyboard_markup() -> None:
     assert "%22text%22%3A%22%E2%9C%85+%D0%A1%D0%BE%D0%B3%D0%BB%D0%B0%D1%81%D0%B5%D0%BD%22" in body
 
 
+def test_live_telegram_client_sends_parse_mode() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 77}})
+
+    client = LiveTelegramBotClient(
+        purpose=BotPurpose.MAIN,
+        token="secret-token-123",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    message = client.send_message(chat_id="1001", text="<b>Привет</b>", parse_mode="HTML")
+
+    assert message.parse_mode == "HTML"
+    assert "parse_mode=HTML" in requests[0].read().decode("utf-8")
+
+
 def test_live_telegram_client_sets_bot_commands() -> None:
     requests: list[httpx.Request] = []
 

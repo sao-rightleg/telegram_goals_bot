@@ -87,10 +87,13 @@ def test_list_uses_untitled_copy_when_insight_title_is_empty(tmp_path: Path) -> 
 
     response = service.list_insights(USER, page_index=0, now=NOW)
 
+    assert response.parse_mode == "HTML"
     assert "Инсайт без названия 01" in response.text
     assert "Инсайт: Не хватает планирования" not in response.text
     assert response.text.count("Не хватает планирования") == 1
+    assert "<blockquote expandable>" in response.text
     assert main_bot.sent_messages[-1].buttons[0].text == "читать целиком: Инсайт без названия 01"
+    assert main_bot.sent_messages[-1].parse_mode == "HTML"
 
 
 def test_full_text_uses_same_untitled_number_as_list(tmp_path: Path) -> None:
@@ -105,7 +108,9 @@ def test_full_text_uses_same_untitled_number_as_list(tmp_path: Path) -> None:
 
     response = service.get_full_text(USER, insight_id="I001", now=NOW)
 
+    assert response.parse_mode == "HTML"
     assert "Инсайт без названия 02" in response.text
+    assert "<blockquote expandable>" in response.text
 
 
 def test_pagination_over_16_insights_is_bounded(tmp_path: Path) -> None:

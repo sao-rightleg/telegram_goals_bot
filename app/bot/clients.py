@@ -46,6 +46,7 @@ class OutgoingMessage:
     text: str
     buttons: tuple["TelegramInlineButton", ...] = ()
     menu_items: tuple[MenuItem, ...] = ()
+    parse_mode: str | None = None
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,7 @@ class BotClient(Protocol):
         text: str,
         buttons: tuple[str | TelegramInlineButton, ...] = (),
         menu_items: tuple[MenuItem, ...] = (),
+        parse_mode: str | None = None,
     ) -> OutgoingMessage:
         """Send a text message through a concrete bot client."""
 
@@ -122,12 +124,15 @@ class LiveTelegramBotClient:
         text: str,
         buttons: tuple[str | TelegramInlineButton, ...] = (),
         menu_items: tuple[MenuItem, ...] = (),
+        parse_mode: str | None = None,
     ) -> OutgoingMessage:
         inline_buttons = _normalize_inline_buttons(buttons=buttons, menu_items=menu_items)
         data = {
             "chat_id": chat_id,
             "text": text,
         }
+        if parse_mode is not None:
+            data["parse_mode"] = parse_mode
         if inline_buttons:
             data["reply_markup"] = _inline_keyboard_markup(inline_buttons)
         self._post_api(
@@ -139,6 +144,7 @@ class LiveTelegramBotClient:
             text=text,
             buttons=inline_buttons,
             menu_items=menu_items,
+            parse_mode=parse_mode,
         )
 
     def send_document(
@@ -277,12 +283,14 @@ class FakeBotClient:
         text: str,
         buttons: tuple[str | TelegramInlineButton, ...] = (),
         menu_items: tuple[MenuItem, ...] = (),
+        parse_mode: str | None = None,
     ) -> OutgoingMessage:
         message = OutgoingMessage(
             chat_id=chat_id,
             text=text,
             buttons=_normalize_inline_buttons(buttons=buttons, menu_items=menu_items),
             menu_items=menu_items,
+            parse_mode=parse_mode,
         )
         self.sent_messages.append(message)
         return message

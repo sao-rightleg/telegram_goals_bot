@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from html import escape
 
 from app.services.insight_models import InsightListItem, InsightPage
 from app.services.participant_models import Goal, PlannedStep, WeeklyStatus
@@ -56,6 +57,7 @@ INSIGHT_CANCEL_BUTTON = "Отмена"
 INSIGHT_DONE_BUTTON = "✅ Готово"
 INSIGHT_READ_FULL_TEXT = "читать целиком"
 INSIGHT_UNTITLED_TEXT = "Инсайт без названия 01"
+TELEGRAM_HTML_PARSE_MODE = "HTML"
 
 INSIGHT_TITLE_PROMPT_TEXT = "Как кратко озаглавить твой инсайт?"
 INSIGHT_TITLE_TOO_LONG_TEXT = "Заголовок должен быть не длиннее 120 символов. Сократи его, пожалуйста."
@@ -184,12 +186,13 @@ def format_insight_page(page: InsightPage) -> str:
 
     for item in page.items:
         title = item.title.strip() or INSIGHT_UNTITLED_TEXT
+        full_text = item.full_text if item.full_text is not None else item.text_preview
         lines.extend(
             (
                 "",
                 _format_insight_date(item.insight_date),
-                title,
-                f"{_truncate_insight_preview(item.text_preview)}...",
+                escape(title),
+                _format_expandable_blockquote(full_text),
             )
         )
 
@@ -202,9 +205,9 @@ def format_full_insight_text(item: InsightListItem) -> str:
     return "\n".join(
         (
             _format_insight_date(item.insight_date),
-            title,
+            escape(title),
             "",
-            full_text,
+            _format_expandable_blockquote(full_text),
         )
     )
 
@@ -304,6 +307,10 @@ def _truncate_insight_preview(text: str, *, limit: int = 100) -> str:
     if " " in trimmed:
         trimmed = trimmed.rsplit(" ", 1)[0]
     return trimmed
+
+
+def _format_expandable_blockquote(text: str) -> str:
+    return f"<blockquote expandable>{escape(text.strip())}</blockquote>"
 
 
 def _format_step_lines(steps: Sequence[PlannedStep]) -> list[str]:

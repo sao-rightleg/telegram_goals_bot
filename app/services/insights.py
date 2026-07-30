@@ -20,6 +20,7 @@ from app.bot.messages import (
     INSIGHT_TITLE_PROMPT_TEXT,
     INSIGHT_TITLE_TOO_LONG_TEXT,
     INSIGHT_VOICE_NOT_AVAILABLE_TEXT,
+    TELEGRAM_HTML_PARSE_MODE,
     UNKNOWN_USER_TEXT,
     build_insight_menu_buttons,
     build_insight_text_buttons,
@@ -204,7 +205,12 @@ class InsightService:
             page_size=page_size,
             total_count=len(rows),
         )
-        return self._send(user, text=format_insight_page(page), buttons=_read_full_buttons(items))
+        return self._send(
+            user,
+            text=format_insight_page(page),
+            buttons=_read_full_buttons(items),
+            parse_mode=TELEGRAM_HTML_PARSE_MODE,
+        )
 
     def get_full_text(
         self,
@@ -249,7 +255,11 @@ class InsightService:
             return self._send(user, text=INSIGHT_MISSING_TEXT)
 
         row, position = row_with_position
-        return self._send(user, text=format_full_insight_text(_insight_item_from_row(row, position=position)))
+        return self._send(
+            user,
+            text=format_full_insight_text(_insight_item_from_row(row, position=position)),
+            parse_mode=TELEGRAM_HTML_PARSE_MODE,
+        )
 
     def _save(self, user: TelegramUserContext, *, title: str, now: datetime) -> FlowResponse:
         context = self._resolve_context(user, now=now)
@@ -355,13 +365,21 @@ class InsightService:
         text: str,
         buttons: tuple[str, ...] = (),
         menu_items: tuple = (),
+        parse_mode: str | None = None,
     ) -> FlowResponse:
-        response = FlowResponse(chat_id=user.chat_id, text=text, buttons=buttons, menu_items=menu_items)
+        response = FlowResponse(
+            chat_id=user.chat_id,
+            text=text,
+            buttons=buttons,
+            menu_items=menu_items,
+            parse_mode=parse_mode,
+        )
         self.main_bot.send_message(
             chat_id=user.chat_id,
             text=text,
             buttons=buttons,
             menu_items=menu_items,
+            parse_mode=parse_mode,
         )
         return response
 
