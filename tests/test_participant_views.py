@@ -66,6 +66,39 @@ def test_steps_view_shows_current_participant_steps_only(tmp_path: Path) -> None
     assert gateway.list_planned_steps("P001", "G001") == before
 
 
+def test_steps_view_hides_report_buttons_after_current_week_report(tmp_path: Path) -> None:
+    service, _gateway, main_bot, _error_bot, _notification_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        goals=[_goal("G001", "P001", "Моя цель")],
+        planned_steps=[
+            _step("S004", "P001", "G001", 4, "Шаг 4", "open"),
+            _step("S005", "P001", "G001", 5, "Шаг 5", "open"),
+        ],
+        weekly_reports=[
+            {
+                "weekly_report_id": "WR:P001:week-04",
+                "participant_id": "P001",
+                "week_number": 4,
+                "status_symbol": "🟩",
+                "status_code": "green",
+            }
+        ],
+    )
+
+    response = service.handle_menu_action(
+        TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+        MenuAction.VIEW_STEPS,
+        occurred_at=NOW,
+    )
+
+    assert "Шаг 4" in response.text
+    assert "Шаг 5" in response.text
+    assert "Отчёт за эту неделю уже принят." in response.text
+    assert response.buttons == ()
+    assert main_bot.sent_messages[-1].buttons == ()
+
+
 def test_progress_view_uses_planned_steps_as_primary_progress(tmp_path: Path) -> None:
     service, _gateway, _main_bot, _error_bot, _notification_bot = _build_service(
         tmp_path,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from app.bot.clients import BotClient, TelegramInlineButton
 from app.bot.menus import MenuAction, WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX, build_role_menu
@@ -17,6 +18,7 @@ from app.bot.messages import (
     format_planned_steps_view,
     format_progress_view,
 )
+from app.scheduler.calendar import current_challenge_week_number
 from app.services.notifications import NotificationCategory, NotificationRouter
 from app.services.participant_models import (
     FlowResponse,
@@ -176,11 +178,25 @@ class ParticipantFlowService:
             )
 
         if normalized_action is MenuAction.VIEW_STEPS:
-            buttons = _weekly_report_buttons_for_open_steps(steps)
+            text = format_planned_steps_view(steps)
+            buttons = ()
+            if self.sheets.find_weekly_report(
+                participant_id,
+                week_number=current_challenge_week_number(datetime.fromisoformat(occurred_at)),
+            ) is None:
+                buttons = _weekly_report_buttons_for_open_steps(steps)
+            else:
+                text = "\n".join(
+                    (
+                        text,
+                        "",
+                        "Отчёт за эту неделю уже принят. Следующий отчёт можно будет отправить на новой неделе.",
+                    )
+                )
             return self._send_simple_response(
                 user,
                 participant=participant,
-                text=format_planned_steps_view(steps),
+                text=text,
                 flow="view_steps",
                 step="render",
                 occurred_at=occurred_at,
