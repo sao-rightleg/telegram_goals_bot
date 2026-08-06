@@ -141,10 +141,11 @@ Example:
 ⬜ Шаг 5. Подписать договор
 ```
 
-Step description is shown under the title as a Telegram expandable quote with a 15-character visible preview.
+Step description is shown under the title with the first 15 characters visible and the remaining text hidden in a Telegram spoiler.
 
 Buttons:
-- `Шаг {number}. {step_title}` for each step; open steps start a report, closed steps edit the existing report
+- `Шаг {number}. {step_title} - Отчитаться` for open steps
+- `Шаг {number}. {step_title} - Редактировать отчёт` for closed steps
 
 ## Weekly Focus Flow
 
@@ -188,7 +189,7 @@ Bot shows:
 ### Start
 
 Flow can start from:
-- `Шаг {number}. {step_title}` button on an open planned step
+- `Шаг {number}. {step_title} - Отчитаться` button on an open planned step
 - Sunday 18:00 check-in
 - reminder button if implemented
 
@@ -220,7 +221,7 @@ Confirmation:
 ### Edit Step Report
 
 Trigger:
-- `Шаг {number}. {step_title}` button on a closed step
+- `Шаг {number}. {step_title} - Редактировать отчёт` button on a closed step
 
 Bot asks:
 

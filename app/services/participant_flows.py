@@ -17,6 +17,8 @@ from app.bot.messages import (
     CONSENT_ACCEPT_BUTTON,
     CONSENT_TEXT,
     TELEGRAM_HTML_PARSE_MODE,
+    WEEKLY_REPORT_EDIT_STEP_BUTTON,
+    WEEKLY_REPORT_START_STEP_BUTTON,
     build_insight_menu_buttons,
     MISSING_DATA_TEXT,
     NOT_AVAILABLE_TEXT,
@@ -566,7 +568,7 @@ def _weekly_status_from_row(row: SheetRow) -> WeeklyStatus:
 def _step_action_buttons(steps: list[PlannedStep]) -> tuple[TelegramInlineButton, ...]:
     return tuple(
         TelegramInlineButton(
-            text=_step_button_text(step),
+            text=_step_action_button_text(step),
             callback_data=f"{_step_action_callback_prefix(step)}{step.step_id}",
         )
         for step in sorted(steps, key=lambda item: item.step_number)
@@ -585,6 +587,11 @@ def _weekly_focus_buttons(steps: list[PlannedStep]) -> tuple[TelegramInlineButto
 
 def _step_button_text(step: PlannedStep) -> str:
     return f"Шаг {step.step_number}. {_short_step_title(step.step_title)}"
+
+
+def _step_action_button_text(step: PlannedStep) -> str:
+    action = WEEKLY_REPORT_EDIT_STEP_BUTTON if step.step_status == "closed" else WEEKLY_REPORT_START_STEP_BUTTON
+    return f"{_step_button_text(step)} - {action}"
 
 
 def _step_action_callback_prefix(step: PlannedStep) -> str:

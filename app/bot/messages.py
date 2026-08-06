@@ -324,8 +324,9 @@ def _format_step_lines(steps: Sequence[PlannedStep], *, focus_step_id: str | Non
 
 
 def _format_step_description(text: str) -> str:
-    preview = _truncate_insight_preview(text, limit=15)
     normalized = " ".join(text.split())
-    if preview == normalized:
-        return _format_expandable_blockquote(text)
-    return _format_expandable_blockquote(f"{preview}\n{text}")
+    visible = normalized[:15]
+    hidden = normalized[15:]
+    if not hidden:
+        return escape(visible)
+    return f"{escape(visible)}<tg-spoiler>{escape(hidden)}</tg-spoiler>"

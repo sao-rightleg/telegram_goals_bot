@@ -68,12 +68,12 @@ def test_steps_view_shows_current_participant_steps_only(tmp_path: Path) -> None
     assert "Чужой шаг" not in response.text
     assert "⬜ Шаг 1. Мой открытый шаг" in response.text
     assert "🟩 Шаг 2. Мой закрытый шаг" in response.text
-    assert "<blockquote expandable>" in response.text
-    assert "Подробное\nПодробное описание открытого шага" in response.text
+    assert "Подробное описа<tg-spoiler>ние открытого шага</tg-spoiler>" in response.text
+    assert "<blockquote expandable>" not in response.text
     assert response.parse_mode == TELEGRAM_HTML_PARSE_MODE
     assert [button.text for button in response.buttons] == [
-        "Шаг 1. Мой открытый шаг",
-        "Шаг 2. Мой закрытый шаг",
+        "Шаг 1. Мой открытый шаг - Отчитаться",
+        "Шаг 2. Мой закрытый шаг - Редактировать отчёт",
     ]
     assert [button.callback_data for button in response.buttons] == [
         f"{WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX}S001",
@@ -202,8 +202,8 @@ def test_steps_view_keeps_open_step_report_buttons_after_current_week_report(tmp
     assert "Шаг 5" in response.text
     assert "Отчёт за эту неделю уже принят." not in response.text
     assert [button.text for button in response.buttons] == [
-        "Шаг 4. Шаг 4",
-        "Шаг 5. Шаг 5",
+        "Шаг 4. Шаг 4 - Отчитаться",
+        "Шаг 5. Шаг 5 - Отчитаться",
     ]
     assert main_bot.sent_messages[-1].buttons == response.buttons
 
