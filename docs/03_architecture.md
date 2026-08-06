@@ -136,6 +136,8 @@ Responsibilities:
 
 All schedule logic uses Yekaterinburg time.
 Timezone identifier: `Asia/Yekaterinburg`.
+The live runtime starts an in-process scheduler runner together with Telegram polling.
+No separate systemd timer, cron job, Redis, or Celery worker is required for the MVP.
 
 Challenge calendar:
 - all teams share one calendar
@@ -321,6 +323,7 @@ Production MVP runs as a `systemd` service on VPS.
 
 Runtime rules:
 - bot runs 24/7
+- the same process runs Telegram polling and the in-process scheduler runner
 - manual Python command is allowed for tests
 - `systemd` starts the bot after VPS reboot
 - `systemd` restarts the bot after process crash

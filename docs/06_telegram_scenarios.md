@@ -390,13 +390,13 @@ Saved data:
 
 ### Monday 10:00
 
+If the participant has open planned steps and no focus for the current week, bot sends the weekly focus prompt with step selection buttons.
+Otherwise bot sends:
+
 ```text
 Новая неделя началась.
 
-У тебя остались незакрытые шаги:
-{steps}
-
-На этой неделе важно закрыть хотя бы один шаг.
+Проверь свои шаги и запланируй победу недели.
 ```
 
 ### Wednesday 10:00

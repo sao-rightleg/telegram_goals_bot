@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass, replace
+from datetime import datetime, timedelta
 import logging
 import signal
 import sys
 from pathlib import Path
-from threading import Event
+from threading import Event, Thread
 from typing import Callable, Protocol, Sequence
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -17,6 +19,8 @@ from app.bot.clients import BotCommand, BotPurpose, LiveTelegramBotClient, LiveT
 from app.logging import setup_logging
 from app.bot.dispatch import TelegramUpdate, TelegramUpdateDispatcher, parse_telegram_update
 from app.config import ConfigurationError, Settings, load_settings
+from app.scheduler.calendar import TIMEZONE_NAME, ScheduleItem, reminder_schedule
+from app.scheduler.jobs import SchedulerService
 from app.services.captains import CaptainService
 from app.services.insights import InsightService
 from app.services.notifications import NotificationCategory, NotificationRouter, Recipient, RecipientType
@@ -28,6 +32,7 @@ from app.speech.transcription import FakeSpeechTranscriber, YandexSpeechKitTrans
 from app.storage.dialog_state import DialogStateRepository
 from app.storage.insight_drafts import InsightDraftRepository
 from app.storage.paths import StoragePathPolicy
+from app.storage.scheduler import SchedulerJobRepository
 from app.storage.sqlite import REQUIRED_TECHNICAL_TABLES, initialize_schema, list_tables
 from app.storage.weekly_report_drafts import WeeklyReportDraftRepository
 
@@ -55,6 +60,7 @@ class RuntimeComponents:
     captain_service: CaptainService
     sheets_gateway: GoogleSheetsGateway
     voice_service: VoiceMessageService
+    scheduler_service: SchedulerService
 
     def with_replacements(self, **changes: object) -> "RuntimeComponents":
         return replace(self, **changes)
@@ -63,6 +69,14 @@ class RuntimeComponents:
 class PollingRunner(Protocol):
     def run(self, components: RuntimeComponents) -> None:
         """Run Telegram polling until stopped."""
+
+
+class SchedulerRunner(Protocol):
+    def start(self, components: RuntimeComponents) -> None:
+        """Start scheduled background jobs."""
+
+    def stop(self) -> None:
+        """Stop scheduled background jobs."""
 
 
 GoogleServiceFactory = Callable[[Settings], object]
@@ -176,6 +190,7 @@ def compose_runtime(
     dialog_states = DialogStateRepository(db_path)
     weekly_drafts = WeeklyReportDraftRepository(db_path)
     insight_drafts = InsightDraftRepository(db_path)
+    scheduler_jobs = SchedulerJobRepository(db_path)
     sheets_gateway = GoogleSheetsGateway(
         service=selected_google_service_factory(settings),
         spreadsheet_id=settings.google_sheets.sheet_id,
@@ -222,6 +237,11 @@ def compose_runtime(
         notification_router=notification_router,
         drafts=weekly_drafts,
     )
+    scheduler_service = SchedulerService(
+        sheets=sheets_gateway,
+        notification_router=notification_router,
+        repository=scheduler_jobs,
+    )
     dispatcher = TelegramUpdateDispatcher(
         participant_service=participant_service,
         weekly_report_service=weekly_report_service,
@@ -242,6 +262,7 @@ def compose_runtime(
         captain_service=captain_service,
         sheets_gateway=sheets_gateway,
         voice_service=voice_service,
+        scheduler_service=scheduler_service,
     )
 
 
@@ -283,11 +304,107 @@ class TelegramPollingRunner:
                     offset = update_id + 1
 
 
+@dataclass
+class LiveSchedulerRunner:
+    stop_event: Event
+    check_interval_seconds: float = 30.0
+    catch_up_window: timedelta = timedelta(minutes=15)
+    now_provider: Callable[[], datetime] | None = None
+
+    def __post_init__(self) -> None:
+        self._thread: Thread | None = None
+        self._dispatched_keys: set[str] = set()
+
+    def start(self, components: RuntimeComponents) -> None:
+        if self._thread is not None:
+            return
+        self._thread = Thread(
+            target=self._run_loop,
+            args=(components,),
+            name="telegram-goals-bot-scheduler",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def stop(self) -> None:
+        self.stop_event.set()
+        if self._thread is not None:
+            self._thread.join(timeout=max(1.0, self.check_interval_seconds + 1.0))
+
+    def run_due_jobs_once(self, components: RuntimeComponents, *, now: datetime | None = None) -> None:
+        current = now or self._now()
+        local_current = current.astimezone(ZoneInfo(TIMEZONE_NAME))
+        for item in reminder_schedule():
+            scheduled_at = _last_scheduled_at(item, local_current)
+            if scheduled_at is None:
+                continue
+            if local_current - scheduled_at > self.catch_up_window:
+                continue
+
+            dispatch_key = f"{item.job_type}:{scheduled_at.isoformat()}"
+            if dispatch_key in self._dispatched_keys:
+                continue
+
+            self._dispatched_keys.add(dispatch_key)
+            self._run_scheduler_job(components, item.job_type, scheduled_at=scheduled_at)
+
+    def _run_loop(self, components: RuntimeComponents) -> None:
+        logger.info("scheduler runner started")
+        while not self.stop_event.is_set():
+            try:
+                self.run_due_jobs_once(components)
+            except Exception as exc:
+                logger.exception("scheduler runner tick failed")
+                _notify_scheduler_runner_error(components.notification_router, exc)
+            self.stop_event.wait(self.check_interval_seconds)
+        logger.info("scheduler runner stopped")
+
+    def _run_scheduler_job(
+        self,
+        components: RuntimeComponents,
+        job_type: str,
+        *,
+        scheduled_at: datetime,
+    ) -> None:
+        if job_type == "week_close":
+            result = components.scheduler_service.close_week(now=scheduled_at)
+            logger.info(
+                "scheduler week close completed",
+                extra={
+                    "job_type": job_type,
+                    "scheduled_at": scheduled_at.isoformat(),
+                    "gray_created_count": result.gray_created_count,
+                    "existing_count": result.existing_count,
+                    "failed_count": result.failed_count,
+                    "notified_team_count": result.notified_team_count,
+                },
+            )
+            return
+
+        result = components.scheduler_service.run_reminder(job_type, now=scheduled_at)
+        logger.info(
+            "scheduler reminder completed",
+            extra={
+                "job_type": job_type,
+                "scheduled_at": scheduled_at.isoformat(),
+                "sent_count": result.sent_count,
+                "skipped_count": result.skipped_count,
+                "failed_count": result.failed_count,
+            },
+        )
+
+    def _now(self) -> datetime:
+        if self.now_provider is not None:
+            return self.now_provider()
+        return datetime.now(ZoneInfo(TIMEZONE_NAME))
+
+
 def run_bot(
     settings: Settings,
     *,
     components_factory: RuntimeComponentsFactory | None = None,
     polling_runner: PollingRunner | None = None,
+    scheduler_runner: SchedulerRunner | None = None,
     google_service_factory: GoogleServiceFactory | None = None,
 ) -> None:
     """Run the live Telegram polling runtime."""
@@ -309,6 +426,7 @@ def run_bot(
 
     components = components_factory(settings)
     register_main_bot_commands(components)
+    scheduler_started = False
     if polling_runner is None:
         stop_event = Event()
         _install_shutdown_handlers(stop_event)
@@ -317,7 +435,17 @@ def run_bot(
             poll_limit=settings.telegram_runtime.poll_limit,
             stop_event=stop_event,
         )
-    polling_runner.run(components)
+        if scheduler_runner is None:
+            scheduler_runner = LiveSchedulerRunner(stop_event=stop_event)
+
+    try:
+        if scheduler_runner is not None:
+            scheduler_runner.start(components)
+            scheduler_started = True
+        polling_runner.run(components)
+    finally:
+        if scheduler_started:
+            scheduler_runner.stop()
 
 
 def register_main_bot_commands(components: RuntimeComponents) -> None:
@@ -327,6 +455,41 @@ def register_main_bot_commands(components: RuntimeComponents) -> None:
             BotCommand("menu", "Показать меню"),
         )
     )
+
+
+def _last_scheduled_at(item: ScheduleItem, local_now: datetime) -> datetime | None:
+    if local_now.tzinfo is None:
+        local_now = local_now.replace(tzinfo=ZoneInfo(TIMEZONE_NAME))
+    else:
+        local_now = local_now.astimezone(ZoneInfo(TIMEZONE_NAME))
+
+    days_since_run_day = (local_now.weekday() - item.weekday) % 7
+    scheduled_date = local_now.date() - timedelta(days=days_since_run_day)
+    scheduled_at = datetime.combine(
+        scheduled_date,
+        item.run_at,
+        tzinfo=ZoneInfo(TIMEZONE_NAME),
+    )
+    if scheduled_at > local_now:
+        return None
+    return scheduled_at
+
+
+def _notify_scheduler_runner_error(router: NotificationRouter, error: Exception) -> None:
+    try:
+        router.send(
+            category=NotificationCategory.TECHNICAL_ERROR,
+            text=f"scheduler_runner_tick_failed error_type={type(error).__name__}",
+            recipients=(),
+        )
+    except Exception as notify_error:
+        logger.exception(
+            "failed to notify scheduler runner error",
+            extra={
+                "error_type": type(error).__name__,
+                "notify_error_type": type(notify_error).__name__,
+            },
+        )
 
 
 def main(

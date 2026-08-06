@@ -2,6 +2,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime
 import stat
+from threading import Event
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -18,6 +19,7 @@ from app.bot.menus import (
 )
 from app.runtime import (
     RuntimeComponents,
+    LiveSchedulerRunner,
     TelegramUpdateDispatcher,
     compose_runtime,
     initialize_runtime,
@@ -28,6 +30,7 @@ from app.runtime import (
 )
 from app.sheets.gateway import GoogleSheetsSchemaError
 from app.scheduler.calendar import TIMEZONE_NAME
+from app.scheduler.jobs import ReminderJobResult, WeekCloseResult
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.services.participant_models import FlowResponse, TelegramUserContext
 from app.services.voice_messages import VoiceMessageInput
@@ -119,6 +122,23 @@ def test_run_bot_registers_main_bot_commands_before_polling(tmp_path: Path) -> N
     ]
 
 
+def test_run_bot_starts_and_stops_supplied_scheduler_runner(tmp_path: Path) -> None:
+    settings = load_settings(environ=runtime_env(tmp_path))
+    polling_runner = RecordingPollingRunner()
+    scheduler_runner = RecordingSchedulerRunner()
+
+    run_bot(
+        settings,
+        components_factory=lambda _settings: _runtime_components(tmp_path),
+        polling_runner=polling_runner,
+        scheduler_runner=scheduler_runner,
+    )
+
+    assert scheduler_runner.started is True
+    assert scheduler_runner.stopped is True
+    assert scheduler_runner.components is polling_runner.components
+
+
 def test_run_bot_no_longer_raises_not_implemented_with_fake_runtime(tmp_path: Path) -> None:
     settings = load_settings(environ=runtime_env(tmp_path))
     runner = RecordingPollingRunner()
@@ -130,6 +150,35 @@ def test_run_bot_no_longer_raises_not_implemented_with_fake_runtime(tmp_path: Pa
     )
 
     assert runner.started is True
+
+
+def test_live_scheduler_runner_dispatches_due_reminder_once_inside_catchup_window(tmp_path: Path) -> None:
+    scheduler_service = RecordingSchedulerService()
+    components = _runtime_components(tmp_path).with_replacements(scheduler_service=scheduler_service)
+    runner = LiveSchedulerRunner(stop_event=Event())
+    now = datetime(2026, 6, 8, 10, 5, tzinfo=ZoneInfo(TIMEZONE_NAME))
+
+    runner.run_due_jobs_once(components, now=now)
+    runner.run_due_jobs_once(components, now=now)
+
+    assert scheduler_service.reminders == [
+        ("monday_reminder", datetime(2026, 6, 8, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME)))
+    ]
+    assert scheduler_service.week_closes == []
+
+
+def test_live_scheduler_runner_catches_week_close_after_midnight(tmp_path: Path) -> None:
+    scheduler_service = RecordingSchedulerService()
+    components = _runtime_components(tmp_path).with_replacements(scheduler_service=scheduler_service)
+    runner = LiveSchedulerRunner(stop_event=Event())
+    now = datetime(2026, 6, 15, 0, 5, tzinfo=ZoneInfo(TIMEZONE_NAME))
+
+    runner.run_due_jobs_once(components, now=now)
+
+    assert scheduler_service.week_closes == [
+        datetime(2026, 6, 14, 23, 59, tzinfo=ZoneInfo(TIMEZONE_NAME))
+    ]
+    assert scheduler_service.reminders == []
 
 
 def test_check_config_runs_google_schema_validation(tmp_path: Path) -> None:
@@ -705,6 +754,34 @@ class RecordingPollingRunner:
     def run(self, components: RuntimeComponents) -> None:
         self.started = True
         self.components = components
+
+
+class RecordingSchedulerRunner:
+    def __init__(self) -> None:
+        self.started = False
+        self.stopped = False
+        self.components: RuntimeComponents | None = None
+
+    def start(self, components: RuntimeComponents) -> None:
+        self.started = True
+        self.components = components
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
+class RecordingSchedulerService:
+    def __init__(self) -> None:
+        self.reminders: list[tuple[str, datetime]] = []
+        self.week_closes: list[datetime] = []
+
+    def run_reminder(self, reminder_type: str, *, now: datetime) -> ReminderJobResult:
+        self.reminders.append((reminder_type, now))
+        return ReminderJobResult(sent_count=1)
+
+    def close_week(self, *, now: datetime) -> WeekCloseResult:
+        self.week_closes.append(now)
+        return WeekCloseResult(gray_created_count=1)
 
 
 def _runtime_components(tmp_path: Path) -> RuntimeComponents:

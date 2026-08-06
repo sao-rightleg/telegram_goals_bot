@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app.bot.clients import BotPurpose, FakeBotClient, OutgoingMessage
+from app.bot.menus import WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX
 from app.scheduler.calendar import TIMEZONE_NAME
 from app.scheduler.jobs import SchedulerService
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
@@ -19,6 +20,7 @@ from app.storage.weekly_report_drafts import WeeklyReportDraftRepository
 
 
 NOW = datetime(2026, 7, 2, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME))
+MONDAY_START = datetime(2026, 6, 8, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME))
 
 
 def test_reminder_sends_only_to_active_consenting_participants_without_report(tmp_path: Path) -> None:
@@ -37,6 +39,58 @@ def test_reminder_sends_only_to_active_consenting_participants_without_report(tm
     assert result.failed_count == 0
     assert [message.chat_id for message in main_bot.sent_messages] == ["1001", "1002"]
     assert all("Короткий чек-ап" in message.text for message in main_bot.sent_messages)
+
+
+def test_monday_reminder_prompts_weekly_focus_when_open_steps_exist(tmp_path: Path) -> None:
+    service, _gateway, main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[_participant("P001", 1001, consent=True)],
+        goals=[_goal("G001", "P001")],
+        planned_steps=[
+            _step("S002", "P001", "G001", 2, "Второй шаг", "open"),
+            _step("S001", "P001", "G001", 1, "Первый шаг", "open"),
+            _step("S003", "P001", "G001", 3, "Закрытый шаг", "closed"),
+        ],
+    )
+
+    result = service.run_reminder("monday_reminder", now=MONDAY_START)
+
+    assert result.sent_count == 1
+    assert "Выбери обязательный фокус недели." in main_bot.sent_messages[0].text
+    assert [button.text for button in main_bot.sent_messages[0].buttons] == [
+        "Шаг 1. Первый шаг",
+        "Шаг 2. Второй шаг",
+    ]
+    assert [button.callback_data for button in main_bot.sent_messages[0].buttons] == [
+        f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}S001",
+        f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}S002",
+    ]
+
+
+def test_monday_reminder_falls_back_to_plain_text_when_focus_already_selected(
+    tmp_path: Path,
+) -> None:
+    service, _gateway, main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[_participant("P001", 1001, consent=True)],
+        goals=[_goal("G001", "P001")],
+        planned_steps=[_step("S001", "P001", "G001", 1, "Первый шаг", "open")],
+        weekly_focus=[
+            {
+                "focus_id": "WF:P001:week-01",
+                "participant_id": "P001",
+                "goal_id": "G001",
+                "step_id": "S001",
+                "week_number": 1,
+                "focus_status": "active",
+            }
+        ],
+    )
+
+    service.run_reminder("monday_reminder", now=MONDAY_START)
+
+    assert "Новая неделя началась." in main_bot.sent_messages[0].text
+    assert main_bot.sent_messages[0].buttons == ()
 
 
 def test_reminder_skips_dropped_non_consenting_and_already_reported_participants(tmp_path: Path) -> None:
@@ -438,6 +492,8 @@ def _service(
     participants: list[dict[str, object]],
     weekly_reports: list[dict[str, object]] | None = None,
     goals: list[dict[str, object]] | None = None,
+    planned_steps: list[dict[str, object]] | None = None,
+    weekly_focus: list[dict[str, object]] | None = None,
     failing_chat_ids: set[str] | None = None,
     failure_message: str | None = None,
     gateway: FakeSheetsGateway | None = None,
@@ -448,6 +504,8 @@ def _service(
         participants=participants,
         weekly_reports=weekly_reports or [],
         goals=goals or [],
+        planned_steps=planned_steps or [],
+        weekly_focus=weekly_focus or [],
     )
     main_bot = FailingBotClient(
         BotPurpose.MAIN,
@@ -495,6 +553,38 @@ def _participant(
     }
 
 
+def _goal(goal_id: str, participant_id: str) -> dict[str, object]:
+    return {
+        "goal_id": goal_id,
+        "participant_id": participant_id,
+        "goal_title": "Цель",
+        "goal_description": "Описание цели",
+        "goal_value_amount": "100000",
+        "goal_value_currency": "RUB",
+        "permission_condition": "Оплата получена",
+        "goal_status": "active",
+    }
+
+
+def _step(
+    step_id: str,
+    participant_id: str,
+    goal_id: str,
+    number: int,
+    title: str,
+    status: str,
+) -> dict[str, object]:
+    return {
+        "step_id": step_id,
+        "participant_id": participant_id,
+        "goal_id": goal_id,
+        "step_number": number,
+        "step_title": title,
+        "step_description": "",
+        "step_status": status,
+    }
+
+
 def _service_with_notification_bot(
     tmp_path: Path,
     *,
@@ -518,11 +608,17 @@ class FailingBotClient:
     sent_messages: list[OutgoingMessage] = field(default_factory=list)
     attempts_by_chat_id: dict[str, int] = field(default_factory=dict)
 
-    def send_message(self, *, chat_id: str, text: str) -> OutgoingMessage:
+    def send_message(
+        self,
+        *,
+        chat_id: str,
+        text: str,
+        buttons: tuple[object, ...] = (),
+    ) -> OutgoingMessage:
         self.attempts_by_chat_id[chat_id] = self.attempts_by_chat_id.get(chat_id, 0) + 1
         if chat_id in self.failing_chat_ids:
             raise RuntimeError(self.failure_message or f"send failed for {chat_id}")
-        message = OutgoingMessage(chat_id=chat_id, text=text)
+        message = OutgoingMessage(chat_id=chat_id, text=text, buttons=buttons)
         self.sent_messages.append(message)
         return message
 

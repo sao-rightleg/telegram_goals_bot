@@ -118,6 +118,7 @@ Before first production deploy:
 - Use `WorkingDirectory=/opt/telegram_goals_bot/current`.
 - Use the release-local virtual environment.
 - Ensure service user can read config and write SQLite/audio/PDF/log paths.
+- The same service process runs Telegram polling and scheduled reminders; no separate scheduler timer is installed.
 - Ensure GitHub deploy user can restart the service through a narrow sudo rule.
 - Run `telegram-goals-bot --env-file /opt/telegram_goals_bot/shared/.env check-config`.
 
@@ -133,6 +134,7 @@ Before first test-live deploy:
 - Install `deploy/systemd/telegram-goals-bot-test.service`.
 - Configure protected test env file at `/opt/telegram_goals_bot_test/shared/.env`.
 - Use separate test Telegram bot tokens, test Google Sheet, and test Yandex credentials.
+- The same test service process runs Telegram polling and scheduled reminders.
 - Ensure GitHub deploy user can restart only `telegram-goals-bot-test.service` through a narrow sudo rule.
 - Run `telegram-goals-bot --env-file /opt/telegram_goals_bot_test/shared/.env check-config`.
 

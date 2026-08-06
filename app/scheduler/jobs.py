@@ -5,8 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from app.bot.clients import TelegramInlineButton
+from app.bot.menus import WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX
 from app.bot.messages import format_scheduler_reminder_text, format_silent_participants_notification
-from app.scheduler.calendar import build_idempotency_key, current_challenge_week_number
+from app.scheduler.calendar import (
+    build_idempotency_key,
+    challenge_week_date_range,
+    current_challenge_week_number,
+)
 from app.services.notifications import NotificationCategory, NotificationRouter, Recipient, RecipientType
 from app.sheets.gateway import SheetsGateway
 from app.storage.scheduler import SchedulerJobRepository
@@ -46,7 +52,6 @@ class SchedulerService:
         sent_count = 0
         skipped_count = 0
         failed_count = 0
-        text = format_scheduler_reminder_text(reminder_type)
         scheduled_for = now.isoformat()
         job_run_id = self.repository.start_job_run(
             job_type=reminder_type,
@@ -84,9 +89,16 @@ class SchedulerService:
                 )
                 continue
 
+            text, buttons = self._reminder_message(
+                participant,
+                reminder_type=reminder_type,
+                week_number=week_number,
+                now=now,
+            )
             if self._send_reminder_with_retry(
                 chat_id=chat_id,
                 text=text,
+                buttons=buttons,
                 participant_id=participant_id,
                 team_id=team_id,
                 week_number=week_number,
@@ -203,11 +215,48 @@ class SchedulerService:
             return False
         return self.sheets.find_weekly_report(participant_id, week_number=week_number) is None
 
+    def _reminder_message(
+        self,
+        participant: dict[str, object],
+        *,
+        reminder_type: str,
+        week_number: int,
+        now: datetime,
+    ) -> tuple[str, tuple[TelegramInlineButton, ...]]:
+        if reminder_type != "monday_reminder":
+            return format_scheduler_reminder_text(reminder_type), ()
+
+        participant_id = _string_value(participant.get("participant_id"))
+        goal_id = _active_goal_id(self.sheets, participant_id)
+        if not goal_id:
+            return format_scheduler_reminder_text(reminder_type), ()
+        if self.sheets.find_weekly_focus(participant_id, week_number=week_number) is not None:
+            return format_scheduler_reminder_text(reminder_type), ()
+
+        open_steps = [
+            row
+            for row in self.sheets.list_planned_steps(participant_id, goal_id)
+            if _normalized_string(row.get("step_status")) != "closed"
+        ]
+        if not open_steps:
+            return format_scheduler_reminder_text(reminder_type), ()
+
+        start_date, end_date = challenge_week_date_range(now)
+        text = "\n".join(
+            (
+                f"Неделя {week_number}: с {_format_date(start_date)} по {_format_date(end_date)}.",
+                "",
+                "Выбери обязательный фокус недели.",
+            )
+        )
+        return text, _weekly_focus_buttons(open_steps)
+
     def _send_reminder_with_retry(
         self,
         *,
         chat_id: str,
         text: str,
+        buttons: tuple[TelegramInlineButton, ...] = (),
         participant_id: str,
         team_id: str,
         week_number: int,
@@ -216,12 +265,12 @@ class SchedulerService:
     ) -> bool:
         for _attempt in range(self.max_reminder_attempts):
             try:
-                messages = self.notification_router.send(
-                    category=NotificationCategory.PARTICIPANT_MESSAGE,
+                message = self.notification_router.main_bot.send_message(
+                    chat_id=chat_id,
                     text=text,
-                    recipients=(Recipient(RecipientType.PARTICIPANT, chat_id),),
+                    buttons=buttons,
                 )
-                telegram_message_id = _telegram_message_id(messages[0]) if messages else None
+                telegram_message_id = _telegram_message_id(message)
                 self.repository.record_reminder_attempt(
                     participant_id=participant_id,
                     team_id=team_id,
@@ -387,6 +436,40 @@ def _normalized_string(value: object) -> str:
 def _telegram_message_id(message: object) -> int | None:
     value = getattr(message, "telegram_message_id", None)
     return value if isinstance(value, int) else None
+
+
+def _weekly_focus_buttons(steps: list[dict[str, object]]) -> tuple[TelegramInlineButton, ...]:
+    return tuple(
+        TelegramInlineButton(
+            text=(
+                f"Шаг {_int_value(step.get('step_number'))}. "
+                f"{_short_step_title(_string_value(step.get('step_title')))}"
+            ),
+            callback_data=(
+                f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}{_string_value(step.get('step_id'))}"
+            ),
+        )
+        for step in sorted(steps, key=lambda row: _int_value(row.get("step_number")))
+    )
+
+
+def _short_step_title(title: str, *, limit: int = 42) -> str:
+    normalized = " ".join(title.split())
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[: limit - 3].rstrip()}..."
+
+
+def _int_value(value: object) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip():
+        return int(value)
+    return 0
+
+
+def _format_date(value: object) -> str:
+    return value.strftime("%d.%m.%Y")
 
 
 def _display_name(participant: dict[str, object]) -> str:
