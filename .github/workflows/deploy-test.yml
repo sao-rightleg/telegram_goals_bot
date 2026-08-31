@@ -8,13 +8,14 @@ on:
         required: true
         default: main
       mode:
-        description: Deploy the ref or find the ChallengeFlows registry
+        description: Deploy or run a safe test-environment spreadsheet diagnostic
         required: true
         default: deploy
         type: choice
         options:
           - deploy
           - find_flow_registry
+          - inspect_business_sheet
           - configure_flow_registry
       registry_id:
         description: Google Spreadsheet ID used only by configure_flow_registry
@@ -164,6 +165,7 @@ jobs:
           set -a
           . "$TEST_APP_DIR/shared/.env"
           set +a
+          cd "$TEST_APP_DIR/current"
           "$TEST_APP_DIR/current/.venv/bin/python" - <<'PY'
           import os
           from google.oauth2.service_account import Credentials
@@ -199,6 +201,56 @@ jobs:
               raise SystemExit("FLOW_REGISTRY_NOT_FOUND")
           for spreadsheet_id, name in matches:
               print(f"FLOW_REGISTRY_FOUND id={spreadsheet_id} name={name}")
+          PY
+          REMOTE
+
+  inspect-business-sheet:
+    if: inputs.mode == 'inspect_business_sheet'
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      contents: read
+    env:
+      TEST_VPS_HOST: ${{ secrets.TEST_VPS_HOST }}
+      TEST_VPS_PORT: ${{ secrets.TEST_VPS_PORT }}
+      TEST_VPS_USER: ${{ secrets.TEST_VPS_USER }}
+      TEST_VPS_SSH_KEY: ${{ secrets.TEST_VPS_SSH_KEY }}
+      TEST_VPS_APP_DIR: ${{ secrets.TEST_VPS_APP_DIR }}
+    steps:
+      - name: Configure SSH
+        run: |
+          test "$TEST_VPS_APP_DIR" = "/opt/telegram_goals_bot_test"
+          install -m 700 -d ~/.ssh
+          printf '%s' "$TEST_VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_HOST" >> ~/.ssh/known_hosts
+      - name: Report configured business spreadsheet
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_USER@$TEST_VPS_HOST" \
+            "TEST_APP_DIR='$TEST_VPS_APP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          set -a
+          . "$TEST_APP_DIR/shared/.env"
+          set +a
+          cd "$TEST_APP_DIR/current"
+          "$TEST_APP_DIR/current/.venv/bin/python" - <<'PY'
+          import os
+          from google.oauth2.service_account import Credentials
+          from googleapiclient.discovery import build
+
+          spreadsheet_id = os.environ["GOOGLE_SHEETS_ID"]
+          credentials = Credentials.from_service_account_file(
+              os.environ["GOOGLE_APPLICATION_CREDENTIALS"],
+              scopes=("https://www.googleapis.com/auth/spreadsheets.readonly",),
+          )
+          sheets = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+          metadata = sheets.spreadsheets().get(
+              spreadsheetId=spreadsheet_id,
+              fields="properties.title",
+          ).execute()
+          title = metadata.get("properties", {}).get("title", "")
+          print(f"BUSINESS_SHEET_ID={spreadsheet_id}")
+          print(f"BUSINESS_SHEET_TITLE={title}")
           PY
           REMOTE
 
