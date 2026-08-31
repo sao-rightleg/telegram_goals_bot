@@ -12,6 +12,7 @@ The MVP includes:
 - Telegram bot
 - user identification by Telegram ID
 - consent flow
+- flow-driven day-by-day message and report schedule configured in Google Sheets
 - participant goal view
 - planned steps view
 - progress view

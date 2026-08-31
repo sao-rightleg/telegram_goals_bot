@@ -106,6 +106,9 @@ Required fields:
 - captain name
 - active participants count
 - dropped participants count
+- submitted reports count and percentage of active participants
+- missing reports count and percentage of active participants
+- names of participants with missing reports
 - weekly victory percentage
 - participant list with progress bar and percent
 
@@ -179,12 +182,17 @@ They should be visually separated from active participants and excluded from act
 Include:
 - week number
 - all team summaries
+- overall submitted and missing report counts with percentages of all active participants
+- a per-team breakdown of submitted and missing report counts and percentages
+- names of participants with missing reports inside each team block
 - risk zones
 - dropped counts
 - high-level comparison between groups
 - report generation errors if relevant for admin
 
 Do not add coaching recommendations.
+
+Tracker summaries use the same structure but include only assigned teams. Captain summaries use the same submission and missing-report metrics for the captain's own team. Dropped participants remain visible where required but are excluded from the denominator. Percentages are rounded to one decimal place, with integer percentages displayed without a trailing decimal zero.
 
 ## Group Comparison
 

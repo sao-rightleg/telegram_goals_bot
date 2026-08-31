@@ -21,6 +21,7 @@ The schema must be simple enough for admin to manage manually and structured eno
 ## ID Rules
 
 Recommended ID examples:
+- `flow_id`: `FLOW_TEST_2026_08`
 - `participant_id`: `P001`
 - `team_id`: `T001`
 - `tracker_id`: `TR001`
@@ -33,11 +34,130 @@ Recommended ID examples:
 
 ## Sheets
 
+The MVP uses two Google Sheets documents:
+- Main business spreadsheet: participants, teams, goals, steps, reports, insights.
+- Challenge flows spreadsheet: flow registry, launch calendar, flow-level counters, and day-by-day scheduled events.
+
+## ChallengeFlows
+
+Stores challenge flow launches and the active calendar in a separate Google Sheets document configured by `CHALLENGE_FLOWS_SHEETS_ID`.
+
+Columns:
+- `flow_id`
+- `flow_name`
+- `flow_status`
+- `kickoff_meeting_at`
+- `registration_opens_at`
+- `registration_closes_at`
+- `data_collection_due_at`
+- `bot_invite_at`
+- `challenge_start_date`
+- `goal_setup_start_date`
+- `goal_setup_end_date`
+- `steps_setup_start_date`
+- `steps_setup_end_date`
+- `week_01_start_date`
+- `week_08_end_date`
+- `final_summary_start_date`
+- `final_summary_end_date`
+- `expected_participant_count`
+- `actual_participant_count`
+- `active_team_count`
+- `created_at`
+- `updated_at`
+
+Allowed `flow_status` values:
+- `planned`
+- `active`
+- `completed`
+- `archived`
+
+Notes:
+- Only one flow should have `flow_status = active` at a time.
+- Runtime uses `challenge_start_date` from the active flow.
+- Working weeks are named `week_01` through `week_08`.
+- `kickoff_meeting_at`, `registration_opens_at`, and `registration_closes_at` are timestamps in `Asia/Yekaterinburg`.
+- `registration_opens_at` must equal `kickoff_meeting_at`.
+- `registration_closes_at` must equal `registration_opens_at + 7 days`.
+- The per-flow `FlowStart` sheet calculates both registration boundaries and includes them in launch-readiness validation.
+
+## FlowSchedule
+
+Stores the explicit event timeline for each challenge flow. One row represents one scheduled event.
+
+Columns:
+- `event_id`
+- `flow_id`
+- `day_offset`
+- `scheduled_date`
+- `scheduled_time`
+- `scheduled_timezone`
+- `weekday_code`
+- `phase_code`
+- `week_position`
+- `event_type`
+- `recipient_role`
+- `week_number`
+- `message_text`
+- `condition_code`
+- `is_enabled`
+- `sort_order`
+- `created_at`
+- `updated_at`
+
+Allowed `event_type` values:
+- `participant_message`
+- `weekly_focus_prompt`
+- `weekly_checkin`
+- `missing_report_reminder`
+- `week_close`
+- `silent_participant_notification`
+- `report_generate`
+- `report_send`
+- `final_summary_message`
+
+Allowed `recipient_role` values:
+- `participant`
+- `captain`
+- `tracker`
+- `admin`
+- `sitnikov`
+- `system`
+
+Allowed `condition_code` values:
+- `always`
+- `consent_given`
+- `weekly_report_missing`
+- `weekly_report_submitted`
+- `weekly_focus_missing`
+- `silent_participants_exist`
+- `reports_generated`
+
+Rules:
+- `event_id` is unique and stable.
+- `flow_id` must reference `ChallengeFlows.flow_id`.
+- `day_offset = 0` means the flow start date; `day_offset = 1` means the next calendar day.
+- `scheduled_date` is the materialized calendar date in `YYYY-MM-DD`.
+- `scheduled_time` uses `HH:MM` and `Asia/Yekaterinburg`.
+- `scheduled_timezone` is required for every event and equals `Asia/Yekaterinburg` in the MVP.
+- `weekday_code` is calculated from `scheduled_date`: `monday` through `sunday`.
+- `phase_code` identifies `goal_setup`, `steps_setup`, `week_01` through `week_08`, or `final_summary`.
+- `week_position` is `start`, `middle`, `end`, or empty for events outside a working week.
+- `week_number` is required only for week-specific events.
+- `message_text` is user-facing Russian text and may be empty for system-only events.
+- `is_enabled` controls whether the event is eligible to run.
+- The scheduler records execution state in SQLite and must not send the same event twice to the same recipient.
+- Role resolution and report visibility remain enforced by application code; spreadsheet text cannot broaden access.
+- Events may target only entities with the same `flow_id`.
+- Before activation, every materialized date and weekday must be validated against the flow start date and `day_offset`.
+- Runtime executes `scheduled_date` directly; it does not recalculate events from the current weekday.
+
 ## Participants
 
 Stores all people who can interact with the bot.
 
 Columns:
+- `flow_id`
 - `participant_id`
 - `telegram_id`
 - `username`
@@ -52,9 +172,14 @@ Columns:
 - `captain_id`
 - `tracker_id`
 - `status`
+- `participant_stage`
 - `drop_reason`
 - `consent_given`
 - `consent_given_at`
+- `consent_status`
+- `bot_started_at`
+- `onboarding_completed_at`
+- `last_stage_updated_at`
 - `created_at`
 - `updated_at`
 
@@ -74,12 +199,15 @@ Notes:
 - Captain is also a participant with role `captain`.
 - Dropped status is managed manually through Google Sheets in MVP.
 - Consent must be stored here or in a separate consent history sheet if later needed.
+- `participant_stage` tracks where the participant currently is: `invited`, `onboarding`, `goal_setup`, `steps_setup`, `week_01` through `week_08`, `final_summary`, `completed`, or `declined`.
+- `bot_started_at` is set when an expected participant first opens the bot.
 
 ## Teams
 
 Stores teams.
 
 Columns:
+- `flow_id`
 - `team_id`
 - `team_name`
 - `gender`
@@ -398,9 +526,11 @@ Notes:
 
 ## Relationships
 
+- `Participants.flow_id` -> `ChallengeFlows.flow_id`
 - `Participants.team_id` -> `Teams.team_id`
 - `Participants.captain_id` -> `Participants.participant_id`
 - `Participants.tracker_id` -> `Trackers.tracker_id`
+- `Teams.flow_id` -> `ChallengeFlows.flow_id`
 - `Teams.captain_id` -> `Participants.participant_id`
 - `Teams.tracker_id` -> `Trackers.tracker_id`
 - `Goals.participant_id` -> `Participants.participant_id`

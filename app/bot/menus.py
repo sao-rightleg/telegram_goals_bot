@@ -19,6 +19,8 @@ class MenuAction(str, Enum):
 
 
 CONSENT_ACCEPT_CALLBACK = "consent:accept"
+CONSENT_DECLINE_CALLBACK = "consent:decline"
+CONSENT_DECLINE_CONFIRM_CALLBACK = "consent:decline_confirm"
 
 MENU_CALLBACK_PREFIX = "menu:"
 

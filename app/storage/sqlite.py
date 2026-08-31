@@ -16,9 +16,11 @@ REQUIRED_TECHNICAL_TABLES = {
     "scheduler_jobs",
     "job_runs",
     "reminder_log",
+    "scheduled_event_deliveries",
     "report_job_runs",
     "report_delivery_log",
     "error_events",
+    "registration_drafts",
 }
 
 BUSINESS_PRIMARY_TABLES = {
@@ -36,6 +38,21 @@ BUSINESS_PRIMARY_TABLES = {
 
 
 SCHEMA_STATEMENTS = [
+    """
+    CREATE TABLE IF NOT EXISTS registration_drafts (
+        telegram_id INTEGER PRIMARY KEY,
+        flow_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('active', 'finalizing')),
+        claim_token TEXT,
+        consent_given_at TEXT,
+        first_name TEXT,
+        last_name TEXT,
+        captain_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+    )
+    """,
     """
     CREATE TABLE IF NOT EXISTS draft_sessions (
         draft_id TEXT PRIMARY KEY,
@@ -65,6 +82,7 @@ SCHEMA_STATEMENTS = [
         flow TEXT NOT NULL CHECK (
             flow IN (
                 'consent',
+                'registration',
                 'weekly_report',
                 'insight',
                 'captain_manual_report',
@@ -232,10 +250,23 @@ SCHEMA_STATEMENTS = [
         ),
         sent_at TEXT NOT NULL,
         telegram_message_id INTEGER,
-        status TEXT NOT NULL CHECK (status IN ('sent', 'failed', 'skipped')),
+        status TEXT NOT NULL CHECK (status IN ('pending', 'sent', 'failed', 'skipped')),
         attempt_count INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count > 0),
         error_message TEXT,
         UNIQUE (participant_id, week_number, reminder_type)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS scheduled_event_deliveries (
+        event_id TEXT NOT NULL,
+        recipient_id TEXT NOT NULL,
+        week_number INTEGER CHECK (week_number IS NULL OR week_number BETWEEN 1 AND 8),
+        scheduled_for TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'sent', 'failed', 'skipped')),
+        attempt_count INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count > 0),
+        error_message TEXT,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (event_id, recipient_id, week_number)
     )
     """,
     """

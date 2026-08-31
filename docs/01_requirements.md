@@ -248,32 +248,63 @@ After deadline:
 - missing report becomes ⬜
 - late report text may be saved, but it must not change the closed week's status
 
-## 11. Weekly schedule
+## 11. Flow-driven schedule
 
-Schedule in `Asia/Yekaterinburg`:
+All schedule times use `Asia/Yekaterinburg`.
 
-- Monday 10:00: start of week reminder
-- Wednesday 10:00: soft check-in
-- Sunday 18:00: final check-in
-- Sunday 22:30: reminder if no weekly report
-- Sunday 23:00: last reminder if no weekly report
-- Sunday 23:59: deadline
-- Monday 00:00-00:20: close week and generate reports
-- Monday 00:20-01:00: send reports
+### Participant registration window
 
-If participant already submitted weekly report, no more reminders that week.
+- Self-registration opens at `kickoff_meeting_at` and remains open for exactly seven days.
+- `registration_opens_at` equals `kickoff_meeting_at`; `registration_closes_at` equals `registration_opens_at + 7 days`.
+- During this window, an unknown Telegram ID may start the consent and registration scenario for the active flow.
+- After `registration_closes_at`, `/start` from a Telegram ID that has no participant record for this flow receives: `Данный поток уже набран`.
+- A participant already registered in the flow continues to use the bot after the window closes.
+- An unfinished registration draft does not reserve a place after the deadline.
+- Readiness validation must fail when the kickoff timestamp or either registration-window boundary is missing or inconsistent.
+
+Each challenge flow has an explicit day-by-day schedule in the separate challenge-flows spreadsheet. The administrator sets the flow start date in `ChallengeFlows`; the system materializes concrete calendar dates for every phase, week, deadline, notification, report generation, and report delivery event in `FlowSchedule`.
+
+Each schedule row contains the exact `scheduled_date`, `scheduled_time`, calculated weekday, challenge phase, and week position. `day_offset` remains as a stable relative reference so a schedule can be regenerated when the flow start date changes before activation.
+
+Example: if a flow starts on `2026-09-01`, `day_offset = 1` materializes as `2026-09-02`, Wednesday. The table must show both the exact date and the calculated weekday.
+
+The schedule must support:
+- participant onboarding and stage messages;
+- participant weekly focus, check-in, and missing-report reminders;
+- captain and tracker operational notifications;
+- week closing;
+- Telegram/PDF report generation and delivery to authorized roles;
+- final-summary events.
+
+Recipient roles are resolved from participants, teams, and trackers belonging to the same `flow_id`. A schedule row must never send data from another flow.
+
+Message text may be edited in Google Sheets. System behavior is selected only from an approved `event_type`; free-form text must not trigger arbitrary code or bypass role visibility rules.
+
+The runtime executes the materialized `scheduled_date` and `scheduled_time`; it must not infer a different date from the VPS weekday at send time.
+
+The initial schedule template preserves the approved weekly cadence:
+- Monday 10:00: start-of-week reminder;
+- Wednesday 10:00: soft check-in;
+- Sunday 18:00: final check-in;
+- Sunday 22:30: reminder if no weekly report;
+- Sunday 23:00: last reminder if no weekly report;
+- Sunday 23:59: deadline and week closing;
+- Monday 00:00-00:20: generate reports;
+- Monday 00:20-01:00: send reports.
+
+If a participant already submitted the required report, later missing-report reminders for that participant and week are skipped.
 
 ## 12. Progress calculation
 
 Progress is calculated based on planned steps.
 
 Challenge route:
-- Week 1: goal formulation
-- Week 2: route / planned steps
-- Weeks 3-8: six working weeks for step execution
+- Setup phase `goal_setup`: goal formulation
+- Setup phase `steps_setup`: route / planned steps
+- Working phases `week_01` through `week_08`: planned step execution
 - Main route contains 6 planned steps
 - Main progress bar has 6 cells
-- Weeks 1-2 are not included in the main progress bar
+- Setup phases are not included in the main progress bar
 
 Scoring:
 - 🟩 = 1
