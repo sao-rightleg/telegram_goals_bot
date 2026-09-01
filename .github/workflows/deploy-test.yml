@@ -17,6 +17,7 @@ on:
           - find_flow_registry
           - inspect_business_sheet
           - migrate_business_schema
+          - create_smoke_flow_sheet
           - configure_flow_registry
       registry_id:
         description: Google Spreadsheet ID used only by configure_flow_registry
@@ -403,6 +404,167 @@ jobs:
                   raise SystemExit(f"Schema verification failed for {sheet_name}: {absent}")
               print(f"SCHEMA_OK sheet={sheet_name} added={len(missing)}")
           PY
+          REMOTE
+
+  create-smoke-flow-sheet:
+    if: inputs.mode == 'create_smoke_flow_sheet'
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      contents: read
+    env:
+      TEST_VPS_HOST: ${{ secrets.TEST_VPS_HOST }}
+      TEST_VPS_PORT: ${{ secrets.TEST_VPS_PORT }}
+      TEST_VPS_USER: ${{ secrets.TEST_VPS_USER }}
+      TEST_VPS_SSH_KEY: ${{ secrets.TEST_VPS_SSH_KEY }}
+      TEST_VPS_APP_DIR: ${{ secrets.TEST_VPS_APP_DIR }}
+      SHARE_EMAIL: ${{ secrets.TEST_FLOW_OWNER_EMAIL }}
+    steps:
+      - name: Configure SSH
+        run: |
+          test "$TEST_VPS_APP_DIR" = "/opt/telegram_goals_bot_test"
+          test -n "$SHARE_EMAIL"
+          install -m 700 -d ~/.ssh
+          printf '%s' "$TEST_VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_HOST" >> ~/.ssh/known_hosts
+      - name: Copy flow spreadsheet and share with test owner
+        run: |
+          [[ "$SHARE_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]
+          share_email_b64=$(printf '%s' "$SHARE_EMAIL" | base64 -w0)
+          [[ "$share_email_b64" =~ ^[A-Za-z0-9+/=]+$ ]]
+          ssh -i ~/.ssh/deploy_key -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_USER@$TEST_VPS_HOST" \
+            "TEST_APP_DIR='$TEST_VPS_APP_DIR' SHARE_EMAIL_B64='$share_email_b64' bash -s" <<'REMOTE'
+          set -euo pipefail
+          export SHARE_EMAIL="$(printf '%s' "$SHARE_EMAIL_B64" | base64 -d)"
+          set -a
+          . "$TEST_APP_DIR/shared/.env"
+          set +a
+          cd "$TEST_APP_DIR/current"
+          target_id=$("$TEST_APP_DIR/current/.venv/bin/python" - <<'PY'
+          import os
+          from google.oauth2.service_account import Credentials
+          from googleapiclient.discovery import build
+
+          flow_id = "FLOW_SMOKE_2026_09_01"
+          target_name = "Технический тест регистрации — поток 01.09.2026"
+          source_id = os.environ["GOOGLE_SHEETS_ID"]
+          credentials = Credentials.from_service_account_file(
+              os.environ["GOOGLE_APPLICATION_CREDENTIALS"],
+              scopes=(
+                  "https://www.googleapis.com/auth/drive",
+                  "https://www.googleapis.com/auth/spreadsheets.readonly",
+              ),
+          )
+          drive = build("drive", "v3", credentials=credentials, cache_discovery=False)
+          sheets = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+          query = (
+              "appProperties has { key='telegram_goals_flow_id' "
+              f"and value='{flow_id}' }} and trashed=false"
+          )
+          matches = drive.files().list(
+              q=query,
+              spaces="drive",
+              fields="files(id,name)",
+              pageSize=10,
+          ).execute().get("files", [])
+          if len(matches) > 1:
+              raise SystemExit("Multiple smoke flow spreadsheets found")
+          if matches:
+              target_id = matches[0]["id"]
+          else:
+              source = drive.files().get(
+                  fileId=source_id,
+                  supportsAllDrives=True,
+                  fields="id,parents,driveId",
+              ).execute()
+              if not source.get("driveId") or not source.get("parents"):
+                  raise SystemExit("Source spreadsheet is not stored in a Shared Drive")
+              copied = drive.files().copy(
+                  fileId=source_id,
+                  supportsAllDrives=True,
+                  body={
+                      "name": target_name,
+                      "parents": source["parents"],
+                      "appProperties": {"telegram_goals_flow_id": flow_id},
+                  },
+                  fields="id",
+              ).execute()
+              target_id = copied["id"]
+
+          share_email = os.environ["SHARE_EMAIL"].strip().lower()
+          permissions = drive.permissions().list(
+              fileId=target_id,
+              supportsAllDrives=True,
+              fields="permissions(id,type,role,emailAddress,permissionDetails(inherited))",
+          ).execute().get("permissions", [])
+          user_permissions = [
+              item for item in permissions
+              if item.get("type") == "user"
+              and item.get("emailAddress", "").strip().lower() == share_email
+          ]
+          has_writer_access = any(
+              item.get("role") in {"writer", "owner"}
+              for item in user_permissions
+          )
+          direct_permission = next(
+              (
+                  item for item in user_permissions
+                  if not any(
+                      detail.get("inherited")
+                      for detail in item.get("permissionDetails", [])
+                  )
+              ),
+              None,
+          )
+          if has_writer_access:
+              pass
+          elif direct_permission is None:
+              drive.permissions().create(
+                  fileId=target_id,
+                  supportsAllDrives=True,
+                  sendNotificationEmail=False,
+                  body={"type": "user", "role": "writer", "emailAddress": share_email},
+                  fields="id",
+              ).execute()
+          else:
+              drive.permissions().update(
+                  fileId=target_id,
+                  permissionId=direct_permission["id"],
+                  supportsAllDrives=True,
+                  body={"role": "writer"},
+              ).execute()
+
+          verified_permissions = drive.permissions().list(
+              fileId=target_id,
+              supportsAllDrives=True,
+              fields="permissions(type,role,emailAddress)",
+          ).execute().get("permissions", [])
+          if not any(
+              item.get("type") == "user"
+              and item.get("emailAddress", "").strip().lower() == share_email
+              and item.get("role") in {"writer", "owner"}
+              for item in verified_permissions
+          ):
+              raise SystemExit("Smoke flow owner permission verification failed")
+
+          def titles(spreadsheet_id):
+              result = sheets.spreadsheets().get(
+                  spreadsheetId=spreadsheet_id,
+                  fields="sheets.properties.title",
+              ).execute()
+              return [item["properties"]["title"] for item in result.get("sheets", [])]
+
+          source_titles = titles(source_id)
+          target_titles = titles(target_id)
+          if source_titles != target_titles:
+              raise SystemExit("Copied spreadsheet tabs do not match source")
+
+          print(target_id)
+          PY
+          )
+          test -n "$target_id"
+          echo "FLOW_SHEET_CREATED id=$target_id title=Технический тест регистрации — поток 01.09.2026"
           REMOTE
 
   configure-flow-registry:

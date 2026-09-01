@@ -134,6 +134,33 @@ def test_deploy_test_workflow_has_bounded_business_schema_migration() -> None:
     assert "Schema verification failed" in job
 
 
+def test_deploy_test_workflow_can_create_idempotent_smoke_flow_copy() -> None:
+    workflow = DEPLOY_TEST_WORKFLOW.read_text(encoding="utf-8")
+    assert "          - create_smoke_flow_sheet" in workflow
+
+    job_start = workflow.index("  create-smoke-flow-sheet:\n")
+    job_end = workflow.index("\n  configure-flow-registry:\n", job_start)
+    job = workflow[job_start:job_end]
+    assert "if: inputs.mode == 'create_smoke_flow_sheet'" in job
+    assert "environment: test" in job
+    assert 'flow_id = "FLOW_SMOKE_2026_09_01"' in job
+    assert "appProperties has" in job
+    assert 'drive.files().copy(' in job
+    assert 'fields="id,parents,driveId"' in job
+    assert "Source spreadsheet is not stored in a Shared Drive" in job
+    assert '"parents": source["parents"]' in job
+    assert '"telegram_goals_flow_id": flow_id' in job
+    assert "TEST_FLOW_OWNER_EMAIL" in job
+    assert "share_email_b64=$(printf '%s'" in job
+    assert "SHARE_EMAIL_B64='$share_email_b64'" in job
+    assert 'body={"type": "user", "role": "writer", "emailAddress": share_email}' in job
+    assert 'permissionDetails(inherited)' in job
+    assert "has_writer_access" in job
+    assert "direct_permission" in job
+    assert "Smoke flow owner permission verification failed" in job
+    assert 'echo "FLOW_SHEET_CREATED id=$target_id' in job
+
+
 def test_deploy_test_workflow_creates_sensitive_shared_dirs_private() -> None:
     workflow = DEPLOY_TEST_WORKFLOW.read_text(encoding="utf-8")
 
