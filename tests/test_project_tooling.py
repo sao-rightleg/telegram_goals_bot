@@ -143,22 +143,14 @@ def test_deploy_test_workflow_can_create_idempotent_smoke_flow_copy() -> None:
     job = workflow[job_start:job_end]
     assert "if: inputs.mode == 'create_smoke_flow_sheet'" in job
     assert "environment: test" in job
-    assert 'flow_id = "FLOW_SMOKE_2026_09_01"' in job
-    assert "appProperties has" in job
-    assert 'drive.files().copy(' in job
-    assert 'fields="id,parents,driveId"' in job
-    assert "Source spreadsheet is not stored in a Shared Drive" in job
-    assert '"parents": source["parents"]' in job
-    assert '"telegram_goals_flow_id": flow_id' in job
-    assert "TEST_FLOW_OWNER_EMAIL" in job
-    assert "share_email_b64=$(printf '%s'" in job
-    assert "SHARE_EMAIL_B64='$share_email_b64'" in job
-    assert 'body={"type": "user", "role": "writer", "emailAddress": share_email}' in job
-    assert 'permissionDetails(inherited)' in job
-    assert "has_writer_access" in job
-    assert "direct_permission" in job
-    assert "Smoke flow owner permission verification failed" in job
-    assert 'echo "FLOW_SHEET_CREATED id=$target_id' in job
+    assert "TARGET_SHEET_ID: ${{ inputs.target_sheet_id }}" in job
+    assert "https://www.googleapis.com/auth/spreadsheets" in job
+    assert "spreadsheets().sheets().copyTo(" in job
+    assert 'body={"destinationSpreadsheetId": target_id}' in job
+    assert '"deleteSheet"' in job
+    assert '"fields": "index"' in job
+    assert "Copied spreadsheet tabs do not match source" in job
+    assert 'print(f"FLOW_SHEET_POPULATED id={target_id}' in job
 
 
 def test_deploy_test_workflow_creates_sensitive_shared_dirs_private() -> None:
