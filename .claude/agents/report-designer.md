@@ -79,7 +79,7 @@ Use only approved symbols:
 - 🟩 victory / completed step
 - 🟦 partial victory
 - 🟥 no victory
-- ⬜ no answer
+- ⬛ no report after deadline; ⬜ current/future before deadline
 
 Do not use yellow late status.
 
@@ -91,7 +91,7 @@ Use agreed scoring:
 - 🟩 = 1
 - 🟦 = 0.5
 - 🟥 = 0
-- ⬜ = 0
+- ⬛ = 0
 
 Progress percent = score / total planned steps * 100.
 

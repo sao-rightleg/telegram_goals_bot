@@ -385,7 +385,7 @@ def test_week_close_creates_gray_reports_for_active_missing_participants(tmp_pat
     reports = gateway.list_weekly_reports()
     assert [row["participant_id"] for row in reports] == ["P001", "P002"]
     assert {row["status_code"] for row in reports} == {"gray"}
-    assert {row["status_symbol"] for row in reports} == {"⬜"}
+    assert {row["status_symbol"] for row in reports} == {"⬛"}
     assert {row["submitted_by_role"] for row in reports} == {"system"}
     assert {row["submitted_source"] for row in reports} == {"system_deadline"}
     assert {row["score"] for row in reports} == {0}

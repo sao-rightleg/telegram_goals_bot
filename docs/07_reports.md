@@ -26,7 +26,8 @@ Allowed statuses:
 - `🟩` victory / completed planned step
 - `🟦` partial victory
 - `🟥` no victory
-- `⬜` no answer before deadline
+- `⬛` deadline passed, no report submitted
+- `⬜` current/future week whose deadline has not passed; display placeholder only
 
 Do not use yellow late status.
 
@@ -34,7 +35,7 @@ Scoring:
 - `🟩` = 1
 - `🟦` = 0.5
 - `🟥` = 0
-- `⬜` = 0
+- `⬛` = 0
 
 Progress percent:
 
@@ -222,6 +223,8 @@ Scoring:
 
 Weekly status history is stored separately from the main progress bar. UI and reports may show both, but the main progress percent is calculated only from planned steps.
 
+In weekly history, `⬜` is reserved for current/future weeks. In the planned-step progress bar below, `⬜` continues to mean an open planned step.
+
 Example:
 
 ```text
@@ -231,6 +234,8 @@ Example:
 ## Data Sources
 
 Reports use Google Sheets as source of final business facts.
+
+Role reports are generated only from final weekly facts. If an active participant has no final `WeeklyReports` row, generation must fail and notify the administrator instead of classifying the participant as overdue. Unknown status codes must also fail validation.
 
 Required data:
 - participants

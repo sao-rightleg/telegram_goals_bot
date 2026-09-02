@@ -179,7 +179,7 @@ Deliverables:
 
 Exit criteria:
 - reminders are not sent after report exists
-- missing reports become `⬜`
+- missing reports become `gray` / `⬛`
 - no yellow late status exists
 - duplicate scheduler run does not duplicate reports or reminders
 

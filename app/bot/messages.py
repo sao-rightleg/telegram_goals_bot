@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from html import escape
 
+from app.scheduler.calendar import WORKING_WEEK_COUNT
 from app.services.insight_models import InsightListItem, InsightPage
 from app.services.participant_models import Goal, PlannedStep, WeeklyStatus
 from app.services.weekly_report_models import WeeklyReportStatus
@@ -104,7 +105,7 @@ SCHEDULER_REMINDER_TEXTS = {
     "sunday_2300_reminder": (
         "Последнее напоминание.\n\n"
         "Если отчёт не будет отправлен до 23:59 по Екатеринбургу, "
-        "неделя будет отмечена как ⬜ нет ответа."
+        "неделя будет отмечена как ⬛ нет отчёта в срок."
     ),
 }
 
@@ -265,6 +266,7 @@ def format_progress_view(
     *,
     steps: Sequence[PlannedStep],
     weekly_history: Sequence[WeeklyStatus] = (),
+    closed_week_number: int = 0,
 ) -> str:
     percent = calculate_progress_percent(steps)
     lines = [
@@ -272,12 +274,13 @@ def format_progress_view(
         f"Шаги: {_format_progress_bar(steps)}",
     ]
 
-    if weekly_history:
-        lines.append("История недель:")
-        lines.extend(
-            f"Неделя {item.week_number}: {item.status_symbol}"
-            for item in sorted(weekly_history, key=lambda status: status.week_number)
-        )
+    history_by_week = {item.week_number: item.status_symbol for item in weekly_history}
+    lines.append("История недель:")
+    lines.extend(
+        f"Неделя {week_number}: "
+        f"{history_by_week.get(week_number, '⬛' if week_number <= closed_week_number else '⬜')}"
+        for week_number in range(1, WORKING_WEEK_COUNT + 1)
+    )
 
     return "\n".join(lines)
 

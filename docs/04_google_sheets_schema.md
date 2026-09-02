@@ -348,7 +348,7 @@ Allowed `status_symbol` values:
 - `🟩`
 - `🟦`
 - `🟥`
-- `⬜`
+- `⬛`
 
 Allowed `status_score` values:
 - `1`
@@ -369,7 +369,8 @@ Allowed `submitted_source` values:
 Rules:
 - No yellow late status.
 - Late reports after Sunday 23:59 Yekaterinburg time do not change weekly status.
-- Missing report after deadline becomes `gray` / `⬜` from `system_deadline`.
+- Missing report after deadline becomes `gray` / `⬛` from `system_deadline`.
+- `⬜` is a computed UI placeholder for a current or future week and is not stored as a final weekly report status.
 - Participant step reports are stored as one report per planned step.
 - Participant step report IDs include participant, week, and step ID.
 - `green` participant step reports must have exactly one related row in `WeeklyReportSteps`.

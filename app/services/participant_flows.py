@@ -37,7 +37,12 @@ from app.bot.messages import (
     format_planned_steps_view,
     format_progress_view,
 )
-from app.scheduler.calendar import challenge_week_date_range, current_challenge_week_number, is_working_week
+from app.scheduler.calendar import (
+    challenge_week_date_range,
+    closed_challenge_week_count,
+    current_challenge_week_number,
+    is_working_week,
+)
 from app.services.notifications import NotificationCategory, NotificationRouter
 from app.services.participant_models import (
     FlowResponse,
@@ -531,7 +536,11 @@ class ParticipantFlowService:
             return self._send_simple_response(
                 user,
                 participant=participant,
-                text=format_progress_view(steps=steps, weekly_history=weekly_history),
+                text=format_progress_view(
+                    steps=steps,
+                    weekly_history=weekly_history,
+                    closed_week_number=closed_challenge_week_count(datetime.fromisoformat(occurred_at)),
+                ),
                 flow="view_progress",
                 step="render",
                 occurred_at=occurred_at,
@@ -1115,10 +1124,12 @@ def _planned_step_from_row(row: SheetRow) -> PlannedStep:
 
 
 def _weekly_status_from_row(row: SheetRow) -> WeeklyStatus:
+    status_code = str(row.get("status_code") or "")
+    status_symbol = "⬛" if status_code == "gray" else str(row.get("status_symbol") or "")
     return WeeklyStatus(
         week_number=_int_value(row.get("week_number")),
-        status_symbol=str(row.get("status_symbol") or ""),
-        status_code=str(row.get("status_code") or ""),
+        status_symbol=status_symbol,
+        status_code=status_code,
         submitted_at=_optional_string_value(row.get("submitted_at")),
     )
 

@@ -254,7 +254,7 @@ Confirmation:
 ### No Answer
 
 If participant does not submit any step report before Sunday 23:59 Yekaterinburg time:
-- system creates or records status `gray` / `⬜`
+- system creates or records status `gray` / `⬛`
 - score is `0`
 - no yellow late status is created
 
@@ -436,7 +436,7 @@ Otherwise bot sends:
 ```text
 Последнее напоминание.
 
-Если отчёт не будет отправлен до 23:59 по Екатеринбургу, неделя будет отмечена как ⬜ нет ответа.
+Если отчёт не будет отправлен до 23:59 по Екатеринбургу, неделя будет отмечена как ⬛ нет отчёта в срок.
 ```
 
 If weekly report already exists, do not send more reminders that week.

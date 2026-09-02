@@ -37,10 +37,10 @@ def test_tracker_plan_contains_only_assigned_team_reports() -> None:
     tracker_items = [item for item in plan.items if item.recipient.recipient_type == "tracker"]
 
     assert {(item.recipient.recipient_id, item.report_type, item.scope_id) for item in tracker_items} == {
-        ("TR_MALE", ReportType.TELEGRAM_TEAM_SUMMARY, "T001"),
-        ("TR_MALE", ReportType.PDF_TEAM_REPORT, "T001"),
-        ("TR_FEMALE", ReportType.TELEGRAM_TEAM_SUMMARY, "T002"),
-        ("TR_FEMALE", ReportType.PDF_TEAM_REPORT, "T002"),
+        ("TR_MALE", ReportType.TELEGRAM_TRACKER_SUMMARY, "tracker:TR_MALE"),
+        ("TR_MALE", ReportType.PDF_TRACKER_REPORT, "tracker:TR_MALE"),
+        ("TR_FEMALE", ReportType.TELEGRAM_TRACKER_SUMMARY, "tracker:TR_FEMALE"),
+        ("TR_FEMALE", ReportType.PDF_TRACKER_REPORT, "tracker:TR_FEMALE"),
     }
 
 
@@ -50,12 +50,8 @@ def test_admin_plan_contains_all_reports_full_summary_and_comparison() -> None:
     admin_items = [item for item in plan.items if item.recipient.recipient_type == "admin"]
 
     assert {(item.report_type, item.scope_id) for item in admin_items} == {
-        (ReportType.TELEGRAM_TEAM_SUMMARY, "T001"),
-        (ReportType.PDF_TEAM_REPORT, "T001"),
-        (ReportType.TELEGRAM_TEAM_SUMMARY, "T002"),
-        (ReportType.PDF_TEAM_REPORT, "T002"),
-        (ReportType.FULL_SUMMARY, "global"),
-        (ReportType.GROUP_COMPARISON, "global"),
+        (ReportType.TELEGRAM_ADMIN_SUMMARY, "global"),
+        (ReportType.PDF_FULL_REPORT, "global"),
     }
 
 
@@ -65,12 +61,8 @@ def test_sitnikov_plan_contains_all_reports_full_summary_and_comparison() -> Non
     sitnikov_items = [item for item in plan.items if item.recipient.recipient_type == "sitnikov"]
 
     assert {(item.report_type, item.scope_id) for item in sitnikov_items} == {
-        (ReportType.TELEGRAM_TEAM_SUMMARY, "T001"),
-        (ReportType.PDF_TEAM_REPORT, "T001"),
-        (ReportType.TELEGRAM_TEAM_SUMMARY, "T002"),
-        (ReportType.PDF_TEAM_REPORT, "T002"),
-        (ReportType.FULL_SUMMARY, "global"),
-        (ReportType.GROUP_COMPARISON, "global"),
+        (ReportType.TELEGRAM_SITNIKOV_SUMMARY, "global"),
+        (ReportType.PDF_FULL_REPORT, "global"),
     }
 
 
@@ -84,6 +76,44 @@ def test_captains_and_trackers_never_receive_group_comparison() -> None:
     ]
 
     assert all(item.report_type is not ReportType.GROUP_COMPARISON for item in restricted_items)
+
+
+def test_pdf_recipient_matrix_contains_only_role_approved_pdf_types() -> None:
+    participants = _participants() + [
+        {"participant_id": "P001", "role": "participant", "team_id": "T001", "telegram_id": 1001}
+    ]
+    plan = _planner().build_plan(_report_data(), participants=participants, teams=_teams(), trackers=_trackers())
+    pdf_items = [item for item in plan.items if item.file_path is not None]
+
+    assert {
+        (
+            item.recipient.recipient_type,
+            item.recipient.recipient_id,
+            item.report_type,
+            item.scope_id,
+            item.file_path,
+        )
+        for item in pdf_items
+    } == {
+        ("captain", "C001", ReportType.PDF_TEAM_REPORT, "T001", Path("/tmp/T001.pdf")),
+        ("captain", "C002", ReportType.PDF_TEAM_REPORT, "T002", Path("/tmp/T002.pdf")),
+        ("tracker", "TR_MALE", ReportType.PDF_TRACKER_REPORT, "tracker:TR_MALE", Path("/tmp/tracker_male.pdf")),
+        ("tracker", "TR_FEMALE", ReportType.PDF_TRACKER_REPORT, "tracker:TR_FEMALE", Path("/tmp/tracker_female.pdf")),
+        ("admin", "A001", ReportType.PDF_FULL_REPORT, "global", Path("/tmp/full.pdf")),
+        ("sitnikov", "S001", ReportType.PDF_FULL_REPORT, "global", Path("/tmp/full.pdf")),
+    }
+    assert all(item.recipient.recipient_type != "participant" for item in pdf_items)
+
+
+def test_delivery_scopes_are_namespaced_by_flow() -> None:
+    planner = ReportDeliveryPlanner(
+        **{**_planner().__dict__, "flow_id": "FLOW_02"}
+    )
+
+    plan = planner.build_plan(_report_data(), participants=_participants(), teams=_teams(), trackers=_trackers())
+
+    assert plan.items
+    assert all(item.scope_id.startswith("FLOW_02:") for item in plan.items)
 
 
 def test_missing_chat_id_is_planned_as_problem_not_delivery_item() -> None:
@@ -235,8 +265,14 @@ def _planner() -> ReportDeliveryPlanner:
             "T001": Path("/tmp/T001.pdf"),
             "T002": Path("/tmp/T002.pdf"),
         },
-        full_summary_text="full summary",
-        group_comparison_text="comparison",
+        tracker_pdf_paths={
+            "TR_MALE": Path("/tmp/tracker_male.pdf"),
+            "TR_FEMALE": Path("/tmp/tracker_female.pdf"),
+        },
+        full_pdf_path=Path("/tmp/full.pdf"),
+        tracker_summary_texts={"TR_MALE": "tracker male", "TR_FEMALE": "tracker female"},
+        admin_summary_text="admin summary",
+        sitnikov_summary_text="sitnikov summary",
     )
 
 

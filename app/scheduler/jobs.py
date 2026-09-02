@@ -769,7 +769,7 @@ def _gray_weekly_report_row(
         "goal_id": goal_id,
         "week_number": week_number,
         "status_code": "gray",
-        "status_symbol": "⬜",
+        "status_symbol": "⬛",
         "score": 0,
         "status_score": 0,
         "report_text": "",

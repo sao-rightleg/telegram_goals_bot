@@ -245,7 +245,7 @@ After deadline:
 - no late yellow status
 - no status change from participant
 - no late captain manual report
-- missing report becomes ⬜
+- missing report becomes `gray` / ⬛
 - late report text may be saved, but it must not change the closed week's status
 
 ## 11. Flow-driven schedule
@@ -306,7 +306,7 @@ Challenge route:
 - Main progress bar has 6 cells
 - Setup phases are not included in the main progress bar
 
-Scoring:
+Planned-step progress scoring:
 - 🟩 = 1
 - 🟦 = 0.5
 - 🟥 = 0
@@ -322,6 +322,10 @@ Examples:
 
 Weekly status history is stored separately from main step progress. UI may show both main progress bar and weekly history, but main progress percent is based only on planned steps.
 
+Weekly status history uses 🟩 for a submitted victory report, 🟦 for a submitted partial-victory report, 🟥 for a submitted no-victory report, ⬛ after the deadline when no report was submitted, and ⬜ only while the week is not yet closed. A future/current white cell is not counted as a missed report.
+
+If a past week has no stored final status because week closing failed, participant history still displays ⬛ from the calendar boundary. Management report generation must stop on the missing final fact and notify the administrator rather than infer an overdue result silently.
+
 ## 13. Insights
 
 Insights are separate from progress.
@@ -329,7 +333,7 @@ Insights are separate from progress.
 Insight does not count as victory.
 
 If participant did nothing but had an insight:
-- weekly status remains 🟥 or ⬜ depending on report state
+- weekly status remains 🟥 when a no-victory report was submitted, or ⬛ when the closed week has no report
 - insight is stored separately
 
 Participant can add insights through menu.

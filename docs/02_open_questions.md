@@ -100,6 +100,7 @@ Codex must treat these decisions as current source of truth. If older documents 
 - `⬜` = 0.
 - Weekly status history is stored separately from the main progress bar.
 - UI may show both main step progress and weekly status history, but main progress percentage is calculated only from steps.
+- Weekly history uses `🟩` / `🟦` / `🟥` for submitted reports, `⬛` for a closed week without a report, and `⬜` for a current or future week whose deadline has not passed.
 
 ## 8. Terminology
 

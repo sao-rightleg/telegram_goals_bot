@@ -56,6 +56,21 @@ def current_challenge_week_number(now: datetime) -> int:
     return max(1, min(WORKING_WEEK_COUNT, days_since_working_start // 7 + 1))
 
 
+def closed_challenge_week_count(now: datetime) -> int:
+    """Return how many working-week deadlines have passed."""
+
+    local_now = _as_yekaterinburg(now)
+    first_deadline = datetime.combine(
+        working_weeks_start_date() + timedelta(days=6),
+        time(23, 59),
+        tzinfo=ZoneInfo(TIMEZONE_NAME),
+    )
+    return sum(
+        local_now > first_deadline + timedelta(weeks=week_offset)
+        for week_offset in range(WORKING_WEEK_COUNT)
+    )
+
+
 def current_challenge_stage(now: datetime) -> str:
     local_now = _as_yekaterinburg(now)
     current_date = local_now.date()
