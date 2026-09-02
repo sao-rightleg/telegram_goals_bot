@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from html import escape
 
+from app.scheduler.calendar import WORKING_WEEK_COUNT
 from app.services.insight_models import InsightListItem, InsightPage
 from app.services.participant_models import Goal, PlannedStep, WeeklyStatus
 from app.services.weekly_report_models import WeeklyReportStatus
@@ -12,10 +13,31 @@ from app.services.weekly_report_models import WeeklyReportStatus
 
 UNKNOWN_USER_TEXT = "Извините, вас нет в базе участников. Свяжитесь со своим капитаном."
 CONSENT_TEXT = (
-    "Я понимаю, что мои ответы будут сохранены и доступны трекеру, администратору "
-    "и Александру Ситникову в рамках челленджа."
+    "Дай согласие на обработку персональных данных. Бот сохранит твоё имя, фамилию, "
+    "Telegram ID и ответы в рамках проекта «Смерть иллюзий». Данные будут доступны "
+    "твоему капитану и трекеру, администратору и Александру Ситникову в пределах их ролей."
 )
 CONSENT_ACCEPT_BUTTON = "✅ Согласен"
+CONSENT_DECLINE_BUTTON = "Нет"
+CONSENT_DECLINE_RECONSIDER_BUTTON = "Да, разрешаю"
+CONSENT_DECLINE_CONFIRM_BUTTON = "Нет, не готов"
+CONSENT_DECLINE_CONFIRM_TEXT = (
+    "На «нет» и суда нет, и туда нет. Участие в челлендже подразумевает сбор и обработку "
+    "некоторых Ваших личных данных, Вы точно не готовы разрешить их использование ?"
+)
+CONSENT_DECLINED_TEXT = "Понял. Без согласия на обработку данных участие в челлендже невозможно."
+CONSENT_ACCEPTED_INTRO_TEXT = "Прекрасно, тогда продолжаем!"
+CHALLENGE_STAGES_TEXT = (
+    "Этапы челленджа:\n\n"
+    "1. Установочная неделя цели: формулируешь цель и уточняешь личные данные.\n"
+    "2. Установочная неделя шагов: кристаллизуешь шаги достижения цели.\n"
+    "3. Рабочие недели week_01-week_08: выбираешь фокус недели, двигаешь шаги и сдаёшь отчёты.\n"
+    "4. Финальное окно: собираем итоги и финальные выводы."
+)
+GOAL_SETUP_INTRO_TEXT = (
+    "Постановка цели: цель должна быть конкретной, измеримой и личной. "
+    "Сформулируй её так, чтобы через 8 рабочих недель было понятно, достигнута она или нет."
+)
 MISSING_DATA_TEXT = "Данные пока не заполнены. Свяжитесь со своим капитаном."
 NOT_AVAILABLE_TEXT = "Раздел будет доступен позже."
 MESSAGE_WITHOUT_FLOW_TEXT = "Сейчас сообщение не относится ни к одному разделу. Открой меню: /menu"
@@ -83,7 +105,7 @@ SCHEDULER_REMINDER_TEXTS = {
     "sunday_2300_reminder": (
         "Последнее напоминание.\n\n"
         "Если отчёт не будет отправлен до 23:59 по Екатеринбургу, "
-        "неделя будет отмечена как ⬜ нет ответа."
+        "неделя будет отмечена как ⬛ нет отчёта в срок."
     ),
 }
 
@@ -244,6 +266,7 @@ def format_progress_view(
     *,
     steps: Sequence[PlannedStep],
     weekly_history: Sequence[WeeklyStatus] = (),
+    closed_week_number: int = 0,
 ) -> str:
     percent = calculate_progress_percent(steps)
     lines = [
@@ -251,12 +274,13 @@ def format_progress_view(
         f"Шаги: {_format_progress_bar(steps)}",
     ]
 
-    if weekly_history:
-        lines.append("История недель:")
-        lines.extend(
-            f"Неделя {item.week_number}: {item.status_symbol}"
-            for item in sorted(weekly_history, key=lambda status: status.week_number)
-        )
+    history_by_week = {item.week_number: item.status_symbol for item in weekly_history}
+    lines.append("История недель:")
+    lines.extend(
+        f"Неделя {week_number}: "
+        f"{history_by_week.get(week_number, '⬛' if week_number <= closed_week_number else '⬜')}"
+        for week_number in range(1, WORKING_WEEK_COUNT + 1)
+    )
 
     return "\n".join(lines)
 

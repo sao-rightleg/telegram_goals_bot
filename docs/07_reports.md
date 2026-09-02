@@ -26,7 +26,8 @@ Allowed statuses:
 - `🟩` victory / completed planned step
 - `🟦` partial victory
 - `🟥` no victory
-- `⬜` no answer before deadline
+- `⬛` deadline passed, no report submitted
+- `⬜` current/future week whose deadline has not passed; display placeholder only
 
 Do not use yellow late status.
 
@@ -34,7 +35,7 @@ Scoring:
 - `🟩` = 1
 - `🟦` = 0.5
 - `🟥` = 0
-- `⬜` = 0
+- `⬛` = 0
 
 Progress percent:
 
@@ -106,6 +107,9 @@ Required fields:
 - captain name
 - active participants count
 - dropped participants count
+- submitted reports count and percentage of active participants
+- missing reports count and percentage of active participants
+- names of participants with missing reports
 - weekly victory percentage
 - participant list with progress bar and percent
 
@@ -179,12 +183,17 @@ They should be visually separated from active participants and excluded from act
 Include:
 - week number
 - all team summaries
+- overall submitted and missing report counts with percentages of all active participants
+- a per-team breakdown of submitted and missing report counts and percentages
+- names of participants with missing reports inside each team block
 - risk zones
 - dropped counts
 - high-level comparison between groups
 - report generation errors if relevant for admin
 
 Do not add coaching recommendations.
+
+Tracker summaries use the same structure but include only assigned teams. Captain summaries use the same submission and missing-report metrics for the captain's own team. Dropped participants remain visible where required but are excluded from the denominator. Percentages are rounded to one decimal place, with integer percentages displayed without a trailing decimal zero.
 
 ## Group Comparison
 
@@ -214,6 +223,8 @@ Scoring:
 
 Weekly status history is stored separately from the main progress bar. UI and reports may show both, but the main progress percent is calculated only from planned steps.
 
+In weekly history, `⬜` is reserved for current/future weeks. In the planned-step progress bar below, `⬜` continues to mean an open planned step.
+
 Example:
 
 ```text
@@ -223,6 +234,8 @@ Example:
 ## Data Sources
 
 Reports use Google Sheets as source of final business facts.
+
+Role reports are generated only from final weekly facts. If an active participant has no final `WeeklyReports` row, generation must fail and notify the administrator instead of classifying the participant as overdue. Unknown status codes must also fail validation.
 
 Required data:
 - participants

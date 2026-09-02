@@ -127,6 +127,38 @@ def test_successful_reminder_lookup_prevents_duplicate_send(tmp_path: Path) -> N
     assert repository.has_successful_reminder("P001", week_number=4, reminder_type="sunday_2300")
 
 
+def test_scheduled_event_delivery_can_be_claimed_only_once_until_failed(tmp_path: Path) -> None:
+    db_path = tmp_path / "state.sqlite3"
+    initialize_schema(db_path)
+    repository = SchedulerJobRepository(db_path)
+    claim = {
+        "event_id": "FLOW_1:monday_focus_1300",
+        "recipient_id": "P001",
+        "week_number": 1,
+        "scheduled_for": "2026-09-21T13:00:00+05:00",
+        "updated_at": "2026-09-21T13:00:00+05:00",
+    }
+
+    assert repository.claim_event_delivery(**claim)
+    assert not repository.claim_event_delivery(**claim)
+
+    stale_retry = dict(claim)
+    stale_retry["scheduled_for"] = "2026-09-21T13:11:00+05:00"
+    stale_retry["updated_at"] = "2026-09-21T13:11:00+05:00"
+    stale_retry["stale_before"] = "2026-09-21T13:01:00+05:00"
+    assert repository.claim_event_delivery(**stale_retry)
+    assert not repository.claim_event_delivery(**stale_retry)
+
+    repository.record_event_delivery(
+        **{key: value for key, value in stale_retry.items() if key != "stale_before"},
+        status="failed",
+        error_message="send_failed",
+    )
+
+    assert repository.claim_event_delivery(**claim)
+    assert not repository.claim_event_delivery(**claim)
+
+
 def test_record_error_stores_safe_technical_context(tmp_path: Path) -> None:
     db_path = tmp_path / "state.sqlite3"
     initialize_schema(db_path)

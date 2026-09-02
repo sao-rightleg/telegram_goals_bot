@@ -1,4 +1,7 @@
+import pytest
+
 from app.reports.aggregation import build_all_teams_report
+from app.reports.formatting import format_captain_summary_text
 from app.sheets.gateway import FakeSheetsGateway
 
 
@@ -15,7 +18,7 @@ def test_aggregation_builds_team_report_from_final_sheets_rows() -> None:
     assert team.captain_name == "Ирина Капитан"
     assert team.active_count == 2
     assert team.dropped_count == 1
-    assert team.status_distribution == {"green": 1, "blue": 1, "red": 0, "gray": 1}
+    assert team.status_distribution == {"green": 1, "blue": 1, "red": 0, "gray": 0}
     assert team.weekly_victory_percent == 75
     assert anna.full_name == "Анна Иванова"
     assert anna.status == "🟩"
@@ -42,7 +45,24 @@ def test_weekly_victory_percent_excludes_dropped_participants() -> None:
     assert team.active_count == 2
     assert team.dropped_count == 1
     assert team.weekly_victory_percent == 50
-    assert team.status_distribution == {"green": 2, "blue": 0, "red": 1, "gray": 0}
+    assert team.status_distribution == {"green": 1, "blue": 0, "red": 1, "gray": 0}
+
+
+def test_telegram_submission_metrics_are_derived_from_final_sheet_reports() -> None:
+    gateway = _gateway(
+        weekly_reports=[
+            _weekly_report("WR001", "P001", "red", "🟥", 0),
+            _weekly_report("WR002", "P002", "gray", "⬛", 0),
+        ]
+    )
+
+    team = build_all_teams_report(gateway, week_number=5).teams[0]
+    text = format_captain_summary_text(team)
+
+    assert "✅ Сдали: 1 из 2 — 50%" in text
+    assert "❌ Не сдали: 1 из 2 — 50%" in text
+    assert "Пётр Смирнов" in text
+    assert "Ольга Соколова" not in text.split("Не сдали:", 1)[1].split("Результаты недели", 1)[0]
 
 
 def test_dropped_participants_are_visible_in_participant_sections() -> None:
@@ -82,7 +102,8 @@ def test_deleted_audio_path_is_not_opened_during_aggregation() -> None:
                 **_weekly_report("WR001", "P001", "green", "🟩", 1),
                 "audio_file_path": "/tmp/deleted-audio.ogg",
                 "audio_deleted_at": "2026-07-15T10:00:00+05:00",
-            }
+            },
+            _weekly_report("WR002", "P002", "gray", "⬛", 0),
         ]
     )
 
@@ -93,7 +114,10 @@ def test_deleted_audio_path_is_not_opened_during_aggregation() -> None:
 
 def test_unfinished_sqlite_drafts_are_not_part_of_reports() -> None:
     gateway = _gateway(
-        weekly_reports=[],
+        weekly_reports=[
+            _weekly_report("WR001", "P001", "gray", "⬛", 0),
+            _weekly_report("WR002", "P002", "gray", "⬛", 0),
+        ],
         insights=[],
     )
 
@@ -101,6 +125,37 @@ def test_unfinished_sqlite_drafts_are_not_part_of_reports() -> None:
 
     assert team.weekly_victory_percent == 0
     assert "черновик" not in "\n".join(section.report_text or "" for section in team.participants).lower()
+
+
+def test_persisted_missing_closed_week_uses_black_square_but_open_steps_stay_white() -> None:
+    team = build_all_teams_report(
+        _gateway(
+            weekly_reports=[
+                _weekly_report("WR001", "P001", "gray", "⬛", 0),
+                _weekly_report("WR002", "P002", "gray", "⬛", 0),
+            ]
+        ),
+        week_number=5,
+    ).teams[0]
+    participant = next(section for section in team.participants if section.participant_id == "P001")
+
+    assert participant.status == "⬛"
+    assert participant.progress_bar == "🟩🟦⬜⬜⬜⬜"
+
+
+def test_missing_active_participant_final_report_is_rejected() -> None:
+    with pytest.raises(ValueError, match="Missing final weekly report"):
+        build_all_teams_report(_gateway(weekly_reports=[]), week_number=5)
+
+
+def test_unknown_final_status_code_is_rejected() -> None:
+    reports = [
+        _weekly_report("WR001", "P001", "yellow", "🟨", 0),
+        _weekly_report("WR002", "P002", "gray", "⬛", 0),
+    ]
+
+    with pytest.raises(ValueError, match="Unknown weekly report status_code"):
+        build_all_teams_report(_gateway(weekly_reports=reports), week_number=5)
 
 
 def _gateway(

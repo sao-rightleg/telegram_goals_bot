@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 import logging
 import signal
 import sys
@@ -20,6 +20,7 @@ from app.logging import setup_logging
 from app.bot.dispatch import TelegramUpdate, TelegramUpdateDispatcher, parse_telegram_update
 from app.config import ConfigurationError, Settings, load_settings
 from app.scheduler.calendar import TIMEZONE_NAME, ScheduleItem, reminder_schedule
+from app.scheduler.calendar import configure_challenge_calendar
 from app.scheduler.jobs import SchedulerService
 from app.services.captains import CaptainService
 from app.services.insights import InsightService
@@ -27,9 +28,15 @@ from app.services.notifications import NotificationCategory, NotificationRouter,
 from app.services.participant_flows import ParticipantFlowService
 from app.services.voice_messages import VoiceMessageService
 from app.services.weekly_reports import WeeklyReportService
-from app.sheets.gateway import GoogleSheetsError, GoogleSheetsGateway, validate_required_schema
+from app.sheets.gateway import (
+    GoogleSheetsError,
+    GoogleSheetsGateway,
+    validate_challenge_flows_schema,
+    validate_required_schema,
+)
 from app.speech.transcription import FakeSpeechTranscriber, YandexSpeechKitTranscriber
 from app.storage.dialog_state import DialogStateRepository
+from app.storage.registration import RegistrationDraftRepository
 from app.storage.insight_drafts import InsightDraftRepository
 from app.storage.paths import StoragePathPolicy
 from app.storage.scheduler import SchedulerJobRepository
@@ -128,12 +135,25 @@ def validate_runtime_readiness(
     try:
         selected_google_service_factory = google_service_factory or create_google_sheets_service
         google_service = selected_google_service_factory(settings)
+        schema_validator_was_injected = schema_validator is not None
         if schema_validator is None:
             schema_validator = validate_required_schema
         schema_validator(
             google_service,
             spreadsheet_id=settings.google_sheets.sheet_id,
         )
+        if not schema_validator_was_injected:
+            validate_challenge_flows_schema(
+                google_service,
+                spreadsheet_id=settings.google_sheets.challenge_flows_sheet_id,
+            )
+            _configure_challenge_calendar_from_sheets(
+                settings,
+                GoogleSheetsGateway(
+                    service=google_service,
+                    spreadsheet_id=settings.google_sheets.challenge_flows_sheet_id,
+                ),
+            )
         _build_transcriber(settings, http_client=httpx.Client())
     except ConfigurationError:
         raise
@@ -188,13 +208,20 @@ def compose_runtime(
 
     db_path = settings.storage.sqlite_db_path
     dialog_states = DialogStateRepository(db_path)
+    registration_drafts = RegistrationDraftRepository(db_path)
     weekly_drafts = WeeklyReportDraftRepository(db_path)
     insight_drafts = InsightDraftRepository(db_path)
     scheduler_jobs = SchedulerJobRepository(db_path)
+    google_service = selected_google_service_factory(settings)
     sheets_gateway = GoogleSheetsGateway(
-        service=selected_google_service_factory(settings),
+        service=google_service,
         spreadsheet_id=settings.google_sheets.sheet_id,
     )
+    challenge_flows_gateway = GoogleSheetsGateway(
+        service=google_service,
+        spreadsheet_id=settings.google_sheets.challenge_flows_sheet_id,
+    )
+    _configure_challenge_calendar_from_sheets(settings, challenge_flows_gateway)
     voice_service = VoiceMessageService(
         dialog_states=dialog_states,
         weekly_report_drafts=weekly_drafts,
@@ -216,6 +243,8 @@ def compose_runtime(
         main_bot=main_bot,
         notification_router=notification_router,
         dialog_states=dialog_states,
+        registration_flows=challenge_flows_gateway,
+        registration_drafts=registration_drafts,
     )
     weekly_report_service = WeeklyReportService(
         sheets=sheets_gateway,
@@ -334,7 +363,29 @@ class LiveSchedulerRunner:
     def run_due_jobs_once(self, components: RuntimeComponents, *, now: datetime | None = None) -> None:
         current = now or self._now()
         local_current = current.astimezone(ZoneInfo(TIMEZONE_NAME))
+        schedule_rows = components.sheets_gateway.list_flow_schedule()
+        dynamic_focus_defined = any(_is_valid_focus_schedule_row(row) for row in schedule_rows)
+        for row in schedule_rows:
+            scheduled_at = _flow_event_scheduled_at(row)
+            if scheduled_at is None or row.get("is_enabled") is not True:
+                continue
+            if scheduled_at > local_current or local_current - scheduled_at > self.catch_up_window:
+                continue
+            event_id = str(row.get("event_id", "")).strip()
+            dispatch_key = f"flow:{event_id}:{scheduled_at.isoformat()}"
+            if not event_id or dispatch_key in self._dispatched_keys:
+                continue
+            self._dispatched_keys.add(dispatch_key)
+            self._run_flow_schedule_event(components, row, scheduled_at=scheduled_at)
+
         for item in reminder_schedule():
+            if dynamic_focus_defined and item.job_type in {
+                "monday_reminder",
+                "monday_focus_1300",
+                "monday_focus_1900",
+                "weekly_focus_summary_captain",
+            }:
+                continue
             scheduled_at = _last_scheduled_at(item, local_current)
             if scheduled_at is None:
                 continue
@@ -347,6 +398,32 @@ class LiveSchedulerRunner:
 
             self._dispatched_keys.add(dispatch_key)
             self._run_scheduler_job(components, item.job_type, scheduled_at=scheduled_at)
+
+    def _run_flow_schedule_event(
+        self,
+        components: RuntimeComponents,
+        row: dict[str, object],
+        *,
+        scheduled_at: datetime,
+    ) -> None:
+        event_type = str(row.get("event_type", "")).strip()
+        recipient_role = str(row.get("recipient_role", "")).strip().lower()
+        if event_type == "weekly_focus_prompt":
+            if recipient_role not in {"участник", "participant"}:
+                return
+            reminder_type = _focus_reminder_type(row)
+            components.scheduler_service.run_reminder(
+                reminder_type,
+                now=scheduled_at,
+                flow_id=str(row.get("flow_id", "")).strip() or None,
+                event_id=str(row.get("event_id", "")).strip(),
+            )
+        elif event_type == "weekly_focus_summary" and recipient_role in {"капитан", "captain"}:
+            components.scheduler_service.send_weekly_focus_summary_to_captains(
+                now=scheduled_at,
+                flow_id=str(row.get("flow_id", "")).strip() or None,
+                event_id=str(row.get("event_id", "")).strip(),
+            )
 
     def _run_loop(self, components: RuntimeComponents) -> None:
         logger.info("scheduler runner started")
@@ -381,6 +458,22 @@ class LiveSchedulerRunner:
             )
             return
 
+        if job_type == "weekly_focus_summary_captain":
+            result = components.scheduler_service.send_weekly_focus_summary_to_captains(
+                now=scheduled_at
+            )
+            logger.info(
+                "scheduler weekly focus summary completed",
+                extra={
+                    "job_type": job_type,
+                    "scheduled_at": scheduled_at.isoformat(),
+                    "sent_count": result.sent_count,
+                    "skipped_count": result.skipped_count,
+                    "failed_count": result.failed_count,
+                },
+            )
+            return
+
         result = components.scheduler_service.run_reminder(job_type, now=scheduled_at)
         logger.info(
             "scheduler reminder completed",
@@ -399,6 +492,48 @@ class LiveSchedulerRunner:
         return datetime.now(ZoneInfo(TIMEZONE_NAME))
 
 
+def _flow_event_scheduled_at(row: dict[str, object]) -> datetime | None:
+    if str(row.get("scheduled_timezone", "")).strip() != TIMEZONE_NAME:
+        return None
+    raw_date = str(row.get("scheduled_date", "")).strip()
+    raw_time = str(row.get("scheduled_time", "")).strip()
+    try:
+        parsed_date = date.fromisoformat(raw_date)
+    except ValueError:
+        try:
+            parsed_date = datetime.strptime(raw_date, "%d.%m.%Y").date()
+        except ValueError:
+            return None
+    try:
+        parsed_time = time.fromisoformat(raw_time)
+    except ValueError:
+        return None
+    return datetime.combine(parsed_date, parsed_time, tzinfo=ZoneInfo(TIMEZONE_NAME))
+
+
+def _focus_reminder_type(row: dict[str, object]) -> str:
+    raw_time = str(row.get("scheduled_time", "")).strip()
+    if raw_time.startswith("13:"):
+        return "monday_focus_1300"
+    if raw_time.startswith("19:"):
+        return "monday_focus_1900"
+    return "monday_reminder"
+
+
+def _is_valid_focus_schedule_row(row: dict[str, object]) -> bool:
+    event_type = str(row.get("event_type", "")).strip()
+    recipient = str(row.get("recipient_role", "")).strip().lower()
+    if str(row.get("scheduled_timezone", "")).strip() != TIMEZONE_NAME:
+        return False
+    if _flow_event_scheduled_at(row) is None or not str(row.get("event_id", "")).strip():
+        return False
+    return (
+        event_type == "weekly_focus_prompt" and recipient in {"участник", "participant"}
+    ) or (
+        event_type == "weekly_focus_summary" and recipient in {"капитан", "captain"}
+    )
+
+
 def run_bot(
     settings: Settings,
     *,
@@ -409,6 +544,7 @@ def run_bot(
 ) -> None:
     """Run the live Telegram polling runtime."""
 
+    configure_challenge_calendar(start_date=settings.challenge.start_date)
     initialize_runtime(settings)
     if components_factory is None:
         try:
@@ -513,6 +649,7 @@ def main(
 
     try:
         settings = load_settings(env_file=env_file, strict=True)
+        configure_challenge_calendar(start_date=settings.challenge.start_date)
         logger = setup_logging(settings)
         result = initialize_runtime(settings)
         logger.info("runtime storage ready", extra={"sqlite_db_path": str(result.sqlite_db_path)})
@@ -557,6 +694,22 @@ def _build_transcriber(settings: Settings, *, http_client: httpx.Client):
             http_client=http_client,
         )
     raise ConfigurationError("Unsupported transcription provider")
+
+
+def _configure_challenge_calendar_from_sheets(settings: Settings, gateway: GoogleSheetsGateway) -> None:
+    flow = gateway.get_active_challenge_flow()
+    if flow is None:
+        configure_challenge_calendar(start_date=settings.challenge.start_date)
+        return
+
+    raw_start_date = flow.get("challenge_start_date")
+    if raw_start_date is None or str(raw_start_date).strip() == "":
+        raise ConfigurationError("Active ChallengeFlows.challenge_start_date is required")
+    try:
+        start_date = date.fromisoformat(str(raw_start_date).strip())
+    except ValueError as exc:
+        raise ConfigurationError("Active ChallengeFlows.challenge_start_date must be YYYY-MM-DD") from exc
+    configure_challenge_calendar(start_date=start_date)
 
 
 def _required_token(value: str | None, key: str) -> str:

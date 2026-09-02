@@ -7,6 +7,26 @@ on:
         description: Git ref to deploy to the test VPS environment
         required: true
         default: main
+      mode:
+        description: Deploy or run a safe test-environment spreadsheet diagnostic
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - find_flow_registry
+          - inspect_business_sheet
+          - migrate_business_schema
+          - create_smoke_flow_sheet
+          - configure_flow_registry
+      registry_id:
+        description: Google Spreadsheet ID used only by configure_flow_registry
+        required: false
+        default: ""
+      target_sheet_id:
+        description: User-owned destination spreadsheet for create_smoke_flow_sheet
+        required: false
+        default: ""
 
 concurrency:
   group: test-deploy
@@ -14,6 +34,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: inputs.mode == 'deploy'
     runs-on: ubuntu-latest
     environment: test
     permissions:
@@ -29,6 +50,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
+      - name: Resolve checked-out release SHA
+        run: echo "DEPLOY_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
@@ -61,7 +84,7 @@ jobs:
             --exclude='*.sqlite' \
             --exclude='*.sqlite3' \
             --exclude='*.db' \
-            -czf "/tmp/telegram-goals-bot-test-${GITHUB_SHA}.tgz" .
+            -czf "/tmp/telegram-goals-bot-test-${DEPLOY_SHA}.tgz" .
       - name: Configure SSH
         run: |
           install -m 700 -d ~/.ssh
@@ -71,12 +94,12 @@ jobs:
       - name: Upload archive
         run: |
           scp -i ~/.ssh/deploy_key -P "${TEST_VPS_PORT:-22}" \
-            "/tmp/telegram-goals-bot-test-${GITHUB_SHA}.tgz" \
-            "$TEST_VPS_USER@$TEST_VPS_HOST:/tmp/telegram-goals-bot-test-${GITHUB_SHA}.tgz"
+            "/tmp/telegram-goals-bot-test-${DEPLOY_SHA}.tgz" \
+            "$TEST_VPS_USER@$TEST_VPS_HOST:/tmp/telegram-goals-bot-test-${DEPLOY_SHA}.tgz"
       - name: Install test release and restart test service
         run: |
           ssh -i ~/.ssh/deploy_key -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_USER@$TEST_VPS_HOST" \
-            "TEST_APP_DIR='$TEST_VPS_APP_DIR' TEST_SERVICE_NAME='$TEST_VPS_SERVICE_NAME' GITHUB_SHA='$GITHUB_SHA' bash -s" <<'REMOTE'
+            "TEST_APP_DIR='$TEST_VPS_APP_DIR' TEST_SERVICE_NAME='$TEST_VPS_SERVICE_NAME' DEPLOY_SHA='$DEPLOY_SHA' bash -s" <<'REMOTE'
           set -euo pipefail
 
           test "$TEST_APP_DIR" = "/opt/telegram_goals_bot_test"
@@ -84,9 +107,9 @@ jobs:
 
           TEST_SERVICE_USER="telegram-goals-bot-test"
           TEST_SERVICE_GROUP="telegram-goals-bot-test"
-          RELEASE_DIR="$TEST_APP_DIR/releases/$GITHUB_SHA"
+          RELEASE_DIR="$TEST_APP_DIR/releases/$DEPLOY_SHA"
           mkdir -p "$RELEASE_DIR" "$TEST_APP_DIR/shared"
-          tar -xzf "/tmp/telegram-goals-bot-test-$GITHUB_SHA.tgz" -C "$RELEASE_DIR"
+          tar -xzf "/tmp/telegram-goals-bot-test-$DEPLOY_SHA.tgz" -C "$RELEASE_DIR"
 
           cd "$RELEASE_DIR"
           python3 -m venv .venv
@@ -118,4 +141,446 @@ jobs:
           sudo systemctl daemon-reload
           sudo systemctl restart "$TEST_SERVICE_NAME"
           sudo systemctl status "$TEST_SERVICE_NAME" --no-pager
+          REMOTE
+
+  find-flow-registry:
+    if: inputs.mode == 'find_flow_registry'
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      contents: read
+    env:
+      TEST_VPS_HOST: ${{ secrets.TEST_VPS_HOST }}
+      TEST_VPS_PORT: ${{ secrets.TEST_VPS_PORT }}
+      TEST_VPS_USER: ${{ secrets.TEST_VPS_USER }}
+      TEST_VPS_SSH_KEY: ${{ secrets.TEST_VPS_SSH_KEY }}
+      TEST_VPS_APP_DIR: ${{ secrets.TEST_VPS_APP_DIR }}
+    steps:
+      - name: Configure SSH
+        run: |
+          test "$TEST_VPS_APP_DIR" = "/opt/telegram_goals_bot_test"
+          install -m 700 -d ~/.ssh
+          printf '%s' "$TEST_VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_HOST" >> ~/.ssh/known_hosts
+      - name: Find spreadsheet containing ChallengeFlows
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_USER@$TEST_VPS_HOST" \
+            "TEST_APP_DIR='$TEST_VPS_APP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          set -a
+          . "$TEST_APP_DIR/shared/.env"
+          set +a
+          cd "$TEST_APP_DIR/current"
+          "$TEST_APP_DIR/current/.venv/bin/python" - <<'PY'
+          import os
+          from google.oauth2.service_account import Credentials
+          from googleapiclient.discovery import build
+
+          credentials = Credentials.from_service_account_file(
+              os.environ["GOOGLE_APPLICATION_CREDENTIALS"],
+              scopes=("https://www.googleapis.com/auth/drive.metadata.readonly", "https://www.googleapis.com/auth/spreadsheets.readonly"),
+          )
+          drive = build("drive", "v3", credentials=credentials, cache_discovery=False)
+          sheets = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+          token = None
+          matches = []
+          while True:
+              response = drive.files().list(
+                  q="mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
+                  fields="nextPageToken,files(id,name)", pageSize=100, pageToken=token,
+              ).execute()
+              for item in response.get("files", []):
+                  try:
+                      metadata = sheets.spreadsheets().get(
+                          spreadsheetId=item["id"], fields="sheets.properties.title"
+                      ).execute()
+                  except Exception:
+                      continue
+                  titles = {sheet.get("properties", {}).get("title") for sheet in metadata.get("sheets", [])}
+                  if "ChallengeFlows" in titles:
+                      matches.append((item["id"], item["name"]))
+              token = response.get("nextPageToken")
+              if not token:
+                  break
+          if not matches:
+              raise SystemExit("FLOW_REGISTRY_NOT_FOUND")
+          for spreadsheet_id, name in matches:
+              print(f"FLOW_REGISTRY_FOUND id={spreadsheet_id} name={name}")
+          PY
+          REMOTE
+
+  inspect-business-sheet:
+    if: inputs.mode == 'inspect_business_sheet'
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      contents: read
+    env:
+      TEST_VPS_HOST: ${{ secrets.TEST_VPS_HOST }}
+      TEST_VPS_PORT: ${{ secrets.TEST_VPS_PORT }}
+      TEST_VPS_USER: ${{ secrets.TEST_VPS_USER }}
+      TEST_VPS_SSH_KEY: ${{ secrets.TEST_VPS_SSH_KEY }}
+      TEST_VPS_APP_DIR: ${{ secrets.TEST_VPS_APP_DIR }}
+    steps:
+      - name: Configure SSH
+        run: |
+          test "$TEST_VPS_APP_DIR" = "/opt/telegram_goals_bot_test"
+          install -m 700 -d ~/.ssh
+          printf '%s' "$TEST_VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_HOST" >> ~/.ssh/known_hosts
+      - name: Report configured business spreadsheet
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_USER@$TEST_VPS_HOST" \
+            "TEST_APP_DIR='$TEST_VPS_APP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          set -a
+          . "$TEST_APP_DIR/shared/.env"
+          set +a
+          cd "$TEST_APP_DIR/current"
+          "$TEST_APP_DIR/current/.venv/bin/python" - <<'PY'
+          import os
+          from google.oauth2.service_account import Credentials
+          from googleapiclient.discovery import build
+
+          spreadsheet_id = os.environ["GOOGLE_SHEETS_ID"]
+          credentials = Credentials.from_service_account_file(
+              os.environ["GOOGLE_APPLICATION_CREDENTIALS"],
+              scopes=("https://www.googleapis.com/auth/spreadsheets.readonly",),
+          )
+          sheets = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+          metadata = sheets.spreadsheets().get(
+              spreadsheetId=spreadsheet_id,
+              fields="properties.title",
+          ).execute()
+          title = metadata.get("properties", {}).get("title", "")
+          print(f"BUSINESS_SHEET_ID={spreadsheet_id}")
+          print(f"BUSINESS_SHEET_TITLE={title}")
+          PY
+          REMOTE
+
+  migrate-business-schema:
+    if: inputs.mode == 'migrate_business_schema'
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      contents: read
+    env:
+      TEST_VPS_HOST: ${{ secrets.TEST_VPS_HOST }}
+      TEST_VPS_PORT: ${{ secrets.TEST_VPS_PORT }}
+      TEST_VPS_USER: ${{ secrets.TEST_VPS_USER }}
+      TEST_VPS_SSH_KEY: ${{ secrets.TEST_VPS_SSH_KEY }}
+      TEST_VPS_APP_DIR: ${{ secrets.TEST_VPS_APP_DIR }}
+    steps:
+      - name: Configure SSH
+        run: |
+          test "$TEST_VPS_APP_DIR" = "/opt/telegram_goals_bot_test"
+          install -m 700 -d ~/.ssh
+          printf '%s' "$TEST_VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_HOST" >> ~/.ssh/known_hosts
+      - name: Add required registration columns
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_USER@$TEST_VPS_HOST" \
+            "TEST_APP_DIR='$TEST_VPS_APP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          set -a
+          . "$TEST_APP_DIR/shared/.env"
+          set +a
+          cd "$TEST_APP_DIR/current"
+          "$TEST_APP_DIR/current/.venv/bin/python" - <<'PY'
+          import os
+          from google.oauth2.service_account import Credentials
+          from googleapiclient.discovery import build
+
+          required = {
+              "Participants": (
+                  "bot_started_at",
+                  "consent_status",
+                  "flow_id",
+                  "last_stage_updated_at",
+                  "onboarding_completed_at",
+                  "participant_stage",
+              ),
+              "Teams": ("flow_id",),
+          }
+          spreadsheet_id = os.environ["GOOGLE_SHEETS_ID"]
+          credentials = Credentials.from_service_account_file(
+              os.environ["GOOGLE_APPLICATION_CREDENTIALS"],
+              scopes=("https://www.googleapis.com/auth/spreadsheets",),
+          )
+          sheets = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+          metadata = sheets.spreadsheets().get(
+              spreadsheetId=spreadsheet_id,
+              fields="sheets.properties(sheetId,title,gridProperties.columnCount)",
+          ).execute()
+          properties = {
+              item["properties"]["title"]: item["properties"]
+              for item in metadata.get("sheets", [])
+          }
+          missing_sheets = [name for name in required if name not in properties]
+          if missing_sheets:
+              raise SystemExit(f"Missing required sheets: {missing_sheets}")
+
+          plans = []
+          for sheet_name, required_headers in required.items():
+              response = sheets.spreadsheets().values().get(
+                  spreadsheetId=spreadsheet_id,
+                  range=f"'{sheet_name}'",
+                  valueRenderOption="FORMULA",
+              ).execute()
+              rows = response.get("values") or [[]]
+              headers = list(rows[0])
+              missing = [header for header in required_headers if header not in headers]
+              if not missing:
+                  print(f"SCHEMA_OK sheet={sheet_name} added=0")
+                  continue
+              used_width = max((len(row) for row in rows), default=0)
+              start = max(len(headers), used_width)
+              end = start + len(missing)
+              plans.append((sheet_name, missing, start, end))
+
+          requests = []
+          for sheet_name, missing, start, end in plans:
+              column_count = properties[sheet_name]["gridProperties"]["columnCount"]
+              if end > column_count:
+                  requests.append({
+                      "appendDimension": {
+                          "sheetId": properties[sheet_name]["sheetId"],
+                          "dimension": "COLUMNS",
+                          "length": end - column_count,
+                      }
+                  })
+              requests.append({
+                  "updateCells": {
+                      "range": {
+                          "sheetId": properties[sheet_name]["sheetId"],
+                          "startRowIndex": 0,
+                          "endRowIndex": 1,
+                          "startColumnIndex": start,
+                          "endColumnIndex": end,
+                      },
+                      "rows": [{
+                          "values": [
+                              {"userEnteredValue": {"stringValue": header}}
+                              for header in missing
+                          ]
+                      }],
+                      "fields": "userEnteredValue",
+                  }
+              })
+              if start > 0:
+                  requests.append({
+                      "copyPaste": {
+                          "source": {
+                              "sheetId": properties[sheet_name]["sheetId"],
+                              "startRowIndex": 0,
+                              "endRowIndex": 1,
+                              "startColumnIndex": start - 1,
+                              "endColumnIndex": start,
+                          },
+                          "destination": {
+                              "sheetId": properties[sheet_name]["sheetId"],
+                              "startRowIndex": 0,
+                              "endRowIndex": 1,
+                              "startColumnIndex": start,
+                              "endColumnIndex": end,
+                          },
+                          "pasteType": "PASTE_FORMAT",
+                          "pasteOrientation": "NORMAL",
+                      }
+                  })
+
+          if requests:
+              sheets.spreadsheets().batchUpdate(
+                  spreadsheetId=spreadsheet_id,
+                  body={"requests": requests},
+              ).execute()
+
+          for sheet_name, missing, _start, _end in plans:
+              verified = sheets.spreadsheets().values().get(
+                  spreadsheetId=spreadsheet_id,
+                  range=f"'{sheet_name}'!1:1",
+              ).execute().get("values", [[]])[0]
+              absent = [header for header in required[sheet_name] if header not in verified]
+              if absent:
+                  raise SystemExit(f"Schema verification failed for {sheet_name}: {absent}")
+              print(f"SCHEMA_OK sheet={sheet_name} added={len(missing)}")
+          PY
+          REMOTE
+
+  create-smoke-flow-sheet:
+    if: inputs.mode == 'create_smoke_flow_sheet'
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      contents: read
+    env:
+      TEST_VPS_HOST: ${{ secrets.TEST_VPS_HOST }}
+      TEST_VPS_PORT: ${{ secrets.TEST_VPS_PORT }}
+      TEST_VPS_USER: ${{ secrets.TEST_VPS_USER }}
+      TEST_VPS_SSH_KEY: ${{ secrets.TEST_VPS_SSH_KEY }}
+      TEST_VPS_APP_DIR: ${{ secrets.TEST_VPS_APP_DIR }}
+      TARGET_SHEET_ID: ${{ inputs.target_sheet_id }}
+    steps:
+      - name: Configure SSH
+        run: |
+          test "$TEST_VPS_APP_DIR" = "/opt/telegram_goals_bot_test"
+          [[ "$TARGET_SHEET_ID" =~ ^[A-Za-z0-9_-]{20,}$ ]]
+          install -m 700 -d ~/.ssh
+          printf '%s' "$TEST_VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_HOST" >> ~/.ssh/known_hosts
+      - name: Copy every source tab into the user-owned flow spreadsheet
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_USER@$TEST_VPS_HOST" \
+            "TEST_APP_DIR='$TEST_VPS_APP_DIR' TARGET_SHEET_ID='$TARGET_SHEET_ID' bash -s" <<'REMOTE'
+          set -euo pipefail
+          set -a
+          . "$TEST_APP_DIR/shared/.env"
+          set +a
+          cd "$TEST_APP_DIR/current"
+          "$TEST_APP_DIR/current/.venv/bin/python" - <<'PY'
+          import os
+          from google.oauth2.service_account import Credentials
+          from googleapiclient.discovery import build
+
+          source_id = os.environ["GOOGLE_SHEETS_ID"]
+          target_id = os.environ["TARGET_SHEET_ID"]
+          if source_id == target_id:
+              raise SystemExit("Source and target spreadsheet IDs must differ")
+          credentials = Credentials.from_service_account_file(
+              os.environ["GOOGLE_APPLICATION_CREDENTIALS"],
+              scopes=("https://www.googleapis.com/auth/spreadsheets",),
+          )
+          sheets = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+          def metadata(spreadsheet_id):
+              return sheets.spreadsheets().get(
+                  spreadsheetId=spreadsheet_id,
+                  fields="sheets.properties(sheetId,title,index)",
+              ).execute()
+
+          source_sheets = metadata(source_id).get("sheets", [])
+          target_sheets = metadata(target_id).get("sheets", [])
+          source_titles = [item["properties"]["title"] for item in source_sheets]
+          target_titles = [item["properties"]["title"] for item in target_sheets]
+          unexpected = [
+              title for title in target_titles
+              if title not in source_titles and title not in {"Sheet1", "Лист1"}
+          ]
+          if unexpected:
+              raise SystemExit(f"Target spreadsheet contains unexpected tabs: {unexpected}")
+
+          for source_sheet in source_sheets:
+              title = source_sheet["properties"]["title"]
+              if title in target_titles:
+                  continue
+              copied = sheets.spreadsheets().sheets().copyTo(
+                  spreadsheetId=source_id,
+                  sheetId=source_sheet["properties"]["sheetId"],
+                  body={"destinationSpreadsheetId": target_id},
+              ).execute()
+              sheets.spreadsheets().batchUpdate(
+                  spreadsheetId=target_id,
+                  body={"requests": [{
+                      "updateSheetProperties": {
+                          "properties": {"sheetId": copied["sheetId"], "title": title},
+                          "fields": "title",
+                      }
+                  }]},
+              ).execute()
+              target_titles.append(title)
+
+          target_sheets = metadata(target_id).get("sheets", [])
+          cleanup = [
+              {"deleteSheet": {"sheetId": item["properties"]["sheetId"]}}
+              for item in target_sheets
+              if item["properties"]["title"] in {"Sheet1", "Лист1"}
+              and item["properties"]["title"] not in source_titles
+          ]
+          if cleanup:
+              sheets.spreadsheets().batchUpdate(
+                  spreadsheetId=target_id,
+                  body={"requests": cleanup},
+              ).execute()
+
+          final_sheets = metadata(target_id).get("sheets", [])
+          final_by_title = {
+              item["properties"]["title"]: item["properties"]
+              for item in final_sheets
+          }
+          reorder = [
+              {"updateSheetProperties": {
+                  "properties": {"sheetId": final_by_title[title]["sheetId"], "index": index},
+                  "fields": "index",
+              }}
+              for index, title in enumerate(source_titles)
+          ]
+          if reorder:
+              sheets.spreadsheets().batchUpdate(
+                  spreadsheetId=target_id,
+                  body={"requests": reorder},
+              ).execute()
+
+          final_titles = [
+              item["properties"]["title"]
+              for item in metadata(target_id).get("sheets", [])
+          ]
+          if final_titles != source_titles:
+              raise SystemExit(
+                  f"Copied spreadsheet tabs do not match source: {final_titles} != {source_titles}"
+              )
+
+          print(f"FLOW_SHEET_POPULATED id={target_id} tabs={len(final_titles)}")
+          PY
+          REMOTE
+
+  configure-flow-registry:
+    if: inputs.mode == 'configure_flow_registry'
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      contents: read
+    env:
+      TEST_VPS_HOST: ${{ secrets.TEST_VPS_HOST }}
+      TEST_VPS_PORT: ${{ secrets.TEST_VPS_PORT }}
+      TEST_VPS_USER: ${{ secrets.TEST_VPS_USER }}
+      TEST_VPS_SSH_KEY: ${{ secrets.TEST_VPS_SSH_KEY }}
+      TEST_VPS_APP_DIR: ${{ secrets.TEST_VPS_APP_DIR }}
+      REGISTRY_ID: ${{ inputs.registry_id }}
+    steps:
+      - name: Configure SSH
+        run: |
+          test "$TEST_VPS_APP_DIR" = "/opt/telegram_goals_bot_test"
+          test -n "$REGISTRY_ID"
+          install -m 700 -d ~/.ssh
+          printf '%s' "$TEST_VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_HOST" >> ~/.ssh/known_hosts
+      - name: Configure flow registry and report service identity
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_USER@$TEST_VPS_HOST" \
+            "TEST_APP_DIR='$TEST_VPS_APP_DIR' REGISTRY_ID='$REGISTRY_ID' bash -s" <<'REMOTE'
+          set -euo pipefail
+          set -a
+          . "$TEST_APP_DIR/shared/.env"
+          set +a
+          "$TEST_APP_DIR/current/.venv/bin/python" - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          env_path = Path(os.environ["TEST_APP_DIR"]) / "shared" / ".env"
+          key = "CHALLENGE_FLOWS_SHEETS_ID"
+          lines = env_path.read_text(encoding="utf-8").splitlines()
+          replacement = f"{key}={os.environ['REGISTRY_ID']}"
+          updated = [replacement if line.startswith(f"{key}=") else line for line in lines]
+          if not any(line.startswith(f"{key}=") for line in lines):
+              updated.append(replacement)
+          env_path.write_text("\n".join(updated) + "\n", encoding="utf-8")
+          credential_path = Path(os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
+          client_email = json.loads(credential_path.read_text(encoding="utf-8"))["client_email"]
+          print(f"SERVICE_ACCOUNT_EMAIL={client_email}")
+          PY
           REMOTE

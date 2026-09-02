@@ -25,6 +25,12 @@ class SheetsGateway(Protocol):
     def find_participant_by_telegram_id(self, telegram_id: int) -> SheetRow | None:
         """Find a participant business row by Telegram ID."""
 
+    def find_participant_in_flow(self, flow_id: str, telegram_id: int) -> SheetRow | None:
+        """Find a participant by Telegram ID inside one challenge flow."""
+
+    def append_participant(self, row: SheetRow) -> None:
+        """Append a completed self-registration business row."""
+
     def get_participant(self, participant_id: str) -> SheetRow | None:
         """Find a participant business row by stable participant ID."""
 
@@ -39,6 +45,18 @@ class SheetsGateway(Protocol):
 
     def list_trackers(self) -> list[SheetRow]:
         """Return tracker rows for report recipient planning."""
+
+    def list_challenge_flows(self) -> list[SheetRow]:
+        """Return configured challenge flows."""
+
+    def list_flow_schedule(self) -> list[SheetRow]:
+        """Return per-flow scheduled events."""
+
+    def get_active_challenge_flow(self) -> SheetRow | None:
+        """Return the active challenge flow row when available."""
+
+    def mark_participant_bot_started(self, participant_id: str, *, started_at: str) -> None:
+        """Persist first bot start metadata for an expected participant."""
 
     def update_participant_consent(
         self,
@@ -149,20 +167,62 @@ class SheetsGateway(Protocol):
         """Return final insight rows for one week."""
 
 
+REQUIRED_CHALLENGE_FLOW_COLUMNS = frozenset(
+    {
+        "flow_id",
+        "flow_name",
+        "flow_status",
+        "kickoff_meeting_at",
+        "registration_opens_at",
+        "registration_closes_at",
+        "data_collection_due_at",
+        "bot_invite_at",
+        "challenge_start_date",
+        "goal_setup_start_date",
+        "goal_setup_end_date",
+        "steps_setup_start_date",
+        "steps_setup_end_date",
+        "week_01_start_date",
+        "week_08_end_date",
+        "final_summary_start_date",
+        "final_summary_end_date",
+        "expected_participant_count",
+        "actual_participant_count",
+        "active_team_count",
+        "created_at",
+        "updated_at",
+    }
+)
+
+
 REQUIRED_SHEET_COLUMNS: dict[str, frozenset[str]] = {
     "Participants": frozenset(
         {
+            "flow_id",
             "participant_id",
             "telegram_id",
+            "username",
+            "first_name",
+            "last_name",
             "full_name",
             "role",
             "team_id",
+            "team_name",
+            "captain_id",
+            "tracker_id",
             "status",
+            "participant_stage",
             "consent_given",
             "consent_given_at",
+            "consent_status",
+            "bot_started_at",
+            "onboarding_completed_at",
+            "last_stage_updated_at",
+            "created_at",
+            "updated_at",
         }
     ),
-    "Teams": frozenset({"team_id", "team_name", "gender", "captain_id", "tracker_id", "is_active"}),
+    "Teams": frozenset({"flow_id", "team_id", "team_name", "gender", "captain_id", "tracker_id", "is_active"}),
     "Trackers": frozenset({"tracker_id", "telegram_id", "full_name", "gender_scope", "role", "is_active"}),
     "Goals": frozenset({"goal_id", "participant_id", "goal_status"}),
     "PlannedSteps": frozenset(
@@ -226,6 +286,10 @@ REQUIRED_SHEET_COLUMNS: dict[str, frozenset[str]] = {
     ),
 }
 
+REQUIRED_CHALLENGE_FLOWS_SHEET_COLUMNS: dict[str, frozenset[str]] = {
+    "ChallengeFlows": REQUIRED_CHALLENGE_FLOW_COLUMNS,
+}
+
 
 @dataclass(frozen=True)
 class GoogleSheetsGateway:
@@ -240,6 +304,15 @@ class GoogleSheetsGateway:
             if row.get("telegram_id") == telegram_id:
                 return row
         return None
+
+    def find_participant_in_flow(self, flow_id: str, telegram_id: int) -> SheetRow | None:
+        for row in self.list_participants():
+            if row.get("flow_id") == flow_id and row.get("telegram_id") == telegram_id:
+                return row
+        return None
+
+    def append_participant(self, row: SheetRow) -> None:
+        self._append_row("Participants", row)
 
     def get_participant(self, participant_id: str) -> SheetRow | None:
         for row in self.list_participants():
@@ -262,6 +335,37 @@ class GoogleSheetsGateway:
     def list_trackers(self) -> list[SheetRow]:
         return self._list_rows("Trackers")
 
+    def list_challenge_flows(self) -> list[SheetRow]:
+        return self._list_rows("ChallengeFlows")
+
+    def list_flow_schedule(self) -> list[SheetRow]:
+        return self._list_rows("FlowSchedule")
+
+    def get_active_challenge_flow(self) -> SheetRow | None:
+        for row in self.list_challenge_flows():
+            if str(row.get("flow_status", "")).strip().lower() == "active":
+                return row
+        return None
+
+    def mark_participant_bot_started(self, participant_id: str, *, started_at: str) -> None:
+        headers, rows = self._table("Participants")
+        participant_id_index = _header_index(headers, "participant_id")
+        bot_started_index = _header_index(headers, "bot_started_at")
+        stage_index = _header_index(headers, "participant_stage")
+        updated_index = _header_index(headers, "last_stage_updated_at")
+        for offset, row in enumerate(rows, start=2):
+            padded = _pad_row(row, len(headers))
+            if padded[participant_id_index] != participant_id:
+                continue
+            if not str(padded[bot_started_index]).strip():
+                padded[bot_started_index] = started_at
+            if not str(padded[stage_index]).strip() or str(padded[stage_index]).strip() in {"invited", "pre_start"}:
+                padded[stage_index] = "onboarding"
+            padded[updated_index] = started_at
+            self._update_row("Participants", offset, padded)
+            return
+        raise KeyError(f"Participant not found: {participant_id}")
+
     def update_participant_consent(
         self,
         participant_id: str,
@@ -273,12 +377,21 @@ class GoogleSheetsGateway:
         participant_id_index = _header_index(headers, "participant_id")
         consent_index = _header_index(headers, "consent_given")
         consent_at_index = _header_index(headers, "consent_given_at")
+        consent_status_index = _header_index(headers, "consent_status")
+        stage_index = _header_index(headers, "participant_stage")
+        onboarding_completed_index = _header_index(headers, "onboarding_completed_at")
+        updated_index = _header_index(headers, "last_stage_updated_at")
         for offset, row in enumerate(rows, start=2):
             padded = _pad_row(row, len(headers))
             if padded[participant_id_index] != participant_id:
                 continue
             padded[consent_index] = "TRUE" if consent_given else "FALSE"
             padded[consent_at_index] = consent_given_at
+            padded[consent_status_index] = "accepted" if consent_given else "declined"
+            padded[stage_index] = "goal_setup" if consent_given else "declined"
+            if consent_given and not str(padded[onboarding_completed_index]).strip():
+                padded[onboarding_completed_index] = consent_given_at
+            padded[updated_index] = consent_given_at
             self._update_row("Participants", offset, padded)
             return
         raise KeyError(f"Participant not found: {participant_id}")
@@ -514,6 +627,23 @@ class GoogleSheetsGateway:
 
 
 def validate_required_schema(service: object, *, spreadsheet_id: str) -> None:
+    _validate_schema(service, spreadsheet_id=spreadsheet_id, required_sheet_columns=REQUIRED_SHEET_COLUMNS)
+
+
+def validate_challenge_flows_schema(service: object, *, spreadsheet_id: str) -> None:
+    _validate_schema(
+        service,
+        spreadsheet_id=spreadsheet_id,
+        required_sheet_columns=REQUIRED_CHALLENGE_FLOWS_SHEET_COLUMNS,
+    )
+
+
+def _validate_schema(
+    service: object,
+    *,
+    spreadsheet_id: str,
+    required_sheet_columns: dict[str, frozenset[str]],
+) -> None:
     spreadsheet = _execute(service.spreadsheets().get(spreadsheetId=spreadsheet_id))
     sheets = spreadsheet.get("sheets", [])
     if not isinstance(sheets, list):
@@ -524,12 +654,12 @@ def validate_required_schema(service: object, *, spreadsheet_id: str) -> None:
         for sheet in sheets
         if isinstance(sheet, dict) and isinstance(sheet.get("properties"), dict)
     }
-    missing_tabs = sorted(set(REQUIRED_SHEET_COLUMNS) - available_titles)
+    missing_tabs = sorted(set(required_sheet_columns) - available_titles)
     if missing_tabs:
         raise GoogleSheetsSchemaError(f"Missing required Google Sheets tabs: {', '.join(missing_tabs)}")
 
     missing_columns: list[str] = []
-    for sheet_name, required_columns in REQUIRED_SHEET_COLUMNS.items():
+    for sheet_name, required_columns in required_sheet_columns.items():
         values = _execute(
             service.spreadsheets()
             .values()
@@ -558,6 +688,8 @@ class FakeSheetsGateway:
         weekly_report_steps: Iterable[SheetRow] = (),
         weekly_focus: Iterable[SheetRow] = (),
         insights: Iterable[SheetRow] = (),
+        challenge_flows: Iterable[SheetRow] = (),
+        flow_schedule: Iterable[SheetRow] = (),
     ) -> None:
         self._participants = _copy_rows(participants)
         self._teams = _copy_rows(teams)
@@ -568,6 +700,8 @@ class FakeSheetsGateway:
         self._weekly_report_steps = _copy_rows(weekly_report_steps)
         self._weekly_focus = _copy_rows(weekly_focus)
         self._insights = _copy_rows(insights)
+        self._challenge_flows = _copy_rows(challenge_flows)
+        self._flow_schedule = _copy_rows(flow_schedule)
 
     def list_participants(self) -> list[SheetRow]:
         return [dict(row) for row in self._participants]
@@ -577,6 +711,17 @@ class FakeSheetsGateway:
             if row.get("telegram_id") == telegram_id:
                 return dict(row)
         return None
+
+    def find_participant_in_flow(self, flow_id: str, telegram_id: int) -> SheetRow | None:
+        for row in self._participants:
+            if row.get("flow_id") == flow_id and row.get("telegram_id") == telegram_id:
+                return dict(row)
+        return None
+
+    def append_participant(self, row: SheetRow) -> None:
+        if self.find_participant_in_flow(str(row.get("flow_id", "")), int(row.get("telegram_id", 0))):
+            return
+        self._participants.append(dict(row))
 
     def get_participant(self, participant_id: str) -> SheetRow | None:
         for row in self._participants:
@@ -599,6 +744,31 @@ class FakeSheetsGateway:
     def list_trackers(self) -> list[SheetRow]:
         return [dict(row) for row in self._trackers]
 
+    def list_challenge_flows(self) -> list[SheetRow]:
+        return [dict(row) for row in self._challenge_flows]
+
+    def list_flow_schedule(self) -> list[SheetRow]:
+        return [dict(row) for row in self._flow_schedule]
+
+    def get_active_challenge_flow(self) -> SheetRow | None:
+        for row in self._challenge_flows:
+            if str(row.get("flow_status", "")).strip().lower() == "active":
+                return dict(row)
+        return None
+
+    def mark_participant_bot_started(self, participant_id: str, *, started_at: str) -> None:
+        for row in self._participants:
+            if row.get("participant_id") == participant_id:
+                row.setdefault("bot_started_at", started_at)
+                if not row.get("bot_started_at"):
+                    row["bot_started_at"] = started_at
+                stage = str(row.get("participant_stage", "")).strip()
+                if stage in {"", "invited", "pre_start"}:
+                    row["participant_stage"] = "onboarding"
+                row["last_stage_updated_at"] = started_at
+                return
+        raise KeyError(f"Participant not found: {participant_id}")
+
     def update_participant_consent(
         self,
         participant_id: str,
@@ -610,6 +780,11 @@ class FakeSheetsGateway:
             if row.get("participant_id") == participant_id:
                 row["consent_given"] = consent_given
                 row["consent_given_at"] = consent_given_at
+                row["consent_status"] = "accepted" if consent_given else "declined"
+                row["participant_stage"] = "goal_setup" if consent_given else "declined"
+                if consent_given and not row.get("onboarding_completed_at"):
+                    row["onboarding_completed_at"] = consent_given_at
+                row["last_stage_updated_at"] = consent_given_at
                 return
         raise KeyError(f"Participant not found: {participant_id}")
 
@@ -842,6 +1017,29 @@ def _add_read_aliases(row: SheetRow) -> None:
         "relation_type": "relation_status",
     }
     for source, alias in aliases.items():
+        if source in row and alias not in row:
+            row[alias] = row[source]
+    schedule_headers = {
+        "ID события": "event_id",
+        "ID потока": "flow_id",
+        "Дата": "scheduled_date",
+        "Время": "scheduled_time",
+        "Часовой пояс": "scheduled_timezone",
+        "День недели": "weekday_code",
+        "Этап": "phase_code",
+        "№ недели": "week_number",
+        "Момент недели": "week_position",
+        "Тип события": "event_type",
+        "Получатель": "recipient_role",
+        "Условие": "condition_code",
+        "Текст сообщения / действие": "message_text",
+        "Включено": "is_enabled",
+        "Порядок": "sort_order",
+        "Статус проверки": "validation_status",
+        "Последняя проверка": "last_validated_at",
+        "Комментарий": "notes",
+    }
+    for source, alias in schedule_headers.items():
         if source in row and alias not in row:
             row[alias] = row[source]
 

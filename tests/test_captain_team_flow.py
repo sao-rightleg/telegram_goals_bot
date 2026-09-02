@@ -3,6 +3,7 @@ from app.bot.messages import (
     CAPTAIN_ONLY_TEXT,
     CAPTAIN_TEAM_TITLE_TEXT,
     CONSENT_ACCEPT_BUTTON,
+    CONSENT_DECLINE_BUTTON,
     CONSENT_TEXT,
     MISSING_DATA_TEXT,
     UNKNOWN_USER_TEXT,
@@ -115,7 +116,7 @@ def test_captain_without_consent_gets_consent_prompt_without_team_data() -> None
     )
 
     assert response.text == CONSENT_TEXT
-    assert response.buttons == (CONSENT_ACCEPT_BUTTON,)
+    assert response.buttons == (CONSENT_ACCEPT_BUTTON, CONSENT_DECLINE_BUTTON)
     assert "Анна Своя" not in response.text
     assert main_bot.sent_messages[-1].text == CONSENT_TEXT
     assert error_bot.sent_messages == []

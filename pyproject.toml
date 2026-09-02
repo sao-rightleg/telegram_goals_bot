@@ -12,10 +12,13 @@ dependencies = [
     "google-api-python-client>=2,<3",
     "google-auth>=2,<3",
     "httpx>=0.27,<1",
+    "font-roboto==0.0.1",
+    "reportlab>=4.2,<5",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "pypdf>=6.16.2,<7",
     "pytest>=9.0.3,<10",
 ]
 

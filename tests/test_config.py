@@ -12,6 +12,7 @@ def complete_env() -> dict[str, str]:
         "ERROR_TELEGRAM_BOT_TOKEN": "error-token-456",
         "NOTIFICATION_TELEGRAM_BOT_TOKEN": "notification-token-789",
         "GOOGLE_SHEETS_ID": "sheet-id",
+        "CHALLENGE_FLOWS_SHEETS_ID": "challenge-flows-sheet-id",
         "GOOGLE_APPLICATION_CREDENTIALS": "credentials.json",
         "ADMIN_TELEGRAM_ID": "1001",
         "ADMIN_ERROR_CHAT_ID": "1002",
@@ -50,6 +51,7 @@ def test_settings_load_from_fake_env() -> None:
     assert settings.telegram.main_bot_token == "main-token-123"
     assert settings.google_sheets.sheet_id == "sheet-id"
     assert settings.storage.sqlite_db_path == Path("data/sqlite/bot.sqlite3")
+    assert settings.challenge.start_date.isoformat() == "2026-05-25"
     assert settings.transcription.provider == "fake"
     assert settings.runtime.log_level == "INFO"
 
@@ -201,6 +203,25 @@ def test_timezone_is_not_runtime_config() -> None:
 
     assert "timezone" not in settings.runtime.as_dict()
     assert "APP_TIMEZONE" not in settings.as_dict()
+
+
+def test_challenge_start_date_can_be_loaded_from_env() -> None:
+    env = complete_env()
+    env["CHALLENGE_START_DATE"] = "2026-09-07"
+
+    settings = load_settings(environ=env)
+
+    assert settings.challenge.start_date.isoformat() == "2026-09-07"
+
+
+def test_invalid_challenge_start_date_fails_clearly() -> None:
+    env = complete_env()
+    env["CHALLENGE_START_DATE"] = "07.09.2026"
+
+    with pytest.raises(ConfigurationError) as error:
+        load_settings(environ=env)
+
+    assert "CHALLENGE_START_DATE" in str(error.value)
 
 
 def test_logging_setup_uses_redacted_metadata(caplog: pytest.LogCaptureFixture) -> None:

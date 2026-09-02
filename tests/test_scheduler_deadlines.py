@@ -11,7 +11,7 @@ import pytest
 from app.bot.clients import BotPurpose, FakeBotClient, OutgoingMessage
 from app.bot.menus import WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX
 from app.scheduler.calendar import TIMEZONE_NAME
-from app.scheduler.jobs import SchedulerService
+from app.scheduler.jobs import ReminderJobResult, SchedulerService
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.sheets.gateway import FakeSheetsGateway
 from app.storage.scheduler import SchedulerJobRepository
@@ -91,6 +91,165 @@ def test_monday_reminder_falls_back_to_plain_text_when_focus_already_selected(
 
     assert "Новая неделя началась." in main_bot.sent_messages[0].text
     assert main_bot.sent_messages[0].buttons == ()
+
+
+@pytest.mark.parametrize(
+    ("reminder_type", "expected_text"),
+    [
+        ("monday_focus_1300", "Ты ещё не выбрал цель на эту неделю"),
+        ("monday_focus_1900", "Ты ещё не определил цель недели"),
+    ],
+)
+def test_followup_focus_reminders_only_go_to_participants_without_focus(
+    tmp_path: Path,
+    reminder_type: str,
+    expected_text: str,
+) -> None:
+    service, _gateway, main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[
+            _participant("P001", 1001, consent=True),
+            _participant("P002", 1002, consent=True),
+        ],
+        goals=[_goal("G001", "P001"), _goal("G002", "P002")],
+        planned_steps=[
+            _step("S001", "P001", "G001", 1, "Первый шаг", "open"),
+            _step("S002", "P002", "G002", 1, "Другой шаг", "open"),
+        ],
+        weekly_focus=[
+            {
+                "focus_id": "WF:P002:week-01",
+                "participant_id": "P002",
+                "goal_id": "G002",
+                "step_id": "S002",
+                "week_number": 1,
+                "focus_status": "active",
+            }
+        ],
+    )
+
+    result = service.run_reminder(reminder_type, now=MONDAY_START)
+
+    assert result.sent_count == 1
+    assert result.skipped_count == 1
+    assert [message.chat_id for message in main_bot.sent_messages] == ["1001"]
+    assert expected_text in main_bot.sent_messages[0].text
+    assert [button.text for button in main_bot.sent_messages[0].buttons] == ["Шаг 1. Первый шаг"]
+
+
+def test_focus_followups_have_independent_delivery_keys(tmp_path: Path) -> None:
+    service, _gateway, main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[_participant("P001", 1001, consent=True)],
+        goals=[_goal("G001", "P001")],
+        planned_steps=[_step("S001", "P001", "G001", 1, "Первый шаг", "open")],
+    )
+
+    service.run_reminder("monday_reminder", now=MONDAY_START)
+    service.run_reminder("monday_focus_1300", now=MONDAY_START.replace(hour=13))
+    service.run_reminder("monday_focus_1900", now=MONDAY_START.replace(hour=19))
+
+    assert len(main_bot.sent_messages) == 3
+
+
+def test_weekly_focus_jobs_do_nothing_outside_working_weeks(tmp_path: Path) -> None:
+    service, _gateway, main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[_participant("P001", 1001, consent=True)],
+        goals=[_goal("G001", "P001")],
+        planned_steps=[_step("S001", "P001", "G001", 1, "Первый шаг", "open")],
+    )
+    setup_monday = datetime(2026, 5, 25, 13, 0, tzinfo=ZoneInfo(TIMEZONE_NAME))
+
+    reminder = service.run_reminder("monday_focus_1300", now=setup_monday)
+    summary = service.send_weekly_focus_summary_to_captains(now=setup_monday.replace(hour=21))
+
+    assert reminder == ReminderJobResult()
+    assert summary == ReminderJobResult()
+    assert main_bot.sent_messages == []
+
+
+def test_weekly_focus_summary_to_captain_contains_team_percentages_and_selected_steps(
+    tmp_path: Path,
+) -> None:
+    participants = [
+        _participant("C001", 9001, consent=True, role="captain", full_name="Капитан"),
+        _participant("P001", 1001, consent=True, full_name="Иван Иванов"),
+        _participant("P002", 1002, consent=True, full_name="Анна Петрова"),
+        _participant("P003", 1003, consent=True, full_name="Сергей Сидоров"),
+    ]
+    service, _gateway, _main_bot, _error_bot, notification_bot = _service_with_notification_bot(
+        tmp_path,
+        participants=participants,
+        teams=[{"team_id": "T001", "team_name": "Достигаторы", "captain_id": "C001"}],
+        trackers=[],
+        goals=[
+            _goal("GC001", "C001"),
+            _goal("G001", "P001"),
+            _goal("G002", "P002"),
+            _goal("G003", "P003"),
+        ],
+        planned_steps=[
+            _step("SC001", "C001", "GC001", 1, "План капитана", "open"),
+            _step("S001", "P001", "G001", 1, "Провести 10 встреч", "open"),
+            _step("S002", "P002", "G002", 1, "Подготовить оффер", "open"),
+            _step("S003", "P003", "G003", 1, "Сделать 20 касаний", "open"),
+        ],
+        weekly_focus=[
+            {"focus_id": "WF1", "participant_id": "C001", "goal_id": "GC001", "step_id": "SC001", "week_number": 1},
+            {"focus_id": "WF2", "participant_id": "P001", "goal_id": "G001", "step_id": "S001", "week_number": 1},
+            {"focus_id": "WF3", "participant_id": "P002", "goal_id": "G002", "step_id": "S002", "week_number": 1},
+        ],
+    )
+
+    first = service.send_weekly_focus_summary_to_captains(now=MONDAY_START.replace(hour=21))
+    second = service.send_weekly_focus_summary_to_captains(now=MONDAY_START.replace(hour=21))
+
+    assert first.sent_count == 1
+    assert second.sent_count == 0
+    assert second.skipped_count == 1
+    assert len(notification_bot.sent_messages) == 1
+    message = notification_bot.sent_messages[0]
+    assert message.chat_id == "9001"
+    assert "команде «Достигаторы»" in message.text
+    assert "3 из 4 (75%)" in message.text
+    assert "1 из 4 (25%)" in message.text
+    assert "Иван Иванов — «Провести 10 встреч»" in message.text
+    assert "Анна Петрова — «Подготовить оффер»" in message.text
+    assert "Сергей Сидоров" in message.text
+    assert message.buttons == ()
+
+
+def test_weekly_focus_summary_does_not_mix_participants_from_another_flow(
+    tmp_path: Path,
+) -> None:
+    captain = _participant("C001", 9001, consent=True, role="captain", full_name="Капитан")
+    own = _participant("P001", 1001, consent=True, full_name="Свой участник")
+    foreign = _participant("P002", 1002, consent=True, full_name="Чужой участник")
+    for row in (captain, own):
+        row["flow_id"] = "FLOW_1"
+    foreign["flow_id"] = "FLOW_2"
+    team = {
+        "flow_id": "FLOW_1",
+        "team_id": "T001",
+        "team_name": "Команда 1",
+        "captain_id": "C001",
+    }
+    service, _gateway, _main_bot, _error_bot, notification_bot = _service_with_notification_bot(
+        tmp_path,
+        participants=[captain, own, foreign],
+        teams=[team],
+        trackers=[],
+        weekly_focus=[],
+    )
+
+    service.send_weekly_focus_summary_to_captains(now=MONDAY_START.replace(hour=21))
+
+    assert len(notification_bot.sent_messages) == 1
+    text = notification_bot.sent_messages[0].text
+    assert "0 из 2 (0%)" in text
+    assert "Свой участник" in text
+    assert "Чужой участник" not in text
 
 
 def test_reminder_skips_dropped_non_consenting_and_already_reported_participants(tmp_path: Path) -> None:
@@ -226,7 +385,7 @@ def test_week_close_creates_gray_reports_for_active_missing_participants(tmp_pat
     reports = gateway.list_weekly_reports()
     assert [row["participant_id"] for row in reports] == ["P001", "P002"]
     assert {row["status_code"] for row in reports} == {"gray"}
-    assert {row["status_symbol"] for row in reports} == {"⬜"}
+    assert {row["status_symbol"] for row in reports} == {"⬛"}
     assert {row["submitted_by_role"] for row in reports} == {"system"}
     assert {row["submitted_source"] for row in reports} == {"system_deadline"}
     assert {row["score"] for row in reports} == {0}
@@ -591,11 +750,21 @@ def _service_with_notification_bot(
     participants: list[dict[str, object]],
     teams: list[dict[str, object]],
     trackers: list[dict[str, object]],
+    goals: list[dict[str, object]] | None = None,
+    planned_steps: list[dict[str, object]] | None = None,
+    weekly_focus: list[dict[str, object]] | None = None,
 ) -> tuple[SchedulerService, FakeSheetsGateway, FailingBotClient, FakeBotClient, FakeBotClient]:
     service, gateway, main_bot, error_bot = _service(
         tmp_path,
         participants=participants,
-        gateway=FakeSheetsGateway(participants=participants, teams=teams, trackers=trackers),
+        gateway=FakeSheetsGateway(
+            participants=participants,
+            teams=teams,
+            trackers=trackers,
+            goals=goals or [],
+            planned_steps=planned_steps or [],
+            weekly_focus=weekly_focus or [],
+        ),
     )
     return service, gateway, main_bot, error_bot, service.notification_router.notification_bot
 

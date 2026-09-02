@@ -31,7 +31,7 @@ Test hardest:
 
 ## Must-protect rules
 
-- Statuses are only 🟩 🟦 🟥 ⬜.
+- Final weekly statuses are only 🟩 🟦 🟥 ⬛; ⬜ is reserved for current/future weeks before deadline.
 - No yellow late status.
 - Late reports do not change weekly status.
 - Insights do not change progress.

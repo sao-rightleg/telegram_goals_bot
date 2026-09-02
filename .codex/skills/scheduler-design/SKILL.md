@@ -38,7 +38,7 @@ Exact Monday and Wednesday reminder times are open questions.
 
 ## Deadline rules
 
-- After Sunday 23:59, missing reports become ⬜.
+- After Sunday 23:59, missing reports become `gray` / ⬛. White ⬜ remains only for a week whose deadline has not passed.
 - No late yellow status exists.
 - Participants cannot change past week status.
 - Captains cannot add status-changing reports after deadline.

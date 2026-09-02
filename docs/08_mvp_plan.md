@@ -12,6 +12,7 @@ The MVP includes:
 - Telegram bot
 - user identification by Telegram ID
 - consent flow
+- flow-driven day-by-day message and report schedule configured in Google Sheets
 - participant goal view
 - planned steps view
 - progress view
@@ -178,7 +179,7 @@ Deliverables:
 
 Exit criteria:
 - reminders are not sent after report exists
-- missing reports become `⬜`
+- missing reports become `gray` / `⬛`
 - no yellow late status exists
 - duplicate scheduler run does not duplicate reports or reminders
 

@@ -7,27 +7,29 @@ Codex must treat these decisions as current source of truth. If older documents 
 ## 1. Challenge Calendar
 
 - All teams use one shared calendar and start simultaneously.
-- The challenge has 8 weeks plus 4 days for final summary:
-  - Week 1: participants formulate goals.
-  - Week 2: participants define route / planned steps.
-  - Weeks 3-8: six working weeks for planned step execution.
+- The challenge has 2 setup weeks, 8 working weeks, and 4 days for final summary:
+  - `goal_setup`: participants formulate goals.
+  - `steps_setup`: participants define route / planned steps.
+  - `week_01` through `week_08`: planned step execution and reports.
   - After week 8: four days for final summary.
-- Working execution weeks: 6.
+- Working weeks: 8.
 - Main route planned steps: 6.
-- The first 2 weeks do not count as execution weeks.
+- Setup phases do not count as working weeks.
 - Main progress bar has 6 cells.
-- Challenge end date: `2026-07-31`.
+- Active flow dates are configured in a separate Google Sheets document `ChallengeFlows`.
 - Timezone for all dates, deadlines, and reminders: `Asia/Yekaterinburg`.
-- If scheduler needs exact start date, calculate it from `2026-07-31` using 8 weeks + 4 final-summary days.
+- If Google Sheets has no active flow, runtime falls back to `CHALLENGE_START_DATE`.
+- Participant self-registration opens at the exact kickoff meeting timestamp and closes exactly seven days later.
+- After closing, a Telegram ID without a completed participant record receives `Данный поток уже набран`; registered participants remain allowed.
 
 ## 2. Reminders and Deadline
 
-- Monday start-of-week reminder: Monday 10:00.
-- Wednesday soft check-in: Wednesday 10:00.
-- Sunday final check-in: Sunday 18:00.
-- Sunday reminder for missing reports: Sunday 22:30.
-- Sunday last reminder for missing reports: Sunday 23:00.
-- Hard weekly report deadline: Sunday 23:59.
+- Every challenge flow has its own explicit event timeline in `FlowSchedule`.
+- The schedule is materialized before flow activation: every event has an exact date, time, calculated weekday, phase, and week position.
+- `day_offset` is retained for validation and safe regeneration when a planned flow start date changes.
+- The administrator may edit user-facing message text and enable or disable events without changing application code.
+- Event behavior and recipient visibility are constrained by approved `event_type` and `recipient_role` values.
+- The default flow template retains Monday 10:00, Wednesday 10:00, Sunday 18:00, Sunday 22:30, Sunday 23:00, and Sunday 23:59 events.
 - After Sunday 23:59, a report may be saved as text but must not change the closed week's status.
 
 ## 3. Goal Achievement
@@ -98,6 +100,7 @@ Codex must treat these decisions as current source of truth. If older documents 
 - `⬜` = 0.
 - Weekly status history is stored separately from the main progress bar.
 - UI may show both main step progress and weekly status history, but main progress percentage is calculated only from steps.
+- Weekly history uses `🟩` / `🟦` / `🟥` for submitted reports, `⬛` for a closed week without a report, and `⬜` for a current or future week whose deadline has not passed.
 
 ## 8. Terminology
 

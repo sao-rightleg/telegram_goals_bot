@@ -51,18 +51,18 @@
     {
       "adapter": "project-skill",
       "adapter_version": "1",
-      "input_set_hash": "874ef0d29e502ac8274d115da5438815c2d45fd55c6aab117800f19dfc9cd372",
+      "input_set_hash": "d9f8fe39cc01171cd74958a95292b3579abbffc797c218a32ef008056415598c",
       "outputs": [
         {
-          "output_sha256": "12588803770f6e0a72e16758f9ae272d17bef9d57c9938a2a66d4402dbd88c62",
-          "source_sha256": "874ef0d29e502ac8274d115da5438815c2d45fd55c6aab117800f19dfc9cd372",
+          "output_sha256": "0613b4c04c8150cf5de96de73647088dcd1153e102dbd85e887f63ee7ad61d38",
+          "source_sha256": "d9f8fe39cc01171cd74958a95292b3579abbffc797c218a32ef008056415598c",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/skills/pdf-report-design/SKILL.md"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/skills/pdf-report-design/SKILL.md",
       "transformer_version": "1",
-      "updated_at": "2026-07-01T17:16:54Z"
+      "updated_at": "2026-09-02T13:06:30Z"
     },
     {
       "adapter": "project-skill",
@@ -83,18 +83,18 @@
     {
       "adapter": "project-skill",
       "adapter_version": "1",
-      "input_set_hash": "13a765ddc5ac9902b973df1acbd2e0b38b2fbe1e14ee45a979e6b61e6afb7d2f",
+      "input_set_hash": "10bef0ffd5887cd3e633f91ab388ace5429b8e30be88a6d18028cf9372f7b333",
       "outputs": [
         {
-          "output_sha256": "66aac3fa214fc014073fdd6dac77f1e52b897fac4cd3b5dc7329864a62869d7c",
-          "source_sha256": "13a765ddc5ac9902b973df1acbd2e0b38b2fbe1e14ee45a979e6b61e6afb7d2f",
+          "output_sha256": "7a1c4cef0f193c84e6ac8b3905bdff3d1561b781760bbabaa88b02573fd3afe8",
+          "source_sha256": "10bef0ffd5887cd3e633f91ab388ace5429b8e30be88a6d18028cf9372f7b333",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/references/architecture.md"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/references/architecture.md",
       "transformer_version": "1",
-      "updated_at": "2026-07-08T20:11:41Z"
+      "updated_at": "2026-09-02T13:06:30Z"
     },
     {
       "adapter": "project-skill",
@@ -147,18 +147,18 @@
     {
       "adapter": "project-skill",
       "adapter_version": "1",
-      "input_set_hash": "3645e2ea8472cd92ebcfbb34dd4f0fccdf304f8fd8a15e8e372b8e68f2cf9ab2",
+      "input_set_hash": "370586aaa71bb779905cc79606d207a424573d84b775b60ed292f5736fa36600",
       "outputs": [
         {
-          "output_sha256": "7c6aeab8a94c43a2460ff0ec686550436aa9c2a9dbdcb31505c264894a196b87",
-          "source_sha256": "3645e2ea8472cd92ebcfbb34dd4f0fccdf304f8fd8a15e8e372b8e68f2cf9ab2",
+          "output_sha256": "ff7ba85e22709689472cf5c0ed74ee5a6f2d36af9fde25845de5a73746439def",
+          "source_sha256": "370586aaa71bb779905cc79606d207a424573d84b775b60ed292f5736fa36600",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/references/requirements.md"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/references/requirements.md",
       "transformer_version": "1",
-      "updated_at": "2026-07-08T20:11:41Z"
+      "updated_at": "2026-09-02T13:06:30Z"
     },
     {
       "adapter": "project-skill",
@@ -179,18 +179,18 @@
     {
       "adapter": "project-skill",
       "adapter_version": "1",
-      "input_set_hash": "ce31443c8b68d54a9ae2dcff60c905f944bf64be99f6d67f3d41385fabeab740",
+      "input_set_hash": "33d091e458f8f848b08d921fa8485900845035de5a19a9ede9eb32fdcc80888b",
       "outputs": [
         {
-          "output_sha256": "ba21be4af6ea4c3e9ff12fb04f3f3937b88db1fc910bfe5dd0adc24c5d140373",
-          "source_sha256": "ce31443c8b68d54a9ae2dcff60c905f944bf64be99f6d67f3d41385fabeab740",
+          "output_sha256": "a844727908d6e42beb805ea47881ab851c624ef523896b9992a4ab4bb584bf93",
+          "source_sha256": "33d091e458f8f848b08d921fa8485900845035de5a19a9ede9eb32fdcc80888b",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/skills/qa-edge-cases/SKILL.md"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/skills/qa-edge-cases/SKILL.md",
       "transformer_version": "1",
-      "updated_at": "2026-07-01T17:16:54Z"
+      "updated_at": "2026-09-02T13:06:30Z"
     },
     {
       "adapter": "project-skill",
@@ -211,18 +211,18 @@
     {
       "adapter": "project-skill",
       "adapter_version": "1",
-      "input_set_hash": "f95a055033b1a0b486cde4aca12dbe89b5127f4a3c11687d3a92994231957b5b",
+      "input_set_hash": "23fb9f66cf4c3e39e51702691955809a967e4acd6b8d8c4939ba35b65904e2ff",
       "outputs": [
         {
-          "output_sha256": "f19200df007ba9ab5ad2fa949988838a7a2921cd2bb4c0548b850696afe01791",
-          "source_sha256": "f95a055033b1a0b486cde4aca12dbe89b5127f4a3c11687d3a92994231957b5b",
+          "output_sha256": "8580909c3a207e844432f186863759d5ede13a42c414ab06b566b9c896f56abe",
+          "source_sha256": "23fb9f66cf4c3e39e51702691955809a967e4acd6b8d8c4939ba35b65904e2ff",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/skills/scheduler-design/SKILL.md"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/skills/scheduler-design/SKILL.md",
       "transformer_version": "1",
-      "updated_at": "2026-07-01T17:16:54Z"
+      "updated_at": "2026-09-02T13:06:30Z"
     },
     {
       "adapter": "project-skill",
@@ -291,18 +291,18 @@
     {
       "adapter": "project-agent",
       "adapter_version": "1",
-      "input_set_hash": "033ebe1448e898a15aefa52a033c12b45eeb92b535ee414b1e743d8f5e53b9d5",
+      "input_set_hash": "edd5d0d29a02812ec7f06c4c4d062aa4877409ae421b94d5ea18483b46f905d4",
       "outputs": [
         {
-          "output_sha256": "8056c5e6c9676c10a73a97383e18006557ae56a6cb7d08a3072a1b444b8398d8",
-          "source_sha256": "033ebe1448e898a15aefa52a033c12b45eeb92b535ee414b1e743d8f5e53b9d5",
+          "output_sha256": "8a2b20c6c307f30a0e74df3307d37b75328793ee6d070470950d78baafc70271",
+          "source_sha256": "edd5d0d29a02812ec7f06c4c4d062aa4877409ae421b94d5ea18483b46f905d4",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/agents/conversation-designer.toml"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/agents/conversation-designer.md",
       "transformer_version": "1",
-      "updated_at": "2026-07-01T17:16:54Z"
+      "updated_at": "2026-09-02T13:06:30Z"
     },
     {
       "adapter": "project-agent",
@@ -323,50 +323,50 @@
     {
       "adapter": "project-agent",
       "adapter_version": "1",
-      "input_set_hash": "a993d4dfee9f509bce498a87aea45843f8ba4b14ba9007c1f5f68b667d03a92a",
+      "input_set_hash": "0bc6e05221c6b996a527f2cdd2ec16ac82c64fc8fe5c4383097efcbba9f0f0cb",
       "outputs": [
         {
-          "output_sha256": "4729170fd89cade1b11c85615542059a217d7ebddf1ba0f282fb5765c47f915f",
-          "source_sha256": "a993d4dfee9f509bce498a87aea45843f8ba4b14ba9007c1f5f68b667d03a92a",
+          "output_sha256": "22a60b40e202c69972cc4aed4f0a206dccd50dfe68fd13e91a6e949870a5069e",
+          "source_sha256": "0bc6e05221c6b996a527f2cdd2ec16ac82c64fc8fe5c4383097efcbba9f0f0cb",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/agents/product-owner.toml"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/agents/product-owner.md",
       "transformer_version": "1",
-      "updated_at": "2026-07-01T17:16:54Z"
+      "updated_at": "2026-09-02T13:06:30Z"
     },
     {
       "adapter": "project-agent",
       "adapter_version": "1",
-      "input_set_hash": "84822dcacace5070a637e5c87d6922cbe835506c4b8cc3b4ee3ecd786ee2d7d7",
+      "input_set_hash": "de0d2761e01247c8773ba7534fb132f4637e55624ee9c777b88cd634c9e3049d",
       "outputs": [
         {
-          "output_sha256": "ffa01b350d47f511bde0bcbe08a910baba73f80d476e3e0d7379bba40d20632d",
-          "source_sha256": "84822dcacace5070a637e5c87d6922cbe835506c4b8cc3b4ee3ecd786ee2d7d7",
+          "output_sha256": "0656957505f18d169cddb95c4f217c1fda6c0c9bf58cd0056c460cfcb7f69f54",
+          "source_sha256": "de0d2761e01247c8773ba7534fb132f4637e55624ee9c777b88cd634c9e3049d",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/agents/qa-engineer.toml"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/agents/qa-engineer.md",
       "transformer_version": "1",
-      "updated_at": "2026-07-01T17:16:54Z"
+      "updated_at": "2026-09-02T13:06:30Z"
     },
     {
       "adapter": "project-agent",
       "adapter_version": "1",
-      "input_set_hash": "273c5d6bd22b5a3b5a45723fc67e86d7afa4ec3fb5b312965997c970bd66e105",
+      "input_set_hash": "5a9cf2745182086c39eaa0aab791811fff2d3e904898fb067d9623fb68d1618d",
       "outputs": [
         {
-          "output_sha256": "60396a1595e9fc878b012a1318d3537ae275ce36269e30275fe44b635894c53d",
-          "source_sha256": "273c5d6bd22b5a3b5a45723fc67e86d7afa4ec3fb5b312965997c970bd66e105",
+          "output_sha256": "a8d9e525d7e4e83d3cf6660a5730332a66415bf2a77051a5bddd7e447564400c",
+          "source_sha256": "5a9cf2745182086c39eaa0aab791811fff2d3e904898fb067d9623fb68d1618d",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/agents/report-designer.toml"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/agents/report-designer.md",
       "transformer_version": "1",
-      "updated_at": "2026-07-01T17:16:54Z"
+      "updated_at": "2026-09-02T13:06:30Z"
     },
     {
       "adapter": "project-agent",
@@ -387,18 +387,18 @@
     {
       "adapter": "project-agent",
       "adapter_version": "1",
-      "input_set_hash": "a6c0f3525a78ead48103c9b38995e0d0e396f901ebdd97596481294ca6f37d83",
+      "input_set_hash": "9c8b4a71d5f042af215ede2db475a9a6d5d5054dd591918049c35b45ef3cd868",
       "outputs": [
         {
-          "output_sha256": "fbb3cc00dba9887e9b8705e52988f221d1fcfa69a8e74f6ea27df149533cd995",
-          "source_sha256": "a6c0f3525a78ead48103c9b38995e0d0e396f901ebdd97596481294ca6f37d83",
+          "output_sha256": "c44d549da7075c922f2d201315231dc805fbd4d4f5609b026a5f7afa85425ee3",
+          "source_sha256": "9c8b4a71d5f042af215ede2db475a9a6d5d5054dd591918049c35b45ef3cd868",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/agents/sheets-database-designer.toml"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/agents/sheets-database-designer.md",
       "transformer_version": "1",
-      "updated_at": "2026-07-01T17:16:54Z"
+      "updated_at": "2026-09-02T13:06:30Z"
     },
     {
       "adapter": "project-agent",
@@ -419,18 +419,18 @@
     {
       "adapter": "project-agent",
       "adapter_version": "1",
-      "input_set_hash": "33ee2ab88352ed816501a3a9ea4153cfbc630d32a025e52f9147d4dfc9a47938",
+      "input_set_hash": "9b55a30de3526693608c09795a93e336ab5178741faba755fd636d66fd9e7340",
       "outputs": [
         {
-          "output_sha256": "4a13a5f2785789dca0571747f07b6b0b112e383dd5f9c924466b3e6c5d1bce5a",
-          "source_sha256": "33ee2ab88352ed816501a3a9ea4153cfbc630d32a025e52f9147d4dfc9a47938",
+          "output_sha256": "849066bde980a6ab736787e5677d02e298e57e43e9766abbe26d8cd77d8c83da",
+          "source_sha256": "9b55a30de3526693608c09795a93e336ab5178741faba755fd636d66fd9e7340",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/agents/telegram-bot-engineer.toml"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/agents/telegram-bot-engineer.md",
       "transformer_version": "1",
-      "updated_at": "2026-07-01T17:16:54Z"
+      "updated_at": "2026-09-02T13:06:30Z"
     }
   ],
   "version": "1"

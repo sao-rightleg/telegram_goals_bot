@@ -78,6 +78,81 @@ def test_deploy_test_workflow_uses_test_scoped_secrets() -> None:
     assert "telegram-goals-bot.service" not in workflow
 
 
+def test_deploy_test_workflow_has_read_only_business_sheet_diagnostic() -> None:
+    workflow = DEPLOY_TEST_WORKFLOW.read_text(encoding="utf-8")
+    assert "          - inspect_business_sheet" in workflow
+
+    job_start = workflow.index("  inspect-business-sheet:\n")
+    job_end = workflow.index("\n  configure-flow-registry:\n", job_start)
+    job = workflow[job_start:job_end]
+    assert "if: inputs.mode == 'inspect_business_sheet'" in job
+    assert "environment: test" in job
+    assert "permissions:\n      contents: read" in job
+    assert "- name: Report configured business spreadsheet" in job
+    assert 'cd "$TEST_APP_DIR/current"' in job
+    assert 'spreadsheet_id = os.environ["GOOGLE_SHEETS_ID"]' in job
+    assert 'os.environ["GOOGLE_APPLICATION_CREDENTIALS"]' in job
+    assert "https://www.googleapis.com/auth/spreadsheets.readonly" in job
+    assert 'build("sheets", "v4"' in job
+    assert 'fields="properties.title"' in job
+    assert ").execute()" in job
+    assert 'print(f"BUSINESS_SHEET_ID={spreadsheet_id}")' in job
+    assert 'print(f"BUSINESS_SHEET_TITLE={title}")' in job
+    assert "BUSINESS_SHEET_TABS" not in job
+
+
+def test_deploy_test_workflow_has_bounded_business_schema_migration() -> None:
+    workflow = DEPLOY_TEST_WORKFLOW.read_text(encoding="utf-8")
+    assert "          - migrate_business_schema" in workflow
+
+    job_start = workflow.index("  migrate-business-schema:\n")
+    job_end = workflow.index("\n  configure-flow-registry:\n", job_start)
+    job = workflow[job_start:job_end]
+    assert "if: inputs.mode == 'migrate_business_schema'" in job
+    assert "environment: test" in job
+    assert 'spreadsheet_id = os.environ["GOOGLE_SHEETS_ID"]' in job
+    assert "https://www.googleapis.com/auth/spreadsheets" in job
+    for header in (
+        "bot_started_at",
+        "consent_status",
+        "flow_id",
+        "last_stage_updated_at",
+        "onboarding_completed_at",
+        "participant_stage",
+    ):
+        assert f'"{header}"' in job
+    assert '"Teams": ("flow_id",)' in job
+    assert 'range=f"\'{sheet_name}\'"' in job
+    assert 'valueRenderOption="FORMULA"' in job
+    assert "used_width = max((len(row) for row in rows), default=0)" in job
+    assert "start = max(len(headers), used_width)" in job
+    assert "missing_sheets" in job
+    assert "plans.append((sheet_name, missing, start, end))" in job
+    assert "if requests:" in job
+    assert "for header in required[sheet_name] if header not in verified" in job
+    assert '"pasteType": "PASTE_FORMAT"' in job
+    assert "Schema verification failed" in job
+
+
+def test_deploy_test_workflow_can_create_idempotent_smoke_flow_copy() -> None:
+    workflow = DEPLOY_TEST_WORKFLOW.read_text(encoding="utf-8")
+    assert "          - create_smoke_flow_sheet" in workflow
+
+    job_start = workflow.index("  create-smoke-flow-sheet:\n")
+    job_end = workflow.index("\n  configure-flow-registry:\n", job_start)
+    job = workflow[job_start:job_end]
+    assert "if: inputs.mode == 'create_smoke_flow_sheet'" in job
+    assert "environment: test" in job
+    assert "TARGET_SHEET_ID: ${{ inputs.target_sheet_id }}" in job
+    assert "https://www.googleapis.com/auth/spreadsheets" in job
+    assert "spreadsheets().sheets().copyTo(" in job
+    assert 'body={"destinationSpreadsheetId": target_id}' in job
+    assert '"deleteSheet"' in job
+    assert '"fields": "index"' in job
+    assert "Copied spreadsheet tabs do not match source" in job
+    assert 'print(f"FLOW_SHEET_POPULATED id={target_id}' in job
+
+
 def test_deploy_test_workflow_creates_sensitive_shared_dirs_private() -> None:
     workflow = DEPLOY_TEST_WORKFLOW.read_text(encoding="utf-8")
 

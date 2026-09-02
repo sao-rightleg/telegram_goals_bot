@@ -10,6 +10,7 @@ from app.bot.clients import BotClient, TelegramInlineButton
 from app.bot.menus import INSIGHT_FULL_TEXT_CALLBACK_PREFIX, build_role_menu
 from app.bot.messages import (
     CONSENT_ACCEPT_BUTTON,
+    CONSENT_DECLINE_BUTTON,
     CONSENT_TEXT,
     INSIGHT_DUPLICATE_TEXT,
     INSIGHT_EMPTY_TEXT,
@@ -329,7 +330,7 @@ class InsightService:
             return self._handle_unknown_user(user, occurred_at=occurred_at)
 
         if not _consent_is_given(participant):
-            return self._send(user, text=CONSENT_TEXT, buttons=(CONSENT_ACCEPT_BUTTON,))
+            return self._send(user, text=CONSENT_TEXT, buttons=(CONSENT_ACCEPT_BUTTON, CONSENT_DECLINE_BUTTON))
 
         return participant
 
