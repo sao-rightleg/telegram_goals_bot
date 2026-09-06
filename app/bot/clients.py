@@ -39,6 +39,9 @@ from app.bot.messages import (
 from app.services.participant_models import MenuItem
 
 
+CALLBACK_ACK_TIMEOUT_SECONDS = 3.0
+
+
 class BotPurpose(str, Enum):
     MAIN = "main"
     ERROR = "error"
@@ -98,6 +101,9 @@ class BotClient(Protocol):
 
     def set_commands(self, commands: tuple[BotCommand, ...]) -> None:
         """Register Telegram bot commands shown in the client command menu."""
+
+    def answer_callback_query(self, callback_query_id: str) -> None:
+        """Acknowledge an inline-button press to stop Telegram's loading state."""
 
 
 @dataclass(frozen=True)
@@ -209,18 +215,27 @@ class LiveTelegramBotClient:
             },
         )
 
+    def answer_callback_query(self, callback_query_id: str) -> None:
+        self._post_api(
+            "answerCallbackQuery",
+            data={"callback_query_id": callback_query_id},
+            timeout_seconds=CALLBACK_ACK_TIMEOUT_SECONDS,
+        )
+
     def _post_api(
         self,
         method: str,
         *,
         data: dict[str, str],
         files: dict[str, object] | None = None,
+        timeout_seconds: float | None = None,
     ) -> dict[str, object]:
         try:
+            kwargs: dict[str, object] = {"data": data, "files": files}
+            if timeout_seconds is not None:
+                kwargs["timeout"] = timeout_seconds
             response = self.http_client.post(
-                _api_url(self.api_base_url, self.token, method),
-                data=data,
-                files=files,
+                _api_url(self.api_base_url, self.token, method), **kwargs
             )
             response.raise_for_status()
         except httpx.HTTPError as exc:
@@ -280,6 +295,7 @@ class FakeBotClient:
     sent_messages: list[OutgoingMessage] = field(default_factory=list)
     sent_documents: list[OutgoingDocument] = field(default_factory=list)
     commands: tuple[BotCommand, ...] = ()
+    answered_callback_query_ids: list[str] = field(default_factory=list)
 
     def send_message(
         self,
@@ -313,6 +329,9 @@ class FakeBotClient:
 
     def set_commands(self, commands: tuple[BotCommand, ...]) -> None:
         self.commands = commands
+
+    def answer_callback_query(self, callback_query_id: str) -> None:
+        self.answered_callback_query_ids.append(callback_query_id)
 
 
 @dataclass

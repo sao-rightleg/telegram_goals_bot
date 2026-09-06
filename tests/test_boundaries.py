@@ -7,6 +7,7 @@ import pytest
 from app.bot.clients import (
     BotCommand,
     BotPurpose,
+    CALLBACK_ACK_TIMEOUT_SECONDS,
     FakeBotClient,
     FakeTelegramFileDownloader,
     LiveTelegramBotClient,
@@ -229,6 +230,26 @@ def test_live_telegram_client_sets_bot_commands() -> None:
     assert "commands=" in body
     assert "%22command%22%3A%22menu%22" in body
     assert "%22description%22%3A%22%D0%9F%D0%BE%D0%BA%D0%B0%D0%B7%D0%B0%D1%82%D1%8C+%D0%BC%D0%B5%D0%BD%D1%8E%22" in body
+
+
+def test_live_telegram_client_acknowledges_callback_query() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"ok": True, "result": True})
+
+    client = LiveTelegramBotClient(
+        purpose=BotPurpose.MAIN,
+        token="secret-token-123",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    client.answer_callback_query("callback-1")
+
+    assert requests[0].url.path == "/botsecret-token-123/answerCallbackQuery"
+    assert requests[0].read().decode("utf-8") == "callback_query_id=callback-1"
+    assert CALLBACK_ACK_TIMEOUT_SECONDS == 3.0
 
 
 def test_fake_telegram_client_records_menu_item_callback_markup() -> None:

@@ -319,18 +319,85 @@ class TelegramPollingRunner:
                 continue
 
             for update in updates:
-                update_id = update.get("update_id")
-                try:
-                    components.dispatcher.dispatch_update(update)
-                except Exception as exc:
-                    _notify_polling_error(
-                        components.notification_router,
-                        event="telegram_update_dispatch_failed",
-                        error=exc,
-                        update_id=update_id if isinstance(update_id, int) else None,
-                    )
-                if isinstance(update_id, int):
-                    offset = update_id + 1
+                offset = self._process_update(components, update, current_offset=offset)
+
+    def _process_update(
+        self,
+        components: RuntimeComponents,
+        update: dict[str, object],
+        *,
+        current_offset: int | None,
+    ) -> int | None:
+        update_id = update.get("update_id")
+        normalized_update_id = update_id if isinstance(update_id, int) else None
+        callback_query_id, callback_chat_id = _callback_context(update)
+        if callback_query_id is not None:
+            self._ack_callback(components, callback_query_id, update_id=normalized_update_id)
+        try:
+            components.dispatcher.dispatch_update(update)
+        except Exception as exc:
+            _notify_polling_error(
+                components.notification_router,
+                event="telegram_update_dispatch_failed",
+                error=exc,
+                update_id=normalized_update_id,
+            )
+            if callback_chat_id is not None:
+                self._reply_callback_error(
+                    components,
+                    callback_chat_id,
+                    update_id=normalized_update_id,
+                )
+        return normalized_update_id + 1 if normalized_update_id is not None else current_offset
+
+    @staticmethod
+    def _ack_callback(
+        components: RuntimeComponents, callback_query_id: str, *, update_id: int | None
+    ) -> None:
+        try:
+            components.main_bot.answer_callback_query(callback_query_id)
+        except Exception as exc:
+            _notify_polling_error(
+                components.notification_router,
+                event="telegram_callback_ack_failed",
+                error=exc,
+                update_id=update_id,
+            )
+
+    @staticmethod
+    def _reply_callback_error(
+        components: RuntimeComponents, callback_chat_id: str, *, update_id: int | None
+    ) -> None:
+        support_code = str(update_id) if update_id is not None else "unknown"
+        try:
+            components.main_bot.send_message(
+                chat_id=callback_chat_id,
+                text=(
+                    "Не удалось обработать нажатие. Попробуй ещё раз или отправь /start. "
+                    f"Код обращения: {support_code}."
+                ),
+            )
+        except Exception as exc:
+            _notify_polling_error(
+                components.notification_router,
+                event="telegram_callback_error_reply_failed",
+                error=exc,
+                update_id=update_id,
+            )
+
+
+def _callback_context(update: dict[str, object]) -> tuple[str | None, str | None]:
+    callback = update.get("callback_query")
+    if not isinstance(callback, dict):
+        return None, None
+    callback_id = callback.get("id")
+    message = callback.get("message")
+    chat = message.get("chat") if isinstance(message, dict) else None
+    chat_id = chat.get("id") if isinstance(chat, dict) else None
+    return (
+        str(callback_id) if isinstance(callback_id, (str, int)) else None,
+        str(chat_id) if isinstance(chat_id, (str, int)) else None,
+    )
 
 
 @dataclass

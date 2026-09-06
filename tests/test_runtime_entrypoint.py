@@ -584,6 +584,34 @@ def test_polling_runner_reports_dispatch_error_and_continues_without_raw_update(
     assert services.participant.starts
 
 
+def test_polling_runner_acknowledges_callback_and_replies_when_dispatch_fails(tmp_path: Path) -> None:
+    components = _runtime_components(tmp_path)
+    dispatcher, _services, _dispatcher_error_bot = _dispatcher(tmp_path)
+    events: list[str] = []
+    main_bot = PollingBot(
+        updates=[_callback_update(data=CONSENT_ACCEPT_CALLBACK)], events=events
+    )
+    components = components.with_replacements(
+        main_bot=main_bot,
+        dispatcher=FailingOnceDispatcher(dispatcher, events=events),
+    )
+    runner = TelegramPollingRunner(
+        poll_timeout_seconds=1,
+        poll_limit=100,
+        stop_event=StopAfterCalls(limit=1),
+    )
+
+    runner.run(components)
+
+    assert main_bot.answered_callback_query_ids == ["callback-1"]
+    assert main_bot.sent_messages[-1].chat_id == "chat-1001"
+    assert "Не удалось обработать нажатие" in main_bot.sent_messages[-1].text
+    assert "Код обращения: 12" in main_bot.sent_messages[-1].text
+    assert "RuntimeError" not in main_bot.sent_messages[-1].text
+    assert "personal report text" not in main_bot.sent_messages[-1].text
+    assert events[:2] == ["ack", "dispatch"]
+
+
 def test_polling_runner_survives_error_bot_send_failure(tmp_path: Path) -> None:
     components = _runtime_components(tmp_path)
     dispatcher, services, _dispatcher_error_bot = _dispatcher(tmp_path)
@@ -834,16 +862,24 @@ class PollingBot(FakeBotClient):
     updates: list[dict[str, object]] = field(default_factory=list)
     offsets: list[int | None] = field(default_factory=list)
 
-    def __init__(self, updates: list[dict[str, object]]) -> None:
+    def __init__(
+        self, updates: list[dict[str, object]], events: list[str] | None = None
+    ) -> None:
         super().__init__(BotPurpose.MAIN)
         self.updates = updates
         self.offsets = []
+        self.events = events
 
     def get_updates(self, *, offset: int | None, timeout_seconds: int, limit: int) -> list[dict[str, object]]:
         self.offsets.append(offset)
         if self.updates:
             return [self.updates.pop(0)]
         return []
+
+    def answer_callback_query(self, callback_query_id: str) -> None:
+        if self.events is not None:
+            self.events.append("ack")
+        super().answer_callback_query(callback_query_id)
 
 
 class FailingPollingBot(FakeBotClient):
@@ -870,8 +906,11 @@ class FailingSendBot(FakeBotClient):
 class FailingOnceDispatcher:
     delegate: TelegramUpdateDispatcher
     failed: bool = False
+    events: list[str] | None = None
 
     def dispatch_update(self, payload: dict[str, object]) -> FlowResponse | None:
+        if self.events is not None:
+            self.events.append("dispatch")
         if not self.failed:
             self.failed = True
             raise RuntimeError("personal report text /boom")
