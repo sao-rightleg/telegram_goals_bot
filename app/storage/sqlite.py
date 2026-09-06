@@ -400,6 +400,14 @@ def initialize_schema(db_path: str | Path) -> None:
                 "attempt_count": "INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count > 0)",
             },
         )
+        connection.execute("SAVEPOINT migrate_dialog_states")
+        try:
+            _migrate_dialog_states_flow_constraint(connection)
+        except Exception:
+            connection.execute("ROLLBACK TO SAVEPOINT migrate_dialog_states")
+            connection.execute("RELEASE SAVEPOINT migrate_dialog_states")
+            raise
+        connection.execute("RELEASE SAVEPOINT migrate_dialog_states")
 
 
 def list_tables(db_path: str | Path) -> set[str]:
@@ -438,3 +446,73 @@ def _ensure_columns(
     for column_name, definition in columns.items():
         if column_name not in existing:
             connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+
+
+def _migrate_dialog_states_flow_constraint(connection: sqlite3.Connection) -> None:
+    schema_row = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'dialog_states'"
+    ).fetchone()
+    schema_sql = str(schema_row[0] or "") if schema_row is not None else ""
+    required_flows = (
+        "consent", "registration", "weekly_report", "insight",
+        "captain_manual_report", "view_goal", "view_steps", "view_progress",
+        "view_team", "idle",
+    )
+    if all(f"'{flow}'" in schema_sql for flow in required_flows):
+        return
+    _rebuild_dialog_states(connection)
+
+
+def _rebuild_dialog_states(connection: sqlite3.Connection) -> None:
+    current_statement = next(
+        statement
+        for statement in SCHEMA_STATEMENTS
+        if "CREATE TABLE IF NOT EXISTS dialog_states" in statement
+    )
+    replacement_statement = current_statement.replace(
+        "CREATE TABLE IF NOT EXISTS dialog_states",
+        "CREATE TABLE dialog_states_migrated",
+        1,
+    )
+    old_columns = {
+        str(row[1]) for row in connection.execute("PRAGMA table_info(dialog_states)")
+    }
+    connection.execute(replacement_statement)
+    new_columns = [
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info(dialog_states_migrated)")
+    ]
+    _validate_dialog_states_rebuild(connection, old_columns, new_columns)
+    shared_columns = [column for column in new_columns if column in old_columns]
+    quoted_columns = ", ".join(f'"{column}"' for column in shared_columns)
+    connection.execute(
+        f"INSERT INTO dialog_states_migrated ({quoted_columns}) "
+        f"SELECT {quoted_columns} FROM dialog_states"
+    )
+    connection.execute("DROP TABLE dialog_states")
+    connection.execute("ALTER TABLE dialog_states_migrated RENAME TO dialog_states")
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_dialog_states_telegram_id "
+        "ON dialog_states(telegram_id)"
+    )
+
+
+def _validate_dialog_states_rebuild(
+    connection: sqlite3.Connection,
+    old_columns: set[str],
+    new_columns: list[str],
+) -> None:
+    unexpected_columns = old_columns - set(new_columns)
+    if unexpected_columns:
+        raise RuntimeError("dialog_states has unsupported legacy columns")
+    custom_objects = connection.execute(
+        """
+        SELECT name FROM sqlite_master
+        WHERE tbl_name = 'dialog_states'
+          AND type IN ('index', 'trigger')
+          AND name != 'idx_dialog_states_telegram_id'
+          AND name NOT LIKE 'sqlite_autoindex_%'
+        """
+    ).fetchall()
+    if custom_objects:
+        raise RuntimeError("dialog_states has unsupported custom schema objects")
