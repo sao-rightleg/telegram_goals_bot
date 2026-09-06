@@ -153,6 +153,35 @@ def test_deploy_test_workflow_can_create_idempotent_smoke_flow_copy() -> None:
     assert 'print(f"FLOW_SHEET_POPULATED id={target_id}' in job
 
 
+def test_deploy_test_workflow_can_switch_test_business_sheet_safely() -> None:
+    workflow = DEPLOY_TEST_WORKFLOW.read_text(encoding="utf-8")
+    assert "          - configure_business_sheet" in workflow
+    assert "business_sheet_id:" in workflow
+
+    job_start = workflow.index("  configure-business-sheet:\n")
+    job_end = workflow.index("\n  configure-flow-registry:\n", job_start)
+    job = workflow[job_start:job_end]
+    assert "if: inputs.mode == 'configure_business_sheet'" in job
+    assert "environment: test" in job
+    assert 'test "$TEST_VPS_APP_DIR" = "/opt/telegram_goals_bot_test"' in job
+    assert 'test "$TEST_VPS_SERVICE_NAME" = "telegram-goals-bot-test.service"' in job
+    assert 'test "$TEST_APP_DIR" = "/opt/telegram_goals_bot_test"' in job
+    assert 'test "$TEST_SERVICE_NAME" = "telegram-goals-bot-test.service"' in job
+    assert '[[ "$BUSINESS_SHEET_ID" =~ ^[A-Za-z0-9_-]{20,}$ ]]' in job
+    assert 'fields="properties.title,sheets.properties.title"' in job
+    assert 'required_tabs = {"Participants", "Teams", "FlowStart", "FlowSchedule"}' in job
+    assert 'env_path = Path(os.environ["CONFIG_ENV_PATH"])' in job
+    assert 'if line.startswith("GOOGLE_SHEETS_ID=")' in job
+    assert 'os.replace(temp_path, env_path)' in job
+    assert 'check-config' in job
+    assert 'sudo install -o "$ENV_UID" -g "$ENV_GID" -m "$ENV_MODE"' in job
+    assert "trap restore_env ERR" in job
+    assert job.count('sudo systemctl restart "$TEST_SERVICE_NAME"') == 2
+    assert 'sudo systemctl restart "$TEST_SERVICE_NAME"' in job
+    assert 'sudo systemctl is-active --quiet "$TEST_SERVICE_NAME"' in job
+    assert 'print("BUSINESS_SHEET_CONFIGURED")' in job
+
+
 def test_deploy_test_workflow_creates_sensitive_shared_dirs_private() -> None:
     workflow = DEPLOY_TEST_WORKFLOW.read_text(encoding="utf-8")
 

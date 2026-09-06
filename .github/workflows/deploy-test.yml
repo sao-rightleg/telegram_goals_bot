@@ -18,6 +18,7 @@ on:
           - inspect_business_sheet
           - migrate_business_schema
           - create_smoke_flow_sheet
+          - configure_business_sheet
           - configure_flow_registry
       registry_id:
         description: Google Spreadsheet ID used only by configure_flow_registry
@@ -25,6 +26,10 @@ on:
         default: ""
       target_sheet_id:
         description: User-owned destination spreadsheet for create_smoke_flow_sheet
+        required: false
+        default: ""
+      business_sheet_id:
+        description: Existing per-flow spreadsheet to connect to the test bot
         required: false
         default: ""
 
@@ -534,6 +539,127 @@ jobs:
 
           print(f"FLOW_SHEET_POPULATED id={target_id} tabs={len(final_titles)}")
           PY
+          REMOTE
+
+  configure-business-sheet:
+    if: inputs.mode == 'configure_business_sheet'
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      contents: read
+    env:
+      TEST_VPS_HOST: ${{ secrets.TEST_VPS_HOST }}
+      TEST_VPS_PORT: ${{ secrets.TEST_VPS_PORT }}
+      TEST_VPS_USER: ${{ secrets.TEST_VPS_USER }}
+      TEST_VPS_SSH_KEY: ${{ secrets.TEST_VPS_SSH_KEY }}
+      TEST_VPS_APP_DIR: ${{ secrets.TEST_VPS_APP_DIR }}
+      TEST_VPS_SERVICE_NAME: ${{ secrets.TEST_VPS_SERVICE_NAME }}
+      BUSINESS_SHEET_ID: ${{ inputs.business_sheet_id }}
+    steps:
+      - name: Validate bounded test configuration
+        run: |
+          test "$TEST_VPS_APP_DIR" = "/opt/telegram_goals_bot_test"
+          test "$TEST_VPS_SERVICE_NAME" = "telegram-goals-bot-test.service"
+          [[ "$BUSINESS_SHEET_ID" =~ ^[A-Za-z0-9_-]{20,}$ ]]
+          install -m 700 -d ~/.ssh
+          printf '%s' "$TEST_VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_HOST" >> ~/.ssh/known_hosts
+      - name: Verify spreadsheet, update test env, and restart test bot
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_USER@$TEST_VPS_HOST" \
+            "TEST_APP_DIR='$TEST_VPS_APP_DIR' TEST_SERVICE_NAME='$TEST_VPS_SERVICE_NAME' BUSINESS_SHEET_ID='$BUSINESS_SHEET_ID' bash -s" <<'REMOTE'
+          set -euo pipefail
+          test "$TEST_APP_DIR" = "/opt/telegram_goals_bot_test"
+          test "$TEST_SERVICE_NAME" = "telegram-goals-bot-test.service"
+          [[ "$BUSINESS_SHEET_ID" =~ ^[A-Za-z0-9_-]{20,}$ ]]
+
+          ENV_PATH="$TEST_APP_DIR/shared/.env"
+          BACKUP_PATH="$(mktemp /tmp/telegram-goals-env-backup.XXXXXX)"
+          UPDATED_PATH="$(mktemp /tmp/telegram-goals-env-updated.XXXXXX)"
+          test -f "$ENV_PATH"
+          sudo systemctl is-active --quiet "$TEST_SERVICE_NAME"
+          cp "$ENV_PATH" "$BACKUP_PATH"
+          cp "$ENV_PATH" "$UPDATED_PATH"
+          chmod 600 "$BACKUP_PATH" "$UPDATED_PATH"
+          ENV_UID="$(stat -c '%u' "$ENV_PATH")"
+          ENV_GID="$(stat -c '%g' "$ENV_PATH")"
+          ENV_MODE="$(stat -c '%a' "$ENV_PATH")"
+          cleanup_env_files() {
+            rm -f "$BACKUP_PATH" "$UPDATED_PATH"
+          }
+          restore_env() {
+            status=$?
+            trap - ERR
+            sudo install -o "$ENV_UID" -g "$ENV_GID" -m "$ENV_MODE" "$BACKUP_PATH" "$ENV_PATH"
+            sudo systemctl restart "$TEST_SERVICE_NAME"
+            sudo systemctl is-active --quiet "$TEST_SERVICE_NAME"
+            exit "$status"
+          }
+          trap restore_env ERR
+          trap cleanup_env_files EXIT
+
+          set -a
+          . "$ENV_PATH"
+          set +a
+          cd "$TEST_APP_DIR/current"
+          CONFIG_ENV_PATH="$UPDATED_PATH" "$TEST_APP_DIR/current/.venv/bin/python" - <<'PY'
+          import os
+          import tempfile
+          from pathlib import Path
+
+          from google.oauth2.service_account import Credentials
+          from googleapiclient.discovery import build
+
+          target_id = os.environ["BUSINESS_SHEET_ID"]
+          credentials = Credentials.from_service_account_file(
+              os.environ["GOOGLE_APPLICATION_CREDENTIALS"],
+              scopes=("https://www.googleapis.com/auth/spreadsheets.readonly",),
+          )
+          sheets = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+          metadata = sheets.spreadsheets().get(
+              spreadsheetId=target_id,
+              fields="properties.title,sheets.properties.title",
+          ).execute()
+          tabs = {
+              item.get("properties", {}).get("title", "")
+              for item in metadata.get("sheets", [])
+          }
+          required_tabs = {"Participants", "Teams", "FlowStart", "FlowSchedule"}
+          missing_tabs = sorted(required_tabs - tabs)
+          if missing_tabs:
+              raise SystemExit(f"Target spreadsheet is missing required tabs: {missing_tabs}")
+
+          env_path = Path(os.environ["CONFIG_ENV_PATH"])
+          lines = env_path.read_text(encoding="utf-8").splitlines()
+          replacements = 0
+          updated_lines = []
+          for line in lines:
+              if line.startswith("GOOGLE_SHEETS_ID="):
+                  updated_lines.append(f"GOOGLE_SHEETS_ID={target_id}")
+                  replacements += 1
+              else:
+                  updated_lines.append(line)
+          if replacements != 1:
+              raise SystemExit(f"Expected one GOOGLE_SHEETS_ID entry, found {replacements}")
+
+          fd, temp_name = tempfile.mkstemp(prefix="telegram-goals-env-", dir="/tmp", text=True)
+          temp_path = Path(temp_name)
+          try:
+              with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                  handle.write("\n".join(updated_lines) + "\n")
+              os.chmod(temp_path, 0o600)
+              os.replace(temp_path, env_path)
+          finally:
+              temp_path.unlink(missing_ok=True)
+          print("BUSINESS_SHEET_CONFIGURED")
+          PY
+
+          sudo install -o "$ENV_UID" -g "$ENV_GID" -m "$ENV_MODE" "$UPDATED_PATH" "$ENV_PATH"
+          "$TEST_APP_DIR/current/.venv/bin/telegram-goals-bot" --env-file "$ENV_PATH" check-config
+          sudo systemctl restart "$TEST_SERVICE_NAME"
+          sudo systemctl is-active --quiet "$TEST_SERVICE_NAME"
+          trap - ERR
           REMOTE
 
   configure-flow-registry:
