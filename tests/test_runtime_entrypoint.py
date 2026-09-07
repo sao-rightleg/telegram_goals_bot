@@ -339,6 +339,35 @@ def test_live_scheduler_runner_retries_alert_when_error_bot_was_unavailable(
     assert all("private sheet detail" not in message.text for message in error_bot.sent_messages)
 
 
+def test_live_scheduler_runner_retries_recovery_until_error_bot_accepts_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    error_bot = FailingOnAttemptsSendBot(BotPurpose.ERROR, failing_attempts={2})
+    components = _runtime_components(tmp_path).with_replacements(
+        error_bot=error_bot,
+        notification_router=_router(error_bot=error_bot),
+    )
+    runner = LiveSchedulerRunner(stop_event=StopAfterCalls(limit=5), check_interval_seconds=0)
+    calls = 0
+
+    def scripted_tick(_components: RuntimeComponents) -> None:
+        nonlocal calls
+        calls += 1
+        if calls <= 3:
+            raise GoogleSheetsSchemaError("private sheet detail")
+
+    monkeypatch.setattr(runner, "run_due_jobs_once", scripted_tick)
+
+    runner._run_loop(components)
+
+    assert error_bot.send_attempts == 3
+    assert [message.text for message in error_bot.sent_messages] == [
+        "scheduler_runner_tick_failed error_type=GoogleSheetsSchemaError consecutive_failures=3",
+        "scheduler_runner_recovered",
+    ]
+
+
 def test_check_config_runs_google_schema_validation(tmp_path: Path) -> None:
     settings = load_settings(environ=runtime_env(tmp_path))
     settings.google_sheets.application_credentials.write_text("{}", encoding="utf-8")
@@ -757,6 +786,29 @@ def test_polling_runner_retries_alert_when_error_bot_was_temporarily_unavailable
     ]
 
 
+def test_polling_runner_retries_recovery_until_error_bot_accepts_it(tmp_path: Path) -> None:
+    components = _runtime_components(tmp_path)
+    error_bot = FailingOnAttemptsSendBot(BotPurpose.ERROR, failing_attempts={2})
+    components = components.with_replacements(
+        main_bot=ScriptedPollingBot(failures=(True, True, True, False, False)),
+        error_bot=error_bot,
+        notification_router=_router(error_bot=error_bot),
+    )
+    runner = TelegramPollingRunner(
+        poll_timeout_seconds=1,
+        poll_limit=100,
+        stop_event=StopAfterCalls(limit=5),
+    )
+
+    runner.run(components)
+
+    assert error_bot.send_attempts == 3
+    assert [message.text for message in error_bot.sent_messages] == [
+        "telegram_get_updates_failed error_type=TelegramApiError consecutive_failures=3",
+        "telegram_get_updates_recovered",
+    ]
+
+
 NOW = datetime(2026, 7, 5, 18, 0, tzinfo=ZoneInfo(TIMEZONE_NAME))
 
 
@@ -1044,6 +1096,19 @@ class FailingOnceSendBot(FakeBotClient):
     def send_message(self, *args: object, **kwargs: object) -> None:
         self.send_attempts += 1
         if self.send_attempts == 1:
+            raise TelegramApiError("Telegram sendMessage request failed: error-token-456")
+        super().send_message(*args, **kwargs)
+
+
+class FailingOnAttemptsSendBot(FakeBotClient):
+    def __init__(self, purpose: BotPurpose, *, failing_attempts: set[int]) -> None:
+        super().__init__(purpose)
+        self.failing_attempts = failing_attempts
+        self.send_attempts = 0
+
+    def send_message(self, *args: object, **kwargs: object) -> None:
+        self.send_attempts += 1
+        if self.send_attempts in self.failing_attempts:
             raise TelegramApiError("Telegram sendMessage request failed: error-token-456")
         super().send_message(*args, **kwargs)
 
