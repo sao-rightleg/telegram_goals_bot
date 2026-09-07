@@ -4,10 +4,18 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+import logging
+from time import sleep
 from typing import Protocol
 
 
 SheetRow = dict[str, object]
+logger = logging.getLogger(__name__)
+
+_GOOGLE_REQUEST_ATTEMPTS = 3
+_GOOGLE_RETRY_BASE_DELAY_SECONDS = 0.25
+_RETRYABLE_HTTP_STATUSES = frozenset({429, 500, 502, 503, 504})
+_RETRYABLE_GOOGLE_REASONS = frozenset({"rateLimitExceeded", "userRateLimitExceeded"})
 
 
 class GoogleSheetsError(RuntimeError):
@@ -588,7 +596,8 @@ class GoogleSheetsGateway:
         values = _execute(
             self.service.spreadsheets()
             .values()
-            .get(spreadsheetId=self.spreadsheet_id, range=_sheet_range(sheet_name))
+            .get(spreadsheetId=self.spreadsheet_id, range=_sheet_range(sheet_name)),
+            retry_safe=True,
         ).get("values", [])
         if not isinstance(values, list) or not values:
             return [], []
@@ -622,7 +631,8 @@ class GoogleSheetsGateway:
                 range=f"{_sheet_range(sheet_name)}!A{row_number}",
                 valueInputOption="USER_ENTERED",
                 body={"values": [values]},
-            )
+            ),
+            retry_safe=True,
         )
 
 
@@ -644,7 +654,10 @@ def _validate_schema(
     spreadsheet_id: str,
     required_sheet_columns: dict[str, frozenset[str]],
 ) -> None:
-    spreadsheet = _execute(service.spreadsheets().get(spreadsheetId=spreadsheet_id))
+    spreadsheet = _execute(
+        service.spreadsheets().get(spreadsheetId=spreadsheet_id),
+        retry_safe=True,
+    )
     sheets = spreadsheet.get("sheets", [])
     if not isinstance(sheets, list):
         raise GoogleSheetsSchemaError("Google Sheets schema validation failed: sheets metadata missing")
@@ -663,7 +676,8 @@ def _validate_schema(
         values = _execute(
             service.spreadsheets()
             .values()
-            .get(spreadsheetId=spreadsheet_id, range=_sheet_range(sheet_name))
+            .get(spreadsheetId=spreadsheet_id, range=_sheet_range(sheet_name)),
+            retry_safe=True,
         ).get("values", [])
         headers = {str(value) for value in values[0]} if isinstance(values, list) and values else set()
         missing = sorted(required_columns - headers)
@@ -962,14 +976,67 @@ def _copy_rows(rows: Iterable[SheetRow]) -> list[SheetRow]:
     return [dict(row) for row in rows]
 
 
-def _execute(request: object) -> dict[str, object]:
-    try:
-        payload = request.execute()
-    except Exception as exc:
-        raise GoogleSheetsError(f"Google Sheets request failed: {type(exc).__name__}") from exc
+def _execute(request: object, *, retry_safe: bool = False) -> dict[str, object]:
+    payload: object | None = None
+    for attempt in range(1, _GOOGLE_REQUEST_ATTEMPTS + 1):
+        try:
+            payload = request.execute()
+            break
+        except Exception as exc:
+            should_retry = (
+                retry_safe
+                and _is_retryable_google_error(exc)
+                and attempt < _GOOGLE_REQUEST_ATTEMPTS
+            )
+            if not should_retry:
+                raise GoogleSheetsError(
+                    f"Google Sheets request failed: {type(exc).__name__}"
+                ) from exc
+            delay = _GOOGLE_RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+            logger.warning(
+                "temporary Google Sheets request failed; retrying",
+                extra={
+                    "attempt": attempt,
+                    "error_type": type(exc).__name__,
+                    "http_status": _google_http_status(exc),
+                },
+            )
+            sleep(delay)
     if not isinstance(payload, dict):
         raise GoogleSheetsError("Google Sheets request failed: invalid response")
     return payload
+
+
+def _is_retryable_google_error(error: Exception) -> bool:
+    status = _google_http_status(error)
+    if status is not None:
+        return status in _RETRYABLE_HTTP_STATUSES or (
+            status == 403
+            and bool(_google_error_reasons(error) & _RETRYABLE_GOOGLE_REASONS)
+        )
+    if isinstance(error, (TimeoutError, ConnectionError, OSError)):
+        return True
+    return type(error).__name__ in {"TransportError", "ServerNotFoundError"}
+
+
+def _google_http_status(error: Exception) -> int | None:
+    response = getattr(error, "resp", None)
+    raw_status = getattr(response, "status", None)
+    try:
+        return int(raw_status) if raw_status is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _google_error_reasons(error: Exception) -> set[str]:
+    details = getattr(error, "error_details", None)
+    if not isinstance(details, list):
+        return set()
+    return {
+        str(item.get("reason"))
+        for item in details
+        if isinstance(item, dict) and item.get("reason")
+    }
 
 
 def _sheet_range(sheet_name: str) -> str:

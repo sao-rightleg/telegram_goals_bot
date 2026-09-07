@@ -17,7 +17,7 @@ import httpx
 
 from app.bot.clients import BotCommand, BotPurpose, LiveTelegramBotClient, LiveTelegramFileDownloader
 from app.logging import setup_logging
-from app.bot.dispatch import TelegramUpdate, TelegramUpdateDispatcher, parse_telegram_update
+from app.bot.dispatch import TelegramUpdateDispatcher
 from app.config import ConfigurationError, Settings, load_settings
 from app.scheduler.calendar import TIMEZONE_NAME, ScheduleItem, reminder_schedule
 from app.scheduler.calendar import configure_challenge_calendar
@@ -45,6 +45,10 @@ from app.storage.weekly_report_drafts import WeeklyReportDraftRepository
 
 
 logger = logging.getLogger("telegram_goals_bot")
+
+RUNTIME_FAILURE_ALERT_THRESHOLD = 3
+RUNTIME_RETRY_BASE_SECONDS = 1.0
+RUNTIME_RETRY_MAX_SECONDS = 10.0
 
 
 @dataclass(frozen=True)
@@ -303,6 +307,8 @@ class TelegramPollingRunner:
 
     def run(self, components: RuntimeComponents) -> None:
         offset: int | None = None
+        consecutive_failures = 0
+        failure_alerted = False
         while not self.stop_event.is_set():
             try:
                 updates = components.main_bot.get_updates(
@@ -311,12 +317,28 @@ class TelegramPollingRunner:
                     limit=self.poll_limit,
                 )
             except Exception as exc:
-                _notify_polling_error(
-                    components.notification_router,
-                    event="telegram_get_updates_failed",
-                    error=exc,
+                consecutive_failures += 1
+                if consecutive_failures >= RUNTIME_FAILURE_ALERT_THRESHOLD and not failure_alerted:
+                    failure_alerted = _notify_polling_error(
+                        components.notification_router,
+                        event="telegram_get_updates_failed",
+                        error=exc,
+                        consecutive_failures=consecutive_failures,
+                    )
+                retry_delay = min(
+                    RUNTIME_RETRY_BASE_SECONDS * (2 ** (consecutive_failures - 1)),
+                    RUNTIME_RETRY_MAX_SECONDS,
                 )
+                self.stop_event.wait(retry_delay)
                 continue
+
+            if failure_alerted:
+                recovery_sent = _notify_runtime_recovery(
+                    components.notification_router,
+                    event="telegram_get_updates_recovered",
+                )
+            consecutive_failures = 0
+            failure_alerted = failure_alerted and not recovery_sent
 
             for update in updates:
                 offset = self._process_update(components, update, current_offset=offset)
@@ -410,6 +432,8 @@ class LiveSchedulerRunner:
     def __post_init__(self) -> None:
         self._thread: Thread | None = None
         self._dispatched_keys: set[str] = set()
+        self._consecutive_tick_failures = 0
+        self._tick_failure_alerted = False
 
     def start(self, components: RuntimeComponents) -> None:
         if self._thread is not None:
@@ -499,7 +523,24 @@ class LiveSchedulerRunner:
                 self.run_due_jobs_once(components)
             except Exception as exc:
                 logger.exception("scheduler runner tick failed")
-                _notify_scheduler_runner_error(components.notification_router, exc)
+                self._consecutive_tick_failures += 1
+                if (
+                    self._consecutive_tick_failures >= RUNTIME_FAILURE_ALERT_THRESHOLD
+                    and not self._tick_failure_alerted
+                ):
+                    self._tick_failure_alerted = _notify_scheduler_runner_error(
+                        components.notification_router,
+                        exc,
+                        consecutive_failures=self._consecutive_tick_failures,
+                    )
+            else:
+                if self._tick_failure_alerted:
+                    recovery_sent = _notify_runtime_recovery(
+                        components.notification_router,
+                        event="scheduler_runner_recovered",
+                    )
+                    self._tick_failure_alerted = not recovery_sent
+                self._consecutive_tick_failures = 0
             self.stop_event.wait(self.check_interval_seconds)
         logger.info("scheduler runner stopped")
 
@@ -622,10 +663,11 @@ def run_bot(
         except Exception as exc:
             _notify_startup_readiness_failure(settings, exc)
             raise
-        components_factory = lambda runtime_settings: compose_runtime(
-            runtime_settings,
-            google_service_factory=google_service_factory,
-        )
+        def components_factory(runtime_settings: Settings) -> RuntimeComponents:
+            return compose_runtime(
+                runtime_settings,
+                google_service_factory=google_service_factory,
+            )
 
     components = components_factory(settings)
     register_main_bot_commands(components)
@@ -678,13 +720,22 @@ def _last_scheduled_at(item: ScheduleItem, local_now: datetime) -> datetime | No
     return scheduled_at
 
 
-def _notify_scheduler_runner_error(router: NotificationRouter, error: Exception) -> None:
+def _notify_scheduler_runner_error(
+    router: NotificationRouter,
+    error: Exception,
+    *,
+    consecutive_failures: int,
+) -> bool:
     try:
         router.send(
             category=NotificationCategory.TECHNICAL_ERROR,
-            text=f"scheduler_runner_tick_failed error_type={type(error).__name__}",
+            text=(
+                f"scheduler_runner_tick_failed error_type={type(error).__name__} "
+                f"consecutive_failures={consecutive_failures}"
+            ),
             recipients=(),
         )
+        return True
     except Exception as notify_error:
         logger.exception(
             "failed to notify scheduler runner error",
@@ -693,6 +744,7 @@ def _notify_scheduler_runner_error(router: NotificationRouter, error: Exception)
                 "notify_error_type": type(notify_error).__name__,
             },
         )
+        return False
 
 
 def main(
@@ -737,6 +789,8 @@ def main(
 
 
 def create_google_sheets_service(settings: Settings) -> object:
+    import httplib2
+    from google_auth_httplib2 import AuthorizedHttp
     from google.oauth2.service_account import Credentials
     from googleapiclient.discovery import build
 
@@ -744,7 +798,8 @@ def create_google_sheets_service(settings: Settings) -> object:
         str(settings.google_sheets.application_credentials),
         scopes=["https://www.googleapis.com/auth/spreadsheets"],
     )
-    return build("sheets", "v4", credentials=credentials, cache_discovery=False)
+    authorized_http = AuthorizedHttp(credentials, http=httplib2.Http(timeout=5.0))
+    return build("sheets", "v4", http=authorized_http, cache_discovery=False)
 
 
 def _build_transcriber(settings: Settings, *, http_client: httpx.Client):
@@ -818,16 +873,20 @@ def _notify_polling_error(
     event: str,
     error: Exception,
     update_id: int | None = None,
-) -> None:
+    consecutive_failures: int | None = None,
+) -> bool:
     parts = [event, f"error_type={type(error).__name__}"]
     if update_id is not None:
         parts.append(f"update_id={update_id}")
+    if consecutive_failures is not None:
+        parts.append(f"consecutive_failures={consecutive_failures}")
     try:
         router.send(
             category=NotificationCategory.TECHNICAL_ERROR,
             text=" ".join(parts),
             recipients=(),
         )
+        return True
     except Exception as notify_error:
         logger.exception(
             "failed to notify polling error",
@@ -838,6 +897,23 @@ def _notify_polling_error(
                 "update_id": update_id,
             },
         )
+        return False
+
+
+def _notify_runtime_recovery(router: NotificationRouter, *, event: str) -> bool:
+    try:
+        router.send(
+            category=NotificationCategory.TECHNICAL_ERROR,
+            text=event,
+            recipients=(),
+        )
+        return True
+    except Exception as notify_error:
+        logger.exception(
+            "failed to notify runtime recovery",
+            extra={"event": event, "notify_error_type": type(notify_error).__name__},
+        )
+        return False
 
 
 def _install_shutdown_handlers(stop_event: Event) -> None:
