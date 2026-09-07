@@ -182,6 +182,29 @@ def test_deploy_test_workflow_can_switch_test_business_sheet_safely() -> None:
     assert 'print("BUSINESS_SHEET_CONFIGURED")' in job
 
 
+def test_deploy_test_workflow_can_check_supabase_connection_without_exposing_secret() -> None:
+    workflow = DEPLOY_TEST_WORKFLOW.read_text(encoding="utf-8")
+    assert "          - test_supabase_connection" in workflow
+
+    job_start = workflow.index("  test-supabase-connection:\n")
+    job_end = workflow.index("\n  configure-flow-registry:\n", job_start)
+    job = workflow[job_start:job_end]
+    assert "if: inputs.mode == 'test_supabase_connection'" in job
+    assert "environment: test" in job
+    assert "timeout-minutes: 2" in job
+    assert "permissions: {}" in job
+    assert "SUPABASE_DB_URL: ${{ secrets.TEST_SUPABASE_DB_URL }}" in job
+    assert 'test -n "$SUPABASE_DB_URL"' in job
+    assert "psycopg.connect(" in job
+    assert "connect_timeout=5" in job
+    assert "statement_timeout=5000" in job
+    assert "default_transaction_read_only=on" in job
+    assert 'connection.execute("SELECT 1")' in job
+    assert 'print("SUPABASE_CONNECTION_OK")' in job
+    assert "SUPABASE_DB_URL=" not in job
+    assert "print(dsn)" not in job
+
+
 def test_deploy_test_workflow_creates_sensitive_shared_dirs_private() -> None:
     workflow = DEPLOY_TEST_WORKFLOW.read_text(encoding="utf-8")
 

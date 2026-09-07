@@ -19,6 +19,7 @@ on:
           - migrate_business_schema
           - create_smoke_flow_sheet
           - configure_business_sheet
+          - test_supabase_connection
           - configure_flow_registry
       registry_id:
         description: Google Spreadsheet ID used only by configure_flow_registry
@@ -661,6 +662,51 @@ jobs:
           sudo systemctl is-active --quiet "$TEST_SERVICE_NAME"
           trap - ERR
           REMOTE
+
+  test-supabase-connection:
+    if: inputs.mode == 'test_supabase_connection'
+    runs-on: ubuntu-latest
+    environment: test
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install PostgreSQL client
+        run: python -m pip install "psycopg[binary]>=3.2,<4"
+      - name: Execute bounded read-only connection probe
+        shell: bash
+        env:
+          SUPABASE_DB_URL: ${{ secrets.TEST_SUPABASE_DB_URL }}
+        run: |
+          test -n "$SUPABASE_DB_URL"
+          python - <<'PY'
+          import os
+          import sys
+
+          import psycopg
+
+          dsn = os.environ["SUPABASE_DB_URL"]
+          try:
+              with psycopg.connect(
+                  dsn,
+                  connect_timeout=5,
+                  options="-c statement_timeout=5000 -c default_transaction_read_only=on",
+              ) as connection:
+                  row = connection.execute("SELECT 1").fetchone()
+          except Exception as error:
+              sqlstate = getattr(error, "sqlstate", None) or "none"
+              print(
+                  f"SUPABASE_CONNECTION_FAILED type={type(error).__name__} sqlstate={sqlstate}",
+                  file=sys.stderr,
+              )
+              raise SystemExit(1) from None
+          if row != (1,):
+              print("SUPABASE_CONNECTION_FAILED type=UnexpectedResult", file=sys.stderr)
+              raise SystemExit(1)
+          print("SUPABASE_CONNECTION_OK")
+          PY
 
   configure-flow-registry:
     if: inputs.mode == 'configure_flow_registry'
