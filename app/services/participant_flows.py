@@ -224,6 +224,30 @@ class ParticipantFlowService:
         captain = self._captain_for_flow(draft.flow_id, draft.captain_id)
         if captain is None:
             return self._show_registration_captains(user, draft=draft, occurred_at=occurred_at)
+        team_id = _string_value(captain.get("team_id"))
+        team = next(
+            (
+                row
+                for row in self.sheets.list_teams()
+                if row.get("flow_id") == draft.flow_id and row.get("team_id") == team_id
+                and row.get("captain_id") == draft.captain_id
+                and _truthy(row.get("is_active"))
+            ),
+            None,
+        )
+        if team is None:
+            return self._show_registration_captains(user, draft=draft, occurred_at=occurred_at)
+        flow = self._active_registration_flow()
+        if flow is None or _optional_string_value(flow.get("flow_id")) != draft.flow_id:
+            return self._handle_registration_start(user, occurred_at=occurred_at)
+        success_text = _registration_success_text(
+            {
+                "first_name": draft.first_name,
+                "team_name": team.get("team_name", ""),
+            },
+            captain,
+            flow or {},
+        )
         claim_token = uuid4().hex
         stale_before = (datetime.fromisoformat(occurred_at) - timedelta(minutes=10)).isoformat()
         if not self._registration_repository().claim_finalization(
@@ -238,11 +262,6 @@ class ParticipantFlowService:
             return self._send_registration_response(user, "Регистрация уже обрабатывается. Повтори /start через минуту.")
         existing = self.sheets.find_participant_in_flow(draft.flow_id, user.telegram_id)
         if existing is None:
-            team_id = _string_value(captain.get("team_id"))
-            team = next(
-                (row for row in self.sheets.list_teams() if row.get("flow_id") == draft.flow_id and row.get("team_id") == team_id),
-                {},
-            )
             participant_id = _registration_participant_id(draft.flow_id, user.telegram_id)
             try:
                 self.sheets.append_participant(
@@ -256,7 +275,7 @@ class ParticipantFlowService:
                     "full_name": f"{draft.first_name} {draft.last_name}",
                     "role": "participant",
                     "team_id": team_id,
-                    "team_name": team.get("team_name", captain.get("team_name", "")),
+                    "team_name": team.get("team_name", ""),
                     "captain_id": draft.captain_id,
                     "tracker_id": team.get("tracker_id", ""),
                     "status": "active",
@@ -281,14 +300,11 @@ class ParticipantFlowService:
         participant = self.sheets.find_participant_in_flow(draft.flow_id, user.telegram_id)
         if participant is None:
             raise RuntimeError("Participant registration write was not visible")
-        captain = self._captain_for_flow(draft.flow_id, draft.captain_id)
-        flow = self._active_registration_flow()
-        text = _registration_success_text(participant, captain or {}, flow or {})
         self._registration_repository().clear(user.telegram_id)
         self.dialog_states.upsert(
             _dialog_state_for(user=user, participant=participant, flow="idle", step="menu", occurred_at=occurred_at)
         )
-        return self._send_registration_response(user, text)
+        return self._send_registration_response(user, success_text)
 
     def decline_consent(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
         participant = self._participant_for_current_flow(user.telegram_id)
@@ -1008,24 +1024,76 @@ def _registration_participant_id(flow_id: str, telegram_id: int) -> str:
 def _registration_success_text(participant: SheetRow, captain: SheetRow, flow: SheetRow) -> str:
     first_name = _optional_string_value(participant.get("first_name")) or "Участник"
     captain_name = _participant_name(captain) or "не указан"
+    team_name = _optional_string_value(participant.get("team_name")) or "не указана"
     lines = [
         f"{first_name}, ты успешно зарегистрирован в проекте «Смерть иллюзий».",
+        "",
         f"Твой капитан — {captain_name}.",
+        f"Твоя команда — {team_name}.",
     ]
-    dates = (
-        ("Постановка цели", "goal_setup_start_date", "goal_setup_end_date"),
-        ("Формирование шагов", "steps_setup_start_date", "steps_setup_end_date"),
-        ("Рабочие недели", "week_01_start_date", "week_08_end_date"),
-    )
-    schedule = []
-    for label, start_field, end_field in dates:
-        start = _optional_string_value(flow.get(start_field))
-        end = _optional_string_value(flow.get(end_field))
-        if start and end:
-            schedule.append(f"{label}: {_short_date(start)}–{_short_date(end)}")
+    schedule = _registration_schedule_lines(flow)
     if schedule:
         lines.extend(("", "Краткое расписание:", *schedule))
     return "\n".join(lines)
+
+
+def _registration_schedule_lines(flow: SheetRow) -> tuple[str, ...]:
+    required_fields = (
+        "goal_setup_start_date",
+        "goal_setup_end_date",
+        "steps_setup_start_date",
+        "steps_setup_end_date",
+        "week_01_start_date",
+        "week_08_end_date",
+    )
+    values = {field: _optional_string_value(flow.get(field)) for field in required_fields}
+    if not all(values.values()):
+        raise ValueError("Registration schedule is incomplete")
+
+    parsed = {
+        field: datetime.fromisoformat(value or "").date() for field, value in values.items()
+    }
+    goal_start = parsed["goal_setup_start_date"]
+    goal_end = parsed["goal_setup_end_date"]
+    steps_start = parsed["steps_setup_start_date"]
+    steps_end = parsed["steps_setup_end_date"]
+    first_week_start = parsed["week_01_start_date"]
+    configured_last_day = parsed["week_08_end_date"]
+    if not (
+        goal_start <= goal_end
+        and steps_start == goal_end + timedelta(days=1)
+        and steps_start <= steps_end
+        and first_week_start == steps_end + timedelta(days=1)
+    ):
+        raise ValueError("Registration schedule phases are inconsistent")
+    expected_last_day = first_week_start + timedelta(days=55)
+    if configured_last_day != expected_last_day:
+        raise ValueError("Working-week calendar must contain eight consecutive seven-day weeks")
+
+    week_lines = []
+    for week_number in range(1, 9):
+        week_start = first_week_start + timedelta(days=(week_number - 1) * 7)
+        week_end = week_start + timedelta(days=6)
+        week_lines.append(
+            f"Неделя {week_number}: {week_start:%d.%m.%Y}–{week_end:%d.%m.%Y}"
+        )
+
+    return (
+        "",
+        "Постановка цели:",
+        f"{_short_date(values['goal_setup_start_date'] or '')}–"
+        f"{_short_date(values['goal_setup_end_date'] or '')}",
+        "",
+        "Формирование шагов:",
+        f"{_short_date(values['steps_setup_start_date'] or '')}–"
+        f"{_short_date(values['steps_setup_end_date'] or '')}",
+        "",
+        "Рабочие недели:",
+        "",
+        *week_lines,
+        "",
+        f"🎓 Выпускной: {configured_last_day:%d.%m.%Y}",
+    )
 
 
 def _short_date(value: str) -> str:

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from app.bot.clients import BotPurpose, FakeBotClient
 from app.bot.menus import CAPTAIN_MENU_LABELS, PARTICIPANT_MENU_LABELS
 from app.bot.messages import (
@@ -242,7 +244,7 @@ def test_registration_collects_name_and_creates_participant_after_confirmation(t
                 "full_name": "Анна Иванова",
                 "role": "captain",
                 "team_id": "T001",
-                "team_name": "Команда 1",
+                "team_name": "Устаревшее название в Participants",
                 "status": "active",
                 "consent_given": True,
             }
@@ -274,9 +276,160 @@ def test_registration_collects_name_and_creates_participant_after_confirmation(t
     assert participant["team_id"] == "T001"
     assert participant["captain_id"] == "C001"
     assert participant["consent_given"] is True
-    assert "успешно зарегистрирован" in completed.text
+    assert completed.text == "\n".join(
+        (
+            "Пётр, ты успешно зарегистрирован в проекте «Смерть иллюзий».",
+            "",
+            "Твой капитан — Анна Иванова.",
+            "Твоя команда — Команда 1.",
+            "",
+            "Краткое расписание:",
+            "",
+            "Постановка цели:",
+            "09.09.2026–13.09.2026",
+            "",
+            "Формирование шагов:",
+            "14.09.2026–20.09.2026",
+            "",
+            "Рабочие недели:",
+            "",
+            "Неделя 1: 21.09.2026–27.09.2026",
+            "Неделя 2: 28.09.2026–04.10.2026",
+            "Неделя 3: 05.10.2026–11.10.2026",
+            "Неделя 4: 12.10.2026–18.10.2026",
+            "Неделя 5: 19.10.2026–25.10.2026",
+            "Неделя 6: 26.10.2026–01.11.2026",
+            "Неделя 7: 02.11.2026–08.11.2026",
+            "Неделя 8: 09.11.2026–15.11.2026",
+            "",
+            "🎓 Выпускной: 15.11.2026",
+        )
+    )
     assert repository.get(404).flow == "idle"
     assert error_bot.sent_messages == []
+
+
+@pytest.mark.parametrize(
+    ("flow_change", "error_match"),
+    [
+        ({"week_08_end_date": "2026-11-14"}, "eight consecutive"),
+        ({"steps_setup_start_date": "2026-09-13"}, "phases are inconsistent"),
+        ({"goal_setup_start_date": "2026-09-14"}, "phases are inconsistent"),
+        (
+            {"week_01_start_date": "2026-09-22", "week_08_end_date": "2026-11-16"},
+            "phases are inconsistent",
+        ),
+        (
+            {
+                "goal_setup_end_date": "2026-09-20",
+                "steps_setup_start_date": "2026-09-21",
+                "steps_setup_end_date": "2026-09-19",
+                "week_01_start_date": "2026-09-20",
+                "week_08_end_date": "2026-11-14",
+            },
+            "phases are inconsistent",
+        ),
+        ({"goal_setup_end_date": "not-a-date"}, "Invalid isoformat"),
+        ({"week_01_start_date": ""}, "schedule is incomplete"),
+    ],
+)
+def test_registration_calendar_failure_happens_before_participant_append(
+    tmp_path: Path,
+    flow_change: dict[str, object],
+    error_match: str,
+) -> None:
+    flow = {**_active_flow(), **flow_change}
+    service, gateway, _main_bot, _error_bot, _notification_bot, _repository = _build_service(
+        tmp_path,
+        participants=[{
+            "flow_id": "FLOW_2", "participant_id": "C001", "telegram_id": 1001,
+            "full_name": "Анна Иванова", "role": "captain", "team_id": "T001",
+            "status": "active", "consent_given": True,
+        }],
+        teams=[{
+            "flow_id": "FLOW_2", "team_id": "T001", "team_name": "Команда 1",
+            "captain_id": "C001", "is_active": True,
+        }],
+        challenge_flows=[flow],
+    )
+    user = TelegramUserContext(telegram_id=404, chat_id="chat-404")
+    service.handle_start(user, occurred_at=REGISTRATION_NOW)
+    service.accept_consent(user, consent_given_at=REGISTRATION_NOW)
+    service.handle_registration_text(user, "Пётр", occurred_at=REGISTRATION_NOW)
+    service.handle_registration_text(user, "Петров", occurred_at=REGISTRATION_NOW)
+    service.select_registration_captain(user, captain_id="C001", occurred_at=REGISTRATION_NOW)
+
+    with pytest.raises(ValueError, match=error_match):
+        service.confirm_registration(user, occurred_at=REGISTRATION_NOW)
+
+    assert gateway.find_participant_by_telegram_id(404) is None
+
+
+def test_registration_rechecks_authoritative_team_before_append(tmp_path: Path) -> None:
+    service, gateway, _main_bot, _error_bot, _notification_bot, _repository = _build_service(
+        tmp_path,
+        participants=[{
+            "flow_id": "FLOW_2", "participant_id": "C001", "telegram_id": 1001,
+            "full_name": "Анна Иванова", "role": "captain", "team_id": "T001",
+            "team_name": "Устаревшее название", "status": "active", "consent_given": True,
+        }],
+        teams=[{
+            "flow_id": "FLOW_2", "team_id": "T001", "team_name": "Команда 1",
+            "captain_id": "C001", "is_active": True,
+        }],
+        challenge_flows=[_active_flow()],
+    )
+    user = TelegramUserContext(telegram_id=404, chat_id="chat-404")
+    service.handle_start(user, occurred_at=REGISTRATION_NOW)
+    service.accept_consent(user, consent_given_at=REGISTRATION_NOW)
+    service.handle_registration_text(user, "Пётр", occurred_at=REGISTRATION_NOW)
+    service.handle_registration_text(user, "Петров", occurred_at=REGISTRATION_NOW)
+    service.select_registration_captain(user, captain_id="C001", occurred_at=REGISTRATION_NOW)
+    gateway._teams[0]["is_active"] = False
+
+    response = service.confirm_registration(user, occurred_at=REGISTRATION_NOW)
+
+    assert response.text == "Регистрация временно недоступна. Сообщи администратору."
+    assert gateway.find_participant_by_telegram_id(404) is None
+
+
+def test_registration_does_not_mix_flows_when_active_flow_switches_during_confirmation(
+    tmp_path: Path,
+) -> None:
+    old_flow = _active_flow()
+    new_flow = {**_active_flow(), "flow_id": "FLOW_3"}
+    service, gateway, _main_bot, _error_bot, _notification_bot, _repository = _build_service(
+        tmp_path,
+        participants=[{
+            "flow_id": "FLOW_2", "participant_id": "C001", "telegram_id": 1001,
+            "full_name": "Анна Иванова", "role": "captain", "team_id": "T001",
+            "status": "active", "consent_given": True,
+        }],
+        teams=[{
+            "flow_id": "FLOW_2", "team_id": "T001", "team_name": "Команда 1",
+            "captain_id": "C001", "is_active": True,
+        }],
+        challenge_flows=[old_flow],
+    )
+    user = TelegramUserContext(telegram_id=404, chat_id="chat-404")
+    service.handle_start(user, occurred_at=REGISTRATION_NOW)
+    service.accept_consent(user, consent_given_at=REGISTRATION_NOW)
+    service.handle_registration_text(user, "Пётр", occurred_at=REGISTRATION_NOW)
+    service.handle_registration_text(user, "Петров", occurred_at=REGISTRATION_NOW)
+    service.select_registration_captain(user, captain_id="C001", occurred_at=REGISTRATION_NOW)
+    active_flow_reads = 0
+
+    def switching_active_flow() -> dict[str, object]:
+        nonlocal active_flow_reads
+        active_flow_reads += 1
+        return old_flow if active_flow_reads <= 2 else new_flow
+
+    gateway.get_active_challenge_flow = switching_active_flow
+
+    response = service.confirm_registration(user, occurred_at=REGISTRATION_NOW)
+
+    assert response.text == CONSENT_TEXT
+    assert gateway.find_participant_by_telegram_id(404) is None
 
 
 def test_repeated_start_resumes_registration_without_duplicate(tmp_path: Path) -> None:
