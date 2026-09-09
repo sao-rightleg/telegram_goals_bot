@@ -825,13 +825,21 @@ class ParticipantFlowService:
         draft: RegistrationDraft,
         occurred_at: str,
     ) -> FlowResponse:
+        active_captain_teams = {
+            (str(row.get("captain_id", "")), str(row.get("team_id", "")))
+            for row in self.sheets.list_teams()
+            if row.get("flow_id") == draft.flow_id
+            and row.get("captain_id")
+            and _truthy(row.get("is_active"))
+        }
         captains = [
             row
             for row in self.sheets.list_participants()
             if row.get("flow_id") == draft.flow_id
             and row.get("role") == "captain"
-            and str(row.get("status", "active")) != "dropped"
-            and self._captain_for_flow(draft.flow_id, str(row.get("participant_id", ""))) is not None
+            and str(row.get("status", "active")) == "active"
+            and _consent_is_given(row)
+            and _captain_matches_team(row, active_captain_teams)
         ]
         buttons = tuple(
             TelegramInlineButton(_participant_name(captain), f"registration:captain:{captain['participant_id']}")
@@ -1014,6 +1022,17 @@ def _participant_name(participant: SheetRow) -> str:
         )
         if value
     )
+
+
+def _captain_matches_team(
+    captain: SheetRow,
+    active_captain_teams: set[tuple[str, str]],
+) -> bool:
+    captain_id = _optional_string_value(captain.get("participant_id"))
+    team_id = _optional_string_value(captain.get("team_id"))
+    if captain_id is None or team_id is None:
+        return False
+    return (captain_id, team_id) in active_captain_teams
 
 
 def _registration_participant_id(flow_id: str, telegram_id: int) -> str:

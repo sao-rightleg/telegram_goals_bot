@@ -309,6 +309,95 @@ def test_registration_collects_name_and_creates_participant_after_confirmation(t
     assert error_bot.sent_messages == []
 
 
+def test_registration_loads_participants_and_teams_once_for_captain_buttons(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captains = [
+        {
+            "flow_id": "FLOW_2", "participant_id": captain_id,
+            "full_name": full_name, "role": "captain", "team_id": team_id,
+            "status": "active", "consent_given": True,
+        }
+        for captain_id, full_name, team_id in (
+            ("C001", "Анна Иванова", "T001"),
+            ("C002", "Борис Петров", "T002"),
+        )
+    ]
+    captains.extend(
+        (
+            {
+                "flow_id": "FLOW_2", "participant_id": "C003", "full_name": "Неактивный",
+                "role": "captain", "team_id": "T003", "status": "dropped", "consent_given": True,
+            },
+            {
+                "flow_id": "FLOW_2", "participant_id": "C004", "full_name": "Без согласия",
+                "role": "captain", "team_id": "T004", "status": "active", "consent_given": False,
+            },
+            {
+                "flow_id": "FLOW_2", "participant_id": "C005", "full_name": "Чужая команда",
+                "role": "captain", "team_id": "T005", "status": "active", "consent_given": True,
+            },
+        )
+    )
+    teams = [
+        {
+            "flow_id": "FLOW_2", "team_id": team_id, "captain_id": captain_id,
+            "is_active": True,
+        }
+        for team_id, captain_id in (("T001", "C001"), ("T002", "C002"))
+    ]
+    teams.append({
+        "flow_id": "FLOW_2", "team_id": "T999", "captain_id": "C001",
+        "is_active": True,
+    })
+    teams.extend(
+        (
+            {"flow_id": "FLOW_2", "team_id": "T003", "captain_id": "C003", "is_active": True},
+            {"flow_id": "FLOW_2", "team_id": "T004", "captain_id": "C004", "is_active": True},
+            {"flow_id": "FLOW_2", "team_id": "T999", "captain_id": "C005", "is_active": True},
+        )
+    )
+    service, gateway, _main_bot, _error_bot, _notification_bot, _repository = _build_service(
+        tmp_path,
+        participants=captains,
+        teams=teams,
+        challenge_flows=[_active_flow()],
+    )
+    user = TelegramUserContext(telegram_id=404, chat_id="chat-404")
+    service.handle_start(user, occurred_at=REGISTRATION_NOW)
+    service.accept_consent(user, consent_given_at=REGISTRATION_NOW)
+    service.handle_registration_text(user, "Пётр", occurred_at=REGISTRATION_NOW)
+    calls = {"participants": 0, "teams": 0, "participant": 0}
+    original_list_participants = gateway.list_participants
+    original_list_teams = gateway.list_teams
+    original_get_participant = gateway.get_participant
+
+    def list_participants() -> list[dict[str, object]]:
+        calls["participants"] += 1
+        return original_list_participants()
+
+    def list_teams() -> list[dict[str, object]]:
+        calls["teams"] += 1
+        return original_list_teams()
+
+    def get_participant(participant_id: str) -> dict[str, object] | None:
+        calls["participant"] += 1
+        return original_get_participant(participant_id)
+
+    monkeypatch.setattr(gateway, "list_participants", list_participants)
+    monkeypatch.setattr(gateway, "list_teams", list_teams)
+    monkeypatch.setattr(gateway, "get_participant", get_participant)
+
+    response = service.handle_registration_text(user, "Петров", occurred_at=REGISTRATION_NOW)
+
+    assert [(button.text, button.callback_data) for button in response.buttons] == [
+        ("Анна Иванова", "registration:captain:C001"),
+        ("Борис Петров", "registration:captain:C002"),
+    ]
+    assert calls == {"participants": 1, "teams": 1, "participant": 0}
+
+
 @pytest.mark.parametrize(
     ("flow_change", "error_match"),
     [
