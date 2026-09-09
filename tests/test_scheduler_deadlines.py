@@ -21,6 +21,85 @@ from app.storage.weekly_report_drafts import WeeklyReportDraftRepository
 
 NOW = datetime(2026, 7, 2, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME))
 MONDAY_START = datetime(2026, 6, 8, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME))
+GOAL_SETUP_START = datetime(2026, 9, 10, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME))
+
+
+def test_goal_setup_message_is_sent_once_to_active_consented_participants_without_goal(
+    tmp_path: Path,
+) -> None:
+    participants = [
+        {**_participant("P001", 1001, consent=True), "flow_id": "FLOW_1"},
+        {**_participant("P002", 1002, consent=True), "flow_id": "FLOW_1"},
+        {**_participant("P003", 1003, consent=False), "flow_id": "FLOW_1"},
+        {**_participant("P004", 1004, consent=True, status="dropped"), "flow_id": "FLOW_1"},
+        {**_participant("P005", 1005, consent=True), "flow_id": "FLOW_2"},
+    ]
+    service, _gateway, main_bot, _error_bot = _service(
+        tmp_path,
+        participants=participants,
+        goals=[_goal("G002", "P002")],
+    )
+    text = "Получи инструкции капитана, согласуй цель и запиши её в бота."
+
+    first = service.send_scheduled_participant_message(
+        text=text,
+        condition="goal_missing",
+        now=GOAL_SETUP_START,
+        flow_id="FLOW_1",
+        event_id="GOAL_START_01",
+    )
+    second = service.send_scheduled_participant_message(
+        text=text,
+        condition="goal_missing",
+        now=GOAL_SETUP_START,
+        flow_id="FLOW_1",
+        event_id="GOAL_START_01",
+    )
+
+    assert first == ReminderJobResult(sent_count=1, skipped_count=3, failed_count=0)
+    assert second == ReminderJobResult(sent_count=0, skipped_count=4, failed_count=0)
+    assert [(message.chat_id, message.text) for message in main_bot.sent_messages] == [("1001", text)]
+
+
+def test_goal_setup_message_reports_missing_chat_and_continues_after_send_failure(
+    tmp_path: Path,
+) -> None:
+    participants = [
+        {**_participant("P001", 1001, consent=True), "flow_id": "FLOW_1"},
+        {**_participant("P002", 1002, consent=True), "flow_id": "FLOW_1"},
+        {**_participant("P003", 0, consent=True), "flow_id": "FLOW_1", "telegram_id": ""},
+    ]
+    service, _gateway, main_bot, error_bot = _service(
+        tmp_path,
+        participants=participants,
+        failing_chat_ids={"1001"},
+    )
+
+    first = service.send_scheduled_participant_message(
+        text="Поставь и согласуй цель.",
+        condition="goal_missing",
+        now=GOAL_SETUP_START,
+        flow_id="FLOW_1",
+        event_id="GOAL_START_01",
+    )
+    second = service.send_scheduled_participant_message(
+        text="Поставь и согласуй цель.",
+        condition="goal_missing",
+        now=GOAL_SETUP_START,
+        flow_id="FLOW_1",
+        event_id="GOAL_START_01",
+    )
+
+    assert first == ReminderJobResult(sent_count=1, skipped_count=1, failed_count=1)
+    assert second == ReminderJobResult(sent_count=0, skipped_count=2, failed_count=1)
+    assert main_bot.attempts_by_chat_id == {"1001": 2, "1002": 1}
+    assert [message.chat_id for message in main_bot.sent_messages] == ["1002"]
+    assert [message.text.split()[0] for message in error_bot.sent_messages] == [
+        "reminder_send_failed",
+        "scheduled_message_missing_chat_id",
+        "reminder_send_failed",
+        "scheduled_message_missing_chat_id",
+    ]
 
 
 def test_reminder_sends_only_to_active_consenting_participants_without_report(tmp_path: Path) -> None:

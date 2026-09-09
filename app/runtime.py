@@ -466,8 +466,8 @@ class LiveSchedulerRunner:
             dispatch_key = f"flow:{event_id}:{scheduled_at.isoformat()}"
             if not event_id or dispatch_key in self._dispatched_keys:
                 continue
-            self._dispatched_keys.add(dispatch_key)
             self._run_flow_schedule_event(components, row, scheduled_at=scheduled_at)
+            self._dispatched_keys.add(dispatch_key)
 
         for item in reminder_schedule():
             if dynamic_focus_defined and item.job_type in {
@@ -509,6 +509,22 @@ class LiveSchedulerRunner:
                 flow_id=str(row.get("flow_id", "")).strip() or None,
                 event_id=str(row.get("event_id", "")).strip(),
             )
+        elif event_type == "participant_message" and recipient_role in {"участник", "participant"}:
+            flow_id = str(row.get("flow_id", "")).strip()
+            event_id = str(row.get("event_id", "")).strip()
+            message_text = str(row.get("message_text", "")).strip()
+            condition = str(row.get("condition", "")).strip()
+            if not flow_id or not event_id or not message_text or condition != "goal_missing":
+                return
+            result = components.scheduler_service.send_scheduled_participant_message(
+                text=message_text,
+                condition=condition,
+                now=scheduled_at,
+                flow_id=flow_id,
+                event_id=event_id,
+            )
+            if result.failed_count:
+                raise RuntimeError("scheduled participant message incomplete")
         elif event_type == "weekly_focus_summary" and recipient_role in {"капитан", "captain"}:
             components.scheduler_service.send_weekly_focus_summary_to_captains(
                 now=scheduled_at,

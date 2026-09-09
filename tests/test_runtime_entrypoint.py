@@ -212,6 +212,114 @@ def test_live_scheduler_runner_uses_enabled_flow_schedule_focus_events(tmp_path:
     ]
 
 
+def test_live_scheduler_runner_routes_due_goal_setup_message(tmp_path: Path) -> None:
+    scheduler_service = RecordingSchedulerService()
+    text = (
+        "Сегодня необходимо поставить цель на проект.\n\n"
+        "Получи у капитана инструкции, согласуй цель и запиши её в бота."
+    )
+    schedule = [{
+        "event_id": "GOAL_START_01",
+        "flow_id": "FLOW_1",
+        "scheduled_date": "2026-09-10",
+        "scheduled_time": "10:00",
+        "scheduled_timezone": TIMEZONE_NAME,
+        "event_type": "participant_message",
+        "recipient_role": "участник",
+        "condition": "goal_missing",
+        "message_text": text,
+        "is_enabled": True,
+    }]
+    components = _runtime_components(tmp_path).with_replacements(
+        scheduler_service=scheduler_service,
+        sheets_gateway=FakeSheetsGateway(flow_schedule=schedule),
+    )
+    runner = LiveSchedulerRunner(stop_event=Event())
+
+    runner.run_due_jobs_once(
+        components,
+        now=datetime(2026, 9, 10, 10, 5, tzinfo=ZoneInfo(TIMEZONE_NAME)),
+    )
+
+    assert scheduler_service.participant_messages == [
+        (text, "goal_missing", datetime(2026, 9, 10, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME)))
+    ]
+    assert scheduler_service.scheduled_calls == [("FLOW_1", "GOAL_START_01")]
+
+
+@pytest.mark.parametrize(
+    ("override"),
+    [
+        {"recipient_role": "капитан"},
+        {"condition": "consent_given"},
+        {"flow_id": ""},
+        {"event_id": ""},
+        {"message_text": ""},
+    ],
+)
+def test_live_scheduler_runner_rejects_invalid_goal_setup_message(
+    tmp_path: Path,
+    override: dict[str, object],
+) -> None:
+    scheduler_service = RecordingSchedulerService()
+    row = {
+        "event_id": "GOAL_START_01",
+        "flow_id": "FLOW_1",
+        "scheduled_date": "2026-09-10",
+        "scheduled_time": "10:00",
+        "scheduled_timezone": TIMEZONE_NAME,
+        "event_type": "participant_message",
+        "recipient_role": "участник",
+        "condition": "goal_missing",
+        "message_text": "Поставь и согласуй цель.",
+        "is_enabled": True,
+    }
+    row.update(override)
+    components = _runtime_components(tmp_path).with_replacements(
+        scheduler_service=scheduler_service,
+        sheets_gateway=FakeSheetsGateway(flow_schedule=[row]),
+    )
+
+    LiveSchedulerRunner(stop_event=Event()).run_due_jobs_once(
+        components,
+        now=datetime(2026, 9, 10, 10, 5, tzinfo=ZoneInfo(TIMEZONE_NAME)),
+    )
+
+    assert scheduler_service.participant_messages == []
+
+
+def test_live_scheduler_runner_retries_goal_setup_event_after_incomplete_delivery(
+    tmp_path: Path,
+) -> None:
+    scheduler_service = RecordingSchedulerService()
+    scheduler_service.participant_message_failed_count = 1
+    schedule = [{
+        "event_id": "GOAL_START_01",
+        "flow_id": "FLOW_1",
+        "scheduled_date": "2026-09-10",
+        "scheduled_time": "10:00",
+        "scheduled_timezone": TIMEZONE_NAME,
+        "event_type": "participant_message",
+        "recipient_role": "участник",
+        "condition": "goal_missing",
+        "message_text": "Поставь и согласуй цель.",
+        "is_enabled": True,
+    }]
+    components = _runtime_components(tmp_path).with_replacements(
+        scheduler_service=scheduler_service,
+        sheets_gateway=FakeSheetsGateway(flow_schedule=schedule),
+    )
+    runner = LiveSchedulerRunner(stop_event=Event())
+    now = datetime(2026, 9, 10, 10, 5, tzinfo=ZoneInfo(TIMEZONE_NAME))
+
+    with pytest.raises(RuntimeError, match="scheduled participant message incomplete"):
+        runner.run_due_jobs_once(components, now=now)
+    scheduler_service.participant_message_failed_count = 0
+    runner.run_due_jobs_once(components, now=now)
+
+    assert len(scheduler_service.participant_messages) == 2
+
+
 @pytest.mark.parametrize(
     ("event_id", "scheduled_time", "event_type", "recipient_role", "expected_job"),
     [
@@ -1157,6 +1265,8 @@ class RecordingSchedulerService:
         self.reminders: list[tuple[str, datetime]] = []
         self.week_closes: list[datetime] = []
         self.scheduled_calls: list[tuple[str | None, str | None]] = []
+        self.participant_messages: list[tuple[str, str, datetime]] = []
+        self.participant_message_failed_count = 0
 
     def run_reminder(
         self,
@@ -1185,6 +1295,22 @@ class RecordingSchedulerService:
         self.reminders.append(("weekly_focus_summary_captain", now))
         self.scheduled_calls.append((flow_id, event_id))
         return ReminderJobResult(sent_count=1)
+
+    def send_scheduled_participant_message(
+        self,
+        *,
+        text: str,
+        condition: str,
+        now: datetime,
+        flow_id: str,
+        event_id: str,
+    ) -> ReminderJobResult:
+        self.participant_messages.append((text, condition, now))
+        self.scheduled_calls.append((flow_id, event_id))
+        return ReminderJobResult(
+            sent_count=0 if self.participant_message_failed_count else 1,
+            failed_count=self.participant_message_failed_count,
+        )
 
 
 def _runtime_components(tmp_path: Path) -> RuntimeComponents:

@@ -48,6 +48,104 @@ class SchedulerService:
     repository: SchedulerJobRepository
     max_reminder_attempts: int = 3
 
+    def send_scheduled_participant_message(
+        self,
+        *,
+        text: str,
+        condition: str,
+        now: datetime,
+        flow_id: str,
+        event_id: str,
+    ) -> ReminderJobResult:
+        """Send an idempotent setup-stage message to eligible flow participants."""
+
+        sent_count = 0
+        skipped_count = 0
+        failed_count = 0
+        # SQLite composite keys treat NULL values as distinct. Setup events use
+        # the bounded calendar week value so the delivery claim stays unique.
+        delivery_week_number = current_challenge_week_number(now)
+        for participant in self.sheets.list_participants():
+            if _string_value(participant.get("flow_id")) != flow_id:
+                continue
+            participant_id = _string_value(participant.get("participant_id"))
+            if not self._is_setup_message_eligible(
+                participant,
+                participant_id=participant_id,
+                condition=condition,
+            ):
+                skipped_count += 1
+                continue
+            outcome = self._deliver_setup_message(
+                participant,
+                participant_id=participant_id,
+                text=text,
+                event_id=event_id,
+                week_number=delivery_week_number,
+                now=now,
+            )
+            if outcome == "sent":
+                sent_count += 1
+            elif outcome == "failed":
+                failed_count += 1
+            else:
+                skipped_count += 1
+
+        return ReminderJobResult(
+            sent_count=sent_count,
+            skipped_count=skipped_count,
+            failed_count=failed_count,
+        )
+
+    def _deliver_setup_message(
+        self,
+        participant: dict[str, object],
+        *,
+        participant_id: str,
+        text: str,
+        event_id: str,
+        week_number: int,
+        now: datetime,
+    ) -> str:
+        team_id = _string_value(participant.get("team_id"))
+        chat_id = _chat_id(participant)
+        if chat_id is None:
+            self._notify_admin_error(
+                "scheduled_message_missing_chat_id",
+                f"scheduled_message_missing_chat_id participant_id={participant_id}",
+                participant_id=participant_id,
+                team_id=team_id,
+                now=now,
+            )
+            return "skipped"
+
+        scoped_event_id = _scoped_event_id(event_id, participant)
+        if not self.repository.claim_event_delivery(
+            event_id=scoped_event_id,
+            recipient_id=participant_id,
+            week_number=week_number,
+            scheduled_for=now.isoformat(),
+            updated_at=now.isoformat(),
+            stale_before=(now - timedelta(minutes=10)).isoformat(),
+        ):
+            return "skipped"
+
+        # Delivery is intentionally at-least-once: after an ambiguous Telegram
+        # timeout a later scheduler tick may duplicate the message rather than
+        # silently omit this launch-critical instruction.
+        sent = self._send_reminder_with_retry(
+            chat_id=chat_id,
+            text=text,
+            participant_id=participant_id,
+            team_id=team_id,
+            week_number=week_number,
+            reminder_type="scheduled_participant_message",
+            delivery_event_id=scoped_event_id,
+            now=now,
+            max_attempts=1,
+        )
+        return "sent" if sent else "failed"
+
     def run_reminder(
         self,
         reminder_type: str,
@@ -373,6 +471,21 @@ class SchedulerService:
             ) is None
         return self.sheets.find_weekly_report(participant_id, week_number=week_number) is None
 
+    def _is_setup_message_eligible(
+        self,
+        participant: dict[str, object],
+        *,
+        participant_id: str,
+        condition: str,
+    ) -> bool:
+        if _normalized_string(participant.get("status")) != "active":
+            return False
+        if not _consent_is_given(participant) or not participant_id:
+            return False
+        if condition == "goal_missing":
+            return self.sheets.get_active_goal(participant_id) is None
+        return False
+
     def _reminder_message(
         self,
         participant: dict[str, object],
@@ -425,12 +538,14 @@ class SchedulerService:
         buttons: tuple[TelegramInlineButton, ...] = (),
         participant_id: str,
         team_id: str,
-        week_number: int,
+        week_number: int | None,
         reminder_type: str,
         delivery_event_id: str | None,
         now: datetime,
+        max_attempts: int | None = None,
     ) -> bool:
-        for _attempt in range(self.max_reminder_attempts):
+        attempt_limit = self.max_reminder_attempts if max_attempts is None else max_attempts
+        for _attempt in range(attempt_limit):
             try:
                 message = self.notification_router.main_bot.send_message(
                     chat_id=chat_id,
