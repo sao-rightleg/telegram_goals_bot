@@ -125,6 +125,10 @@ Voice limit: 10 minutes.
 ### Scheduler Layer
 
 Responsibilities:
+- load enabled events for the active flow from `FlowSchedule`
+- materialize and validate exact event dates from the flow start date and relative schedule template
+- execute the stored exact event date and time in `Asia/Yekaterinburg`
+- resolve recipients inside the same flow by role and team scope
 - Monday 10:00 start-of-week reminder
 - Wednesday 10:00 soft check-in
 - Sunday 18:00 final check-in
@@ -133,6 +137,8 @@ Responsibilities:
 - Sunday 23:59 deadline closing
 - Monday 00:00-00:20 close week and generate reports
 - Monday 00:20-01:00 send reports
+
+The fixed weekly cadence is the default schedule template, not a hard-coded global calendar. Before activation, the template is expanded into exact dated rows for the flow: week start, midweek, week end, deadline, report generation, and report delivery. Each flow can adjust its day-by-day timeline in Google Sheets. Event execution remains restricted to approved event types; Google Sheets cannot define arbitrary executable actions.
 
 All schedule logic uses Yekaterinburg time.
 Timezone identifier: `Asia/Yekaterinburg`.
@@ -144,7 +150,8 @@ Challenge calendar:
 - challenge end date is `2026-07-31`
 - week 1 is goal formulation
 - week 2 is route / planned steps
-- weeks 3-8 are six working execution weeks
+- the first two phases are `goal_setup` and `steps_setup`
+- working phases are `week_01` through `week_08`
 - after week 8 there are four days for final summary
 - if scheduler needs exact start date, calculate it from `2026-07-31` using 8 weeks plus 4 final-summary days
 
@@ -217,6 +224,7 @@ Generated files and secrets must not be committed.
 ### Business Data in Google Sheets
 
 Google Sheets stores:
+- challenge flows and active flow calendar in a separate spreadsheet
 - participant profile
 - team membership
 - captain and tracker assignments
@@ -302,7 +310,8 @@ Use environment variables or protected credential files for:
 - main Telegram bot token
 - error Telegram bot token
 - notification Telegram bot token
-- Google Sheets ID
+- main Google Sheets ID
+- challenge flows Google Sheets ID
 - Google credentials path
 - admin Telegram ID
 - admin error chat ID

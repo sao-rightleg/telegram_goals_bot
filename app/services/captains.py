@@ -17,6 +17,7 @@ from app.bot.messages import (
     CAPTAIN_ONLY_TEXT,
     CAPTAIN_TEAM_TITLE_TEXT,
     CONSENT_ACCEPT_BUTTON,
+    CONSENT_DECLINE_BUTTON,
     CONSENT_TEXT,
     MISSING_DATA_TEXT,
     UNKNOWN_USER_TEXT,
@@ -49,7 +50,7 @@ class CaptainService:
             response = FlowResponse(
                 chat_id=user.chat_id,
                 text=CONSENT_TEXT,
-                buttons=(CONSENT_ACCEPT_BUTTON,),
+                buttons=(CONSENT_ACCEPT_BUTTON, CONSENT_DECLINE_BUTTON),
             )
             self.main_bot.send_message(
                 chat_id=user.chat_id,
@@ -315,7 +316,11 @@ class CaptainService:
         if captain is None:
             return self._handle_unknown_user(user, occurred_at=occurred_at)
         if not _consent_is_given(captain):
-            return self._send_response(user, text=CONSENT_TEXT, buttons=(CONSENT_ACCEPT_BUTTON,))
+            return self._send_response(
+                user,
+                text=CONSENT_TEXT,
+                buttons=(CONSENT_ACCEPT_BUTTON, CONSENT_DECLINE_BUTTON),
+            )
         if _role(captain) != "captain":
             return self._send_response(user, text=CAPTAIN_ONLY_TEXT)
 

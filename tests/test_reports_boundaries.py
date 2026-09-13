@@ -29,8 +29,8 @@ def test_captain_and_tracker_outputs_do_not_include_group_comparison() -> None:
     plan = ReportDeliveryPlanner(
         team_summary_texts={"T001": "team summary"},
         team_pdf_paths={"T001": Path("/tmp/T001.pdf")},
-        full_summary_text="full",
-        group_comparison_text="comparison",
+        tracker_summary_texts={"TR001": "tracker summary"},
+        tracker_pdf_paths={"TR001": Path("/tmp/TR001.pdf")},
     ).build_plan(
         _report_data(),
         participants=[
@@ -167,6 +167,7 @@ def _report_service(
         report_repository=repository,
         pdf_renderer=LocalPdfRenderer(StoragePathPolicy(pdf_root=tmp_path / "reports" / "pdf")),
         delivery_service=ReportDeliveryService(repository=repository, notification_router=router),
+        flow_id="FLOW_TEST",
     )
     return service, repository, error_bot, notification_bot
 

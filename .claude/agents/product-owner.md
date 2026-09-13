@@ -81,7 +81,7 @@ Weekly status options:
 - 🟩 completed step / victory
 - 🟦 partial victory
 - 🟥 no victory
-- ⬜ no answer
+- ⬛ deadline passed, no report; ⬜ current/future before deadline
 
 Do not use late yellow status.
 

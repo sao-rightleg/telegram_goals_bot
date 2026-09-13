@@ -24,7 +24,7 @@ def test_generate_and_send_week_orchestrates_reports_from_final_sheets_facts(tmp
 
     assert result.generated_count >= 4
     assert result.sent_count >= 4
-    assert any("Неделя 5" in message.text for message in notification_bot.sent_messages)
+    assert any("Итоги недели 5" in message.text for message in notification_bot.sent_messages)
     assert notification_bot.sent_documents
     assert notification_bot.sent_documents[0].file_path.exists()
 
@@ -35,7 +35,7 @@ def test_report_job_run_uses_week_idempotency_key(tmp_path: Path) -> None:
     service.generate_and_send_week(5, now=NOW)
     second = repository.start_job_run(
         week_number=5,
-        idempotency_key="reports:week_05",
+        idempotency_key="reports:FLOW_TEST:week_05",
         started_at=NOW.isoformat(),
     )
 
@@ -79,7 +79,7 @@ def test_report_service_marks_job_failed_when_unrecoverable_error_occurs(tmp_pat
     assert result.failed_count == 1
     run_id = repository.start_job_run(
         week_number=5,
-        idempotency_key="reports:week_05",
+        idempotency_key="reports:FLOW_TEST:week_05",
         started_at=NOW.isoformat(),
     )
     assert run_id == 1
@@ -93,6 +93,54 @@ def test_report_service_does_not_read_sqlite_drafts_as_content(tmp_path: Path) -
     rendered_text = "\n".join(message.text for message in notification_bot.sent_messages)
     assert "черновик" not in rendered_text.lower()
     assert "draft" not in rendered_text.lower()
+
+
+def test_report_service_renders_each_tracker_pdf_with_assigned_teams_only(tmp_path: Path) -> None:
+    renderer = CapturingPdfRenderer(
+        LocalPdfRenderer(StoragePathPolicy(pdf_root=tmp_path / "reports" / "pdf"))
+    )
+    service, _repository, _error_bot, _notification_bot = _service(tmp_path, pdf_renderer=renderer)
+
+    service.generate_and_send_week(5, now=NOW)
+
+    assert renderer.tracker_team_ids == {
+        "TR_MALE": ("T001",),
+        "TR_FEMALE": ("T002",),
+    }
+
+
+def test_report_service_sends_one_role_specific_telegram_summary_per_recipient(tmp_path: Path) -> None:
+    service, _repository, _error_bot, notification_bot = _service(tmp_path)
+
+    service.generate_and_send_week(5, now=NOW)
+
+    texts_by_chat = {
+        chat_id: [message.text for message in notification_bot.sent_messages if message.chat_id == chat_id]
+        for chat_id in ("2001", "2002", "3001", "3002", "9001", "9002")
+    }
+    assert all(len(messages) == 1 for messages in texts_by_chat.values())
+    assert "Команда А" in texts_by_chat["3001"][0]
+    assert "Команда Б" not in texts_by_chat["3001"][0]
+    assert "Команда Б" in texts_by_chat["3002"][0]
+    assert "Команда А" not in texts_by_chat["3002"][0]
+    assert "Полные итоги" in texts_by_chat["9001"][0]
+    assert "Результаты команд" in texts_by_chat["9002"][0]
+
+
+def test_duplicate_active_tracker_id_is_rejected_without_pdf_delivery(tmp_path: Path) -> None:
+    duplicate_trackers = [
+        {"tracker_id": "TR_DUP", "telegram_id": 3001, "gender_scope": "male", "is_active": True},
+        {"tracker_id": "TR_DUP", "telegram_id": 3002, "gender_scope": "female", "is_active": True},
+    ]
+    service, _repository, error_bot, notification_bot = _service(
+        tmp_path, sheets_gateway=_gateway(trackers=duplicate_trackers)
+    )
+
+    result = service.generate_and_send_week(5, now=NOW)
+
+    assert result.failed_count >= 1
+    assert any("duplicate active tracker_id" in item.text for item in error_bot.sent_messages)
+    assert all(document.chat_id not in {"3001", "3002"} for document in notification_bot.sent_documents)
 
 
 def _service(
@@ -121,11 +169,12 @@ def _service(
         report_repository=repository,
         pdf_renderer=pdf_renderer or LocalPdfRenderer(StoragePathPolicy(pdf_root=tmp_path / "reports" / "pdf")),
         delivery_service=delivery_service,
+        flow_id="FLOW_TEST",
     )
     return service, repository, error_bot, notification_bot
 
 
-def _gateway() -> FakeSheetsGateway:
+def _gateway(*, trackers: list[dict[str, object]] | None = None) -> FakeSheetsGateway:
     return FakeSheetsGateway(
         teams=[
             {"team_id": "T001", "team_name": "Команда А", "gender": "male", "captain_id": "C001"},
@@ -139,7 +188,7 @@ def _gateway() -> FakeSheetsGateway:
             _participant("A001", "Админ", "admin", None, "active", telegram_id=9001),
             _participant("S001", "Александр Ситников", "sitnikov", None, "active", telegram_id=9002),
         ],
-        trackers=[
+        trackers=trackers or [
             {"tracker_id": "TR_MALE", "telegram_id": 3001, "gender_scope": "male", "is_active": True},
             {"tracker_id": "TR_FEMALE", "telegram_id": 3002, "gender_scope": "female", "is_active": True},
         ],
@@ -247,6 +296,33 @@ class FailingOneTeamPdfRenderer:
         if getattr(report, "team_id") == "T001":
             raise RuntimeError("pdf renderer failed token=secret")
         return self.wrapped.render_team_report(report, year=year)
+
+    def render_tracker_report(self, *args: object, **kwargs: object) -> object:
+        return self.wrapped.render_tracker_report(*args, **kwargs)
+
+    def render_full_report(self, *args: object, **kwargs: object) -> object:
+        return self.wrapped.render_full_report(*args, **kwargs)
+
+
+@dataclass
+class CapturingPdfRenderer:
+    wrapped: LocalPdfRenderer
+    tracker_team_ids: dict[str, tuple[str, ...]] | None = None
+
+    def __post_init__(self) -> None:
+        self.tracker_team_ids = {}
+
+    def render_team_report(self, *args: object, **kwargs: object) -> object:
+        return self.wrapped.render_team_report(*args, **kwargs)
+
+    def render_tracker_report(self, teams: object, **kwargs: object) -> object:
+        team_tuple = tuple(teams)
+        assert self.tracker_team_ids is not None
+        self.tracker_team_ids[str(kwargs["tracker_id"])] = tuple(team.team_id for team in team_tuple)
+        return self.wrapped.render_tracker_report(team_tuple, **kwargs)
+
+    def render_full_report(self, *args: object, **kwargs: object) -> object:
+        return self.wrapped.render_full_report(*args, **kwargs)
 
 
 class FailingSheetsGateway:

@@ -184,7 +184,7 @@ Confirmation:
 
 ## No answer status
 
-If participant does not submit weekly report before Sunday 23:59 Yekaterinburg time, system marks week as ⬜.
+If participant does not submit weekly report before Sunday 23:59 Yekaterinburg time, system marks week as ⬛. White ⬜ is reserved for current/future weeks.
 
 Do not create late yellow status.
 
@@ -331,7 +331,7 @@ Keep it short.
 
 "Последнее напоминание.
 
-Если отчёт не будет отправлен до 23:59 по Екатеринбургу, неделя будет отмечена как ⬜ нет ответа."
+Если отчёт не будет отправлен до 23:59 по Екатеринбургу, неделя будет отмечена как ⬛ нет отчёта в срок."
 
 ## Report wording
 

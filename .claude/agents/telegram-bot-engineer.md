@@ -226,7 +226,7 @@ Week deadline:
 - Sunday 23:59
 
 After deadline:
-- missing report becomes ⬜
+- missing report becomes `gray` / ⬛; ⬜ is current/future before deadline
 - no yellow late status
 - participant cannot change past week
 - captain cannot add status-changing report

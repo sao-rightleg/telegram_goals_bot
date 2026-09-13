@@ -4,9 +4,10 @@ from app.sheets.gateway import (
     FakeSheetsGateway,
     GoogleSheetsGateway,
     GoogleSheetsSchemaError,
+    validate_challenge_flows_schema,
     validate_required_schema,
 )
-from tests.test_sheets_live_helpers import FakeSheetsService, minimal_live_sheets
+from tests.test_sheets_live_helpers import FakeSheetsService, minimal_challenge_flows_sheets, minimal_live_sheets
 
 
 def test_find_participant_by_telegram_id_returns_copy() -> None:
@@ -179,21 +180,50 @@ def test_live_gateway_updates_participant_consent() -> None:
     assert row is not None
     assert row["consent_given"] is True
     assert row["consent_given_at"] == "2026-07-02T10:00:00+05:00"
+    assert row["consent_status"] == "accepted"
+    assert row["participant_stage"] == "goal_setup"
+
+
+def test_live_gateway_marks_participant_bot_started_once() -> None:
+    service = FakeSheetsService(minimal_live_sheets())
+    gateway = GoogleSheetsGateway(service=service, spreadsheet_id="sheet-id")
+
+    gateway.mark_participant_bot_started("P001", started_at="2026-07-02T10:00:00+05:00")
+    gateway.mark_participant_bot_started("P001", started_at="2026-07-03T10:00:00+05:00")
+
+    row = gateway.find_participant_by_telegram_id(1001)
+    assert row is not None
+    assert row["bot_started_at"] == "2026-07-02T10:00:00+05:00"
+    assert row["participant_stage"] == "onboarding"
+    assert row["last_stage_updated_at"] == "2026-07-03T10:00:00+05:00"
 
 
 def test_live_schema_validation_allows_extra_columns() -> None:
     sheets = minimal_live_sheets(
         Participants=[
             [
+                "flow_id",
                 "participant_id",
                 "telegram_id",
                 "username",
+                "first_name",
+                "last_name",
                 "full_name",
                 "team_id",
+                "team_name",
+                "captain_id",
+                "tracker_id",
                 "role",
                 "status",
+                "participant_stage",
                 "consent_given",
                 "consent_given_at",
+                "consent_status",
+                "bot_started_at",
+                "onboarding_completed_at",
+                "last_stage_updated_at",
+                "created_at",
+                "updated_at",
                 "manual_extra_column",
             ]
         ]
@@ -210,3 +240,16 @@ def test_live_schema_validation_fails_for_missing_required_column() -> None:
 
     assert "Participants" in str(error.value)
     assert "role" in str(error.value)
+
+
+def test_challenge_flows_schema_validation_uses_separate_spreadsheet() -> None:
+    service = FakeSheetsService(
+        minimal_live_sheets(),
+        spreadsheets={
+            "sheet-id": minimal_live_sheets(),
+            "challenge-flows-sheet-id": minimal_challenge_flows_sheets(),
+        },
+    )
+
+    validate_required_schema(service, spreadsheet_id="sheet-id")
+    validate_challenge_flows_schema(service, spreadsheet_id="challenge-flows-sheet-id")

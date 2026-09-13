@@ -13,6 +13,8 @@ from app.bot.clients import BotPurpose, FakeBotClient, TelegramApiError
 from app.bot.messages import MESSAGE_WITHOUT_FLOW_TEXT
 from app.bot.menus import (
     CONSENT_ACCEPT_CALLBACK,
+    CONSENT_DECLINE_CALLBACK,
+    CONSENT_DECLINE_CONFIRM_CALLBACK,
     MENU_CALLBACK_PREFIX,
     WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX,
     MenuAction,
@@ -28,8 +30,8 @@ from app.runtime import (
     TelegramPollingRunner,
     validate_runtime_readiness,
 )
-from app.sheets.gateway import GoogleSheetsSchemaError
-from app.scheduler.calendar import TIMEZONE_NAME
+from app.sheets.gateway import FakeSheetsGateway, GoogleSheetsSchemaError
+from app.scheduler.calendar import TIMEZONE_NAME, configure_challenge_calendar, current_challenge_stage
 from app.scheduler.jobs import ReminderJobResult, WeekCloseResult
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.services.participant_models import FlowResponse, TelegramUserContext
@@ -44,6 +46,7 @@ def runtime_env(tmp_path: Path) -> dict[str, str]:
         "ERROR_TELEGRAM_BOT_TOKEN": "error-token-456",
         "NOTIFICATION_TELEGRAM_BOT_TOKEN": "notification-token-789",
         "GOOGLE_SHEETS_ID": "sheet-id",
+        "CHALLENGE_FLOWS_SHEETS_ID": "challenge-flows-sheet-id",
         "GOOGLE_APPLICATION_CREDENTIALS": str(tmp_path / "credentials.json"),
         "ADMIN_TELEGRAM_ID": "1001",
         "ADMIN_ERROR_CHAT_ID": "1002",
@@ -167,6 +170,201 @@ def test_live_scheduler_runner_dispatches_due_reminder_once_inside_catchup_windo
     assert scheduler_service.week_closes == []
 
 
+def test_live_scheduler_runner_uses_enabled_flow_schedule_focus_events(tmp_path: Path) -> None:
+    scheduler_service = RecordingSchedulerService()
+    schedule = [
+        {
+            "event_id": "W01_FOCUS_REMINDER_1300",
+            "flow_id": "FLOW_1",
+            "scheduled_date": "2026-06-08",
+            "scheduled_time": "13:00",
+            "scheduled_timezone": TIMEZONE_NAME,
+            "event_type": "weekly_focus_prompt",
+            "recipient_role": "участник",
+            "is_enabled": True,
+        },
+        {
+            "event_id": "W01_FOCUS_REMINDER_1900",
+            "scheduled_date": "2026-06-08",
+            "scheduled_time": "19:00",
+            "scheduled_timezone": TIMEZONE_NAME,
+            "event_type": "weekly_focus_prompt",
+            "recipient_role": "участник",
+            "is_enabled": False,
+        },
+    ]
+    components = _runtime_components(tmp_path).with_replacements(
+        scheduler_service=scheduler_service,
+        sheets_gateway=FakeSheetsGateway(flow_schedule=schedule),
+    )
+    runner = LiveSchedulerRunner(stop_event=Event())
+
+    runner.run_due_jobs_once(
+        components,
+        now=datetime(2026, 6, 8, 13, 5, tzinfo=ZoneInfo(TIMEZONE_NAME)),
+    )
+
+    assert scheduler_service.reminders == [
+        ("monday_focus_1300", datetime(2026, 6, 8, 13, 0, tzinfo=ZoneInfo(TIMEZONE_NAME)))
+    ]
+    assert scheduler_service.scheduled_calls == [
+        ("FLOW_1", "W01_FOCUS_REMINDER_1300")
+    ]
+
+
+def test_live_scheduler_runner_routes_due_goal_setup_message(tmp_path: Path) -> None:
+    scheduler_service = RecordingSchedulerService()
+    text = (
+        "Сегодня необходимо поставить цель на проект.\n\n"
+        "Получи у капитана инструкции, согласуй цель и запиши её в бота."
+    )
+    schedule = [{
+        "event_id": "GOAL_START_01",
+        "flow_id": "FLOW_1",
+        "scheduled_date": "2026-09-10",
+        "scheduled_time": "10:00",
+        "scheduled_timezone": TIMEZONE_NAME,
+        "event_type": "participant_message",
+        "recipient_role": "участник",
+        "condition_code": "goal_missing",
+        "message_text": text,
+        "is_enabled": True,
+    }]
+    components = _runtime_components(tmp_path).with_replacements(
+        scheduler_service=scheduler_service,
+        sheets_gateway=FakeSheetsGateway(flow_schedule=schedule),
+    )
+    runner = LiveSchedulerRunner(stop_event=Event())
+
+    runner.run_due_jobs_once(
+        components,
+        now=datetime(2026, 9, 10, 10, 5, tzinfo=ZoneInfo(TIMEZONE_NAME)),
+    )
+
+    assert scheduler_service.participant_messages == [
+        (text, "goal_missing", datetime(2026, 9, 10, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME)))
+    ]
+    assert scheduler_service.scheduled_calls == [("FLOW_1", "GOAL_START_01")]
+
+
+@pytest.mark.parametrize(
+    ("override"),
+    [
+        {"recipient_role": "капитан"},
+        {"condition_code": "consent_given"},
+        {"flow_id": ""},
+        {"event_id": ""},
+        {"message_text": ""},
+    ],
+)
+def test_live_scheduler_runner_rejects_invalid_goal_setup_message(
+    tmp_path: Path,
+    override: dict[str, object],
+) -> None:
+    scheduler_service = RecordingSchedulerService()
+    row = {
+        "event_id": "GOAL_START_01",
+        "flow_id": "FLOW_1",
+        "scheduled_date": "2026-09-10",
+        "scheduled_time": "10:00",
+        "scheduled_timezone": TIMEZONE_NAME,
+        "event_type": "participant_message",
+        "recipient_role": "участник",
+        "condition_code": "goal_missing",
+        "message_text": "Поставь и согласуй цель.",
+        "is_enabled": True,
+    }
+    row.update(override)
+    components = _runtime_components(tmp_path).with_replacements(
+        scheduler_service=scheduler_service,
+        sheets_gateway=FakeSheetsGateway(flow_schedule=[row]),
+    )
+
+    LiveSchedulerRunner(stop_event=Event()).run_due_jobs_once(
+        components,
+        now=datetime(2026, 9, 10, 10, 5, tzinfo=ZoneInfo(TIMEZONE_NAME)),
+    )
+
+    assert scheduler_service.participant_messages == []
+
+
+def test_live_scheduler_runner_retries_goal_setup_event_after_incomplete_delivery(
+    tmp_path: Path,
+) -> None:
+    scheduler_service = RecordingSchedulerService()
+    scheduler_service.participant_message_failed_count = 1
+    schedule = [{
+        "event_id": "GOAL_START_01",
+        "flow_id": "FLOW_1",
+        "scheduled_date": "2026-09-10",
+        "scheduled_time": "10:00",
+        "scheduled_timezone": TIMEZONE_NAME,
+        "event_type": "participant_message",
+        "recipient_role": "участник",
+        "condition_code": "goal_missing",
+        "message_text": "Поставь и согласуй цель.",
+        "is_enabled": True,
+    }]
+    components = _runtime_components(tmp_path).with_replacements(
+        scheduler_service=scheduler_service,
+        sheets_gateway=FakeSheetsGateway(flow_schedule=schedule),
+    )
+    runner = LiveSchedulerRunner(stop_event=Event())
+    now = datetime(2026, 9, 10, 10, 5, tzinfo=ZoneInfo(TIMEZONE_NAME))
+
+    with pytest.raises(RuntimeError, match="scheduled participant message incomplete"):
+        runner.run_due_jobs_once(components, now=now)
+    scheduler_service.participant_message_failed_count = 0
+    runner.run_due_jobs_once(components, now=now)
+
+    assert len(scheduler_service.participant_messages) == 2
+
+
+@pytest.mark.parametrize(
+    ("event_id", "scheduled_time", "event_type", "recipient_role", "expected_job"),
+    [
+        ("W01_FOCUS", "10:00", "weekly_focus_prompt", "участник", "monday_reminder"),
+        ("W01_FOCUS_REMINDER_1900", "19:00", "weekly_focus_prompt", "участник", "monday_focus_1900"),
+        ("W01_FOCUS_SUMMARY_CAPTAIN", "21:00", "weekly_focus_summary", "капитан", "weekly_focus_summary_captain"),
+    ],
+)
+def test_live_scheduler_runner_routes_each_focus_schedule_event(
+    tmp_path: Path,
+    event_id: str,
+    scheduled_time: str,
+    event_type: str,
+    recipient_role: str,
+    expected_job: str,
+) -> None:
+    scheduler_service = RecordingSchedulerService()
+    schedule = [{
+        "event_id": event_id,
+        "flow_id": "FLOW_1",
+        "scheduled_date": "2026-06-08",
+        "scheduled_time": scheduled_time,
+        "scheduled_timezone": TIMEZONE_NAME,
+        "event_type": event_type,
+        "recipient_role": recipient_role,
+        "is_enabled": True,
+    }]
+    components = _runtime_components(tmp_path).with_replacements(
+        scheduler_service=scheduler_service,
+        sheets_gateway=FakeSheetsGateway(flow_schedule=schedule),
+    )
+    runner = LiveSchedulerRunner(stop_event=Event())
+    hour, minute = (int(part) for part in scheduled_time.split(":"))
+
+    runner.run_due_jobs_once(
+        components,
+        now=datetime(2026, 6, 8, hour, minute + 5, tzinfo=ZoneInfo(TIMEZONE_NAME)),
+    )
+
+    assert scheduler_service.reminders == [
+        (expected_job, datetime(2026, 6, 8, hour, minute, tzinfo=ZoneInfo(TIMEZONE_NAME)))
+    ]
+    assert scheduler_service.scheduled_calls == [("FLOW_1", event_id)]
+
+
 def test_live_scheduler_runner_catches_week_close_after_midnight(tmp_path: Path) -> None:
     scheduler_service = RecordingSchedulerService()
     components = _runtime_components(tmp_path).with_replacements(scheduler_service=scheduler_service)
@@ -179,6 +377,103 @@ def test_live_scheduler_runner_catches_week_close_after_midnight(tmp_path: Path)
         datetime(2026, 6, 14, 23, 59, tzinfo=ZoneInfo(TIMEZONE_NAME))
     ]
     assert scheduler_service.reminders == []
+
+
+def test_live_scheduler_runner_alerts_after_three_failures_and_reports_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    error_bot = FakeBotClient(BotPurpose.ERROR)
+    components = _runtime_components(tmp_path).with_replacements(
+        error_bot=error_bot,
+        notification_router=_router(error_bot=error_bot),
+    )
+    runner = LiveSchedulerRunner(
+        stop_event=StopAfterCalls(limit=10),
+        check_interval_seconds=0,
+    )
+    calls = 0
+    failures = (True, True, True, True, True, False, True, True, True, False)
+
+    def scripted_tick(_components: RuntimeComponents) -> None:
+        nonlocal calls
+        calls += 1
+        if failures[calls - 1]:
+            raise GoogleSheetsSchemaError("private sheet detail")
+
+    monkeypatch.setattr(runner, "run_due_jobs_once", scripted_tick)
+
+    runner._run_loop(components)
+
+    assert calls == 10
+    assert [message.text for message in error_bot.sent_messages] == [
+        "scheduler_runner_tick_failed error_type=GoogleSheetsSchemaError consecutive_failures=3",
+        "scheduler_runner_recovered",
+        "scheduler_runner_tick_failed error_type=GoogleSheetsSchemaError consecutive_failures=3",
+        "scheduler_runner_recovered",
+    ]
+
+
+def test_live_scheduler_runner_retries_alert_when_error_bot_was_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    error_bot = FailingOnceSendBot(BotPurpose.ERROR)
+    components = _runtime_components(tmp_path).with_replacements(
+        error_bot=error_bot,
+        notification_router=_router(error_bot=error_bot),
+    )
+    runner = LiveSchedulerRunner(
+        stop_event=StopAfterCalls(limit=5),
+        check_interval_seconds=0,
+    )
+    calls = 0
+
+    def scripted_tick(_components: RuntimeComponents) -> None:
+        nonlocal calls
+        calls += 1
+        if calls <= 4:
+            raise GoogleSheetsSchemaError("private sheet detail")
+
+    monkeypatch.setattr(runner, "run_due_jobs_once", scripted_tick)
+
+    runner._run_loop(components)
+
+    assert error_bot.send_attempts == 3
+    assert [message.text for message in error_bot.sent_messages] == [
+        "scheduler_runner_tick_failed error_type=GoogleSheetsSchemaError consecutive_failures=4",
+        "scheduler_runner_recovered",
+    ]
+    assert all("private sheet detail" not in message.text for message in error_bot.sent_messages)
+
+
+def test_live_scheduler_runner_retries_recovery_until_error_bot_accepts_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    error_bot = FailingOnAttemptsSendBot(BotPurpose.ERROR, failing_attempts={2})
+    components = _runtime_components(tmp_path).with_replacements(
+        error_bot=error_bot,
+        notification_router=_router(error_bot=error_bot),
+    )
+    runner = LiveSchedulerRunner(stop_event=StopAfterCalls(limit=5), check_interval_seconds=0)
+    calls = 0
+
+    def scripted_tick(_components: RuntimeComponents) -> None:
+        nonlocal calls
+        calls += 1
+        if calls <= 3:
+            raise GoogleSheetsSchemaError("private sheet detail")
+
+    monkeypatch.setattr(runner, "run_due_jobs_once", scripted_tick)
+
+    runner._run_loop(components)
+
+    assert error_bot.send_attempts == 3
+    assert [message.text for message in error_bot.sent_messages] == [
+        "scheduler_runner_tick_failed error_type=GoogleSheetsSchemaError consecutive_failures=3",
+        "scheduler_runner_recovered",
+    ]
 
 
 def test_check_config_runs_google_schema_validation(tmp_path: Path) -> None:
@@ -215,6 +510,18 @@ def test_run_bot_composes_three_bot_router_and_services(tmp_path: Path) -> None:
     assert components.dispatcher.weekly_report_service is components.weekly_report_service
     assert components.dispatcher.insight_service is components.insight_service
     assert components.dispatcher.captain_service is components.captain_service
+
+
+def test_compose_runtime_uses_active_challenge_flow_start_date(tmp_path: Path) -> None:
+    settings = load_settings(environ=runtime_env(tmp_path))
+    configure_challenge_calendar(start_date=settings.challenge.start_date)
+
+    compose_runtime(
+        settings,
+        google_service_factory=lambda _settings: _fake_google_service(),
+    )
+
+    assert current_challenge_stage(datetime(2026, 6, 8, 10, tzinfo=ZoneInfo(TIMEZONE_NAME))) == "week_01"
 
 
 def test_cli_check_config_uses_env_file_and_initializes_storage(tmp_path: Path) -> None:
@@ -433,6 +740,26 @@ def test_dispatcher_routes_consent_callback(tmp_path: Path) -> None:
     ]
 
 
+def test_dispatcher_routes_consent_decline_callbacks(tmp_path: Path) -> None:
+    dispatcher, services, _error_bot = _dispatcher(tmp_path)
+
+    dispatcher.dispatch_update(_callback_update(data=CONSENT_DECLINE_CALLBACK))
+    dispatcher.dispatch_update(_callback_update(data=CONSENT_DECLINE_CONFIRM_CALLBACK))
+
+    assert services.participant.declines == [
+        (
+            TelegramUserContext(telegram_id=1001, chat_id="chat-1001", username="p001"),
+            NOW.isoformat(),
+        )
+    ]
+    assert services.participant.confirmed_declines == [
+        (
+            TelegramUserContext(telegram_id=1001, chat_id="chat-1001", username="p001"),
+            NOW.isoformat(),
+        )
+    ]
+
+
 def test_polling_runner_reports_dispatch_error_and_continues_without_raw_update(tmp_path: Path) -> None:
     components = _runtime_components(tmp_path)
     dispatcher, services, _dispatcher_error_bot = _dispatcher(tmp_path)
@@ -462,6 +789,34 @@ def test_polling_runner_reports_dispatch_error_and_continues_without_raw_update(
     assert services.participant.starts
 
 
+def test_polling_runner_acknowledges_callback_and_replies_when_dispatch_fails(tmp_path: Path) -> None:
+    components = _runtime_components(tmp_path)
+    dispatcher, _services, _dispatcher_error_bot = _dispatcher(tmp_path)
+    events: list[str] = []
+    main_bot = PollingBot(
+        updates=[_callback_update(data=CONSENT_ACCEPT_CALLBACK)], events=events
+    )
+    components = components.with_replacements(
+        main_bot=main_bot,
+        dispatcher=FailingOnceDispatcher(dispatcher, events=events),
+    )
+    runner = TelegramPollingRunner(
+        poll_timeout_seconds=1,
+        poll_limit=100,
+        stop_event=StopAfterCalls(limit=1),
+    )
+
+    runner.run(components)
+
+    assert main_bot.answered_callback_query_ids == ["callback-1"]
+    assert main_bot.sent_messages[-1].chat_id == "chat-1001"
+    assert "Не удалось обработать нажатие" in main_bot.sent_messages[-1].text
+    assert "Код обращения: 12" in main_bot.sent_messages[-1].text
+    assert "RuntimeError" not in main_bot.sent_messages[-1].text
+    assert "personal report text" not in main_bot.sent_messages[-1].text
+    assert events[:2] == ["ack", "dispatch"]
+
+
 def test_polling_runner_survives_error_bot_send_failure(tmp_path: Path) -> None:
     components = _runtime_components(tmp_path)
     dispatcher, services, _dispatcher_error_bot = _dispatcher(tmp_path)
@@ -486,22 +841,80 @@ def test_polling_runner_survives_error_bot_send_failure(tmp_path: Path) -> None:
     assert services.participant.starts
 
 
-def test_polling_runner_does_not_advance_offset_when_get_updates_fails(tmp_path: Path) -> None:
+def test_polling_runner_alerts_once_per_failure_episode_and_reports_recovery(
+    tmp_path: Path,
+) -> None:
     components = _runtime_components(tmp_path)
     error_bot = FakeBotClient(BotPurpose.ERROR)
     components = components.with_replacements(
-        main_bot=FailingPollingBot(),
+        main_bot=ScriptedPollingBot(
+            failures=(True, True, True, True, True, False, True, True, True, False)
+        ),
         error_bot=error_bot,
         notification_router=_router(error_bot=error_bot),
     )
-    runner = TelegramPollingRunner(poll_timeout_seconds=1, poll_limit=100, stop_event=StopAfterCalls(limit=1))
+    stop_event = RecordingStopAfterCalls(limit=10)
+    runner = TelegramPollingRunner(poll_timeout_seconds=1, poll_limit=100, stop_event=stop_event)
 
     runner.run(components)
 
-    assert components.main_bot.offsets == [None]
-    assert len(error_bot.sent_messages) == 1
-    assert "telegram_get_updates_failed" in error_bot.sent_messages[0].text
-    assert "poll-token-123" not in error_bot.sent_messages[0].text
+    assert components.main_bot.offsets == [None] * 10
+    assert [message.text for message in error_bot.sent_messages] == [
+        "telegram_get_updates_failed error_type=TelegramApiError consecutive_failures=3",
+        "telegram_get_updates_recovered",
+        "telegram_get_updates_failed error_type=TelegramApiError consecutive_failures=3",
+        "telegram_get_updates_recovered",
+    ]
+    assert all("poll-token-123" not in message.text for message in error_bot.sent_messages)
+    assert stop_event.waits == [1.0, 2.0, 4.0, 8.0, 10.0, 1.0, 2.0, 4.0]
+
+
+def test_polling_runner_retries_alert_when_error_bot_was_temporarily_unavailable(
+    tmp_path: Path,
+) -> None:
+    components = _runtime_components(tmp_path)
+    error_bot = FailingOnceSendBot(BotPurpose.ERROR)
+    components = components.with_replacements(
+        main_bot=ScriptedPollingBot(failures=(True, True, True, True, False)),
+        error_bot=error_bot,
+        notification_router=_router(error_bot=error_bot),
+    )
+    runner = TelegramPollingRunner(
+        poll_timeout_seconds=1,
+        poll_limit=100,
+        stop_event=StopAfterCalls(limit=5),
+    )
+
+    runner.run(components)
+
+    assert error_bot.send_attempts == 3
+    assert [message.text for message in error_bot.sent_messages] == [
+        "telegram_get_updates_failed error_type=TelegramApiError consecutive_failures=4",
+        "telegram_get_updates_recovered",
+    ]
+
+
+def test_polling_runner_retries_recovery_until_error_bot_accepts_it(tmp_path: Path) -> None:
+    components = _runtime_components(tmp_path)
+    error_bot = FailingOnAttemptsSendBot(BotPurpose.ERROR, failing_attempts={2})
+    components = components.with_replacements(
+        main_bot=ScriptedPollingBot(failures=(True, True, True, False, False)),
+        error_bot=error_bot,
+        notification_router=_router(error_bot=error_bot),
+    )
+    runner = TelegramPollingRunner(
+        poll_timeout_seconds=1,
+        poll_limit=100,
+        stop_event=StopAfterCalls(limit=5),
+    )
+
+    runner.run(components)
+
+    assert error_bot.send_attempts == 3
+    assert [message.text for message in error_bot.sent_messages] == [
+        "telegram_get_updates_failed error_type=TelegramApiError consecutive_failures=3",
+        "telegram_get_updates_recovered",
+    ]
 
 
 NOW = datetime(2026, 7, 5, 18, 0, tzinfo=ZoneInfo(TIMEZONE_NAME))
@@ -608,6 +1021,8 @@ class RecordingParticipantService:
     def __init__(self) -> None:
         self.starts: list[tuple[TelegramUserContext, str]] = []
         self.consents: list[tuple[TelegramUserContext, str]] = []
+        self.declines: list[tuple[TelegramUserContext, str]] = []
+        self.confirmed_declines: list[tuple[TelegramUserContext, str]] = []
 
     def handle_start(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
         self.starts.append((user, occurred_at))
@@ -616,6 +1031,14 @@ class RecordingParticipantService:
     def accept_consent(self, user: TelegramUserContext, *, consent_given_at: str) -> FlowResponse:
         self.consents.append((user, consent_given_at))
         return FlowResponse(chat_id=user.chat_id, text="consent")
+
+    def decline_consent(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
+        self.declines.append((user, occurred_at))
+        return FlowResponse(chat_id=user.chat_id, text="decline")
+
+    def confirm_consent_decline(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
+        self.confirmed_declines.append((user, occurred_at))
+        return FlowResponse(chat_id=user.chat_id, text="decline confirmed")
 
 
 class RecordingWeeklyReportService:
@@ -696,22 +1119,48 @@ class StopAfterCalls:
         object.__setattr__(self, "calls", self.calls + 1)
         return self.calls > self.limit
 
+    def wait(self, _timeout: float) -> bool:
+        return False
+
+
+@dataclass
+class RecordingStopAfterCalls:
+    limit: int
+    calls: int = 0
+    waits: list[float] = field(default_factory=list)
+
+    def is_set(self) -> bool:
+        self.calls += 1
+        return self.calls > self.limit
+
+    def wait(self, timeout: float) -> bool:
+        self.waits.append(timeout)
+        return False
+
 
 @dataclass
 class PollingBot(FakeBotClient):
     updates: list[dict[str, object]] = field(default_factory=list)
     offsets: list[int | None] = field(default_factory=list)
 
-    def __init__(self, updates: list[dict[str, object]]) -> None:
+    def __init__(
+        self, updates: list[dict[str, object]], events: list[str] | None = None
+    ) -> None:
         super().__init__(BotPurpose.MAIN)
         self.updates = updates
         self.offsets = []
+        self.events = events
 
     def get_updates(self, *, offset: int | None, timeout_seconds: int, limit: int) -> list[dict[str, object]]:
         self.offsets.append(offset)
         if self.updates:
             return [self.updates.pop(0)]
         return []
+
+    def answer_callback_query(self, callback_query_id: str) -> None:
+        if self.events is not None:
+            self.events.append("ack")
+        super().answer_callback_query(callback_query_id)
 
 
 class FailingPollingBot(FakeBotClient):
@@ -724,6 +1173,19 @@ class FailingPollingBot(FakeBotClient):
         raise TelegramApiError("Telegram getUpdates request failed: poll-token-123")
 
 
+class ScriptedPollingBot(FakeBotClient):
+    def __init__(self, *, failures: tuple[bool, ...]) -> None:
+        super().__init__(BotPurpose.MAIN)
+        self.failures = failures
+        self.offsets: list[int | None] = []
+
+    def get_updates(self, *, offset: int | None, timeout_seconds: int, limit: int) -> list[dict[str, object]]:
+        self.offsets.append(offset)
+        if self.failures[len(self.offsets) - 1]:
+            raise TelegramApiError("Telegram getUpdates request failed: poll-token-123")
+        return []
+
+
 class FailingSendBot(FakeBotClient):
     def __init__(self, purpose: BotPurpose) -> None:
         super().__init__(purpose)
@@ -734,12 +1196,40 @@ class FailingSendBot(FakeBotClient):
         raise TelegramApiError("Telegram sendMessage request failed: error-token-456")
 
 
+class FailingOnceSendBot(FakeBotClient):
+    def __init__(self, purpose: BotPurpose) -> None:
+        super().__init__(purpose)
+        self.send_attempts = 0
+
+    def send_message(self, *args: object, **kwargs: object) -> None:
+        self.send_attempts += 1
+        if self.send_attempts == 1:
+            raise TelegramApiError("Telegram sendMessage request failed: error-token-456")
+        super().send_message(*args, **kwargs)
+
+
+class FailingOnAttemptsSendBot(FakeBotClient):
+    def __init__(self, purpose: BotPurpose, *, failing_attempts: set[int]) -> None:
+        super().__init__(purpose)
+        self.failing_attempts = failing_attempts
+        self.send_attempts = 0
+
+    def send_message(self, *args: object, **kwargs: object) -> None:
+        self.send_attempts += 1
+        if self.send_attempts in self.failing_attempts:
+            raise TelegramApiError("Telegram sendMessage request failed: error-token-456")
+        super().send_message(*args, **kwargs)
+
+
 @dataclass
 class FailingOnceDispatcher:
     delegate: TelegramUpdateDispatcher
     failed: bool = False
+    events: list[str] | None = None
 
     def dispatch_update(self, payload: dict[str, object]) -> FlowResponse | None:
+        if self.events is not None:
+            self.events.append("dispatch")
         if not self.failed:
             self.failed = True
             raise RuntimeError("personal report text /boom")
@@ -774,14 +1264,53 @@ class RecordingSchedulerService:
     def __init__(self) -> None:
         self.reminders: list[tuple[str, datetime]] = []
         self.week_closes: list[datetime] = []
+        self.scheduled_calls: list[tuple[str | None, str | None]] = []
+        self.participant_messages: list[tuple[str, str, datetime]] = []
+        self.participant_message_failed_count = 0
 
-    def run_reminder(self, reminder_type: str, *, now: datetime) -> ReminderJobResult:
+    def run_reminder(
+        self,
+        reminder_type: str,
+        *,
+        now: datetime,
+        flow_id: str | None = None,
+        event_id: str | None = None,
+    ) -> ReminderJobResult:
         self.reminders.append((reminder_type, now))
+        if flow_id is not None or event_id is not None:
+            self.scheduled_calls.append((flow_id, event_id))
         return ReminderJobResult(sent_count=1)
 
     def close_week(self, *, now: datetime) -> WeekCloseResult:
         self.week_closes.append(now)
         return WeekCloseResult(gray_created_count=1)
+
+    def send_weekly_focus_summary_to_captains(
+        self,
+        *,
+        now: datetime,
+        flow_id: str | None = None,
+        event_id: str | None = None,
+    ) -> ReminderJobResult:
+        self.reminders.append(("weekly_focus_summary_captain", now))
+        self.scheduled_calls.append((flow_id, event_id))
+        return ReminderJobResult(sent_count=1)
+
+    def send_scheduled_participant_message(
+        self,
+        *,
+        text: str,
+        condition: str,
+        now: datetime,
+        flow_id: str,
+        event_id: str,
+    ) -> ReminderJobResult:
+        self.participant_messages.append((text, condition, now))
+        self.scheduled_calls.append((flow_id, event_id))
+        return ReminderJobResult(
+            sent_count=0 if self.participant_message_failed_count else 1,
+            failed_count=self.participant_message_failed_count,
+        )
 
 
 def _runtime_components(tmp_path: Path) -> RuntimeComponents:
@@ -799,6 +1328,12 @@ def _runtime_components(tmp_path: Path) -> RuntimeComponents:
 
 
 def _fake_google_service() -> object:
-    from tests.test_sheets_live_helpers import FakeSheetsService, minimal_live_sheets
+    from tests.test_sheets_live_helpers import FakeSheetsService, minimal_challenge_flows_sheets, minimal_live_sheets
 
-    return FakeSheetsService(minimal_live_sheets())
+    return FakeSheetsService(
+        minimal_live_sheets(),
+        spreadsheets={
+            "sheet-id": minimal_live_sheets(),
+            "challenge-flows-sheet-id": minimal_challenge_flows_sheets(),
+        },
+    )

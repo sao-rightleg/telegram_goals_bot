@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 import logging
 import signal
 import sys
@@ -17,9 +17,10 @@ import httpx
 
 from app.bot.clients import BotCommand, BotPurpose, LiveTelegramBotClient, LiveTelegramFileDownloader
 from app.logging import setup_logging
-from app.bot.dispatch import TelegramUpdate, TelegramUpdateDispatcher, parse_telegram_update
+from app.bot.dispatch import TelegramUpdateDispatcher
 from app.config import ConfigurationError, Settings, load_settings
 from app.scheduler.calendar import TIMEZONE_NAME, ScheduleItem, reminder_schedule
+from app.scheduler.calendar import configure_challenge_calendar
 from app.scheduler.jobs import SchedulerService
 from app.services.captains import CaptainService
 from app.services.insights import InsightService
@@ -27,9 +28,15 @@ from app.services.notifications import NotificationCategory, NotificationRouter,
 from app.services.participant_flows import ParticipantFlowService
 from app.services.voice_messages import VoiceMessageService
 from app.services.weekly_reports import WeeklyReportService
-from app.sheets.gateway import GoogleSheetsError, GoogleSheetsGateway, validate_required_schema
+from app.sheets.gateway import (
+    GoogleSheetsError,
+    GoogleSheetsGateway,
+    validate_challenge_flows_schema,
+    validate_required_schema,
+)
 from app.speech.transcription import FakeSpeechTranscriber, YandexSpeechKitTranscriber
 from app.storage.dialog_state import DialogStateRepository
+from app.storage.registration import RegistrationDraftRepository
 from app.storage.insight_drafts import InsightDraftRepository
 from app.storage.paths import StoragePathPolicy
 from app.storage.scheduler import SchedulerJobRepository
@@ -38,6 +45,10 @@ from app.storage.weekly_report_drafts import WeeklyReportDraftRepository
 
 
 logger = logging.getLogger("telegram_goals_bot")
+
+RUNTIME_FAILURE_ALERT_THRESHOLD = 3
+RUNTIME_RETRY_BASE_SECONDS = 1.0
+RUNTIME_RETRY_MAX_SECONDS = 10.0
 
 
 @dataclass(frozen=True)
@@ -128,12 +139,25 @@ def validate_runtime_readiness(
     try:
         selected_google_service_factory = google_service_factory or create_google_sheets_service
         google_service = selected_google_service_factory(settings)
+        schema_validator_was_injected = schema_validator is not None
         if schema_validator is None:
             schema_validator = validate_required_schema
         schema_validator(
             google_service,
             spreadsheet_id=settings.google_sheets.sheet_id,
         )
+        if not schema_validator_was_injected:
+            validate_challenge_flows_schema(
+                google_service,
+                spreadsheet_id=settings.google_sheets.challenge_flows_sheet_id,
+            )
+            _configure_challenge_calendar_from_sheets(
+                settings,
+                GoogleSheetsGateway(
+                    service=google_service,
+                    spreadsheet_id=settings.google_sheets.challenge_flows_sheet_id,
+                ),
+            )
         _build_transcriber(settings, http_client=httpx.Client())
     except ConfigurationError:
         raise
@@ -188,13 +212,20 @@ def compose_runtime(
 
     db_path = settings.storage.sqlite_db_path
     dialog_states = DialogStateRepository(db_path)
+    registration_drafts = RegistrationDraftRepository(db_path)
     weekly_drafts = WeeklyReportDraftRepository(db_path)
     insight_drafts = InsightDraftRepository(db_path)
     scheduler_jobs = SchedulerJobRepository(db_path)
+    google_service = selected_google_service_factory(settings)
     sheets_gateway = GoogleSheetsGateway(
-        service=selected_google_service_factory(settings),
+        service=google_service,
         spreadsheet_id=settings.google_sheets.sheet_id,
     )
+    challenge_flows_gateway = GoogleSheetsGateway(
+        service=google_service,
+        spreadsheet_id=settings.google_sheets.challenge_flows_sheet_id,
+    )
+    _configure_challenge_calendar_from_sheets(settings, challenge_flows_gateway)
     voice_service = VoiceMessageService(
         dialog_states=dialog_states,
         weekly_report_drafts=weekly_drafts,
@@ -216,6 +247,8 @@ def compose_runtime(
         main_bot=main_bot,
         notification_router=notification_router,
         dialog_states=dialog_states,
+        registration_flows=challenge_flows_gateway,
+        registration_drafts=registration_drafts,
     )
     weekly_report_service = WeeklyReportService(
         sheets=sheets_gateway,
@@ -274,6 +307,8 @@ class TelegramPollingRunner:
 
     def run(self, components: RuntimeComponents) -> None:
         offset: int | None = None
+        consecutive_failures = 0
+        failure_alerted = False
         while not self.stop_event.is_set():
             try:
                 updates = components.main_bot.get_updates(
@@ -282,26 +317,109 @@ class TelegramPollingRunner:
                     limit=self.poll_limit,
                 )
             except Exception as exc:
-                _notify_polling_error(
-                    components.notification_router,
-                    event="telegram_get_updates_failed",
-                    error=exc,
+                consecutive_failures += 1
+                if consecutive_failures >= RUNTIME_FAILURE_ALERT_THRESHOLD and not failure_alerted:
+                    failure_alerted = _notify_polling_error(
+                        components.notification_router,
+                        event="telegram_get_updates_failed",
+                        error=exc,
+                        consecutive_failures=consecutive_failures,
+                    )
+                retry_delay = min(
+                    RUNTIME_RETRY_BASE_SECONDS * (2 ** (consecutive_failures - 1)),
+                    RUNTIME_RETRY_MAX_SECONDS,
                 )
+                self.stop_event.wait(retry_delay)
                 continue
 
+            if failure_alerted:
+                recovery_sent = _notify_runtime_recovery(
+                    components.notification_router,
+                    event="telegram_get_updates_recovered",
+                )
+            consecutive_failures = 0
+            failure_alerted = failure_alerted and not recovery_sent
+
             for update in updates:
-                update_id = update.get("update_id")
-                try:
-                    components.dispatcher.dispatch_update(update)
-                except Exception as exc:
-                    _notify_polling_error(
-                        components.notification_router,
-                        event="telegram_update_dispatch_failed",
-                        error=exc,
-                        update_id=update_id if isinstance(update_id, int) else None,
-                    )
-                if isinstance(update_id, int):
-                    offset = update_id + 1
+                offset = self._process_update(components, update, current_offset=offset)
+
+    def _process_update(
+        self,
+        components: RuntimeComponents,
+        update: dict[str, object],
+        *,
+        current_offset: int | None,
+    ) -> int | None:
+        update_id = update.get("update_id")
+        normalized_update_id = update_id if isinstance(update_id, int) else None
+        callback_query_id, callback_chat_id = _callback_context(update)
+        if callback_query_id is not None:
+            self._ack_callback(components, callback_query_id, update_id=normalized_update_id)
+        try:
+            components.dispatcher.dispatch_update(update)
+        except Exception as exc:
+            _notify_polling_error(
+                components.notification_router,
+                event="telegram_update_dispatch_failed",
+                error=exc,
+                update_id=normalized_update_id,
+            )
+            if callback_chat_id is not None:
+                self._reply_callback_error(
+                    components,
+                    callback_chat_id,
+                    update_id=normalized_update_id,
+                )
+        return normalized_update_id + 1 if normalized_update_id is not None else current_offset
+
+    @staticmethod
+    def _ack_callback(
+        components: RuntimeComponents, callback_query_id: str, *, update_id: int | None
+    ) -> None:
+        try:
+            components.main_bot.answer_callback_query(callback_query_id)
+        except Exception as exc:
+            _notify_polling_error(
+                components.notification_router,
+                event="telegram_callback_ack_failed",
+                error=exc,
+                update_id=update_id,
+            )
+
+    @staticmethod
+    def _reply_callback_error(
+        components: RuntimeComponents, callback_chat_id: str, *, update_id: int | None
+    ) -> None:
+        support_code = str(update_id) if update_id is not None else "unknown"
+        try:
+            components.main_bot.send_message(
+                chat_id=callback_chat_id,
+                text=(
+                    "Не удалось обработать нажатие. Попробуй ещё раз или отправь /start. "
+                    f"Код обращения: {support_code}."
+                ),
+            )
+        except Exception as exc:
+            _notify_polling_error(
+                components.notification_router,
+                event="telegram_callback_error_reply_failed",
+                error=exc,
+                update_id=update_id,
+            )
+
+
+def _callback_context(update: dict[str, object]) -> tuple[str | None, str | None]:
+    callback = update.get("callback_query")
+    if not isinstance(callback, dict):
+        return None, None
+    callback_id = callback.get("id")
+    message = callback.get("message")
+    chat = message.get("chat") if isinstance(message, dict) else None
+    chat_id = chat.get("id") if isinstance(chat, dict) else None
+    return (
+        str(callback_id) if isinstance(callback_id, (str, int)) else None,
+        str(chat_id) if isinstance(chat_id, (str, int)) else None,
+    )
 
 
 @dataclass
@@ -314,6 +432,8 @@ class LiveSchedulerRunner:
     def __post_init__(self) -> None:
         self._thread: Thread | None = None
         self._dispatched_keys: set[str] = set()
+        self._consecutive_tick_failures = 0
+        self._tick_failure_alerted = False
 
     def start(self, components: RuntimeComponents) -> None:
         if self._thread is not None:
@@ -334,7 +454,29 @@ class LiveSchedulerRunner:
     def run_due_jobs_once(self, components: RuntimeComponents, *, now: datetime | None = None) -> None:
         current = now or self._now()
         local_current = current.astimezone(ZoneInfo(TIMEZONE_NAME))
+        schedule_rows = components.sheets_gateway.list_flow_schedule()
+        dynamic_focus_defined = any(_is_valid_focus_schedule_row(row) for row in schedule_rows)
+        for row in schedule_rows:
+            scheduled_at = _flow_event_scheduled_at(row)
+            if scheduled_at is None or row.get("is_enabled") is not True:
+                continue
+            if scheduled_at > local_current or local_current - scheduled_at > self.catch_up_window:
+                continue
+            event_id = str(row.get("event_id", "")).strip()
+            dispatch_key = f"flow:{event_id}:{scheduled_at.isoformat()}"
+            if not event_id or dispatch_key in self._dispatched_keys:
+                continue
+            self._run_flow_schedule_event(components, row, scheduled_at=scheduled_at)
+            self._dispatched_keys.add(dispatch_key)
+
         for item in reminder_schedule():
+            if dynamic_focus_defined and item.job_type in {
+                "monday_reminder",
+                "monday_focus_1300",
+                "monday_focus_1900",
+                "weekly_focus_summary_captain",
+            }:
+                continue
             scheduled_at = _last_scheduled_at(item, local_current)
             if scheduled_at is None:
                 continue
@@ -348,6 +490,48 @@ class LiveSchedulerRunner:
             self._dispatched_keys.add(dispatch_key)
             self._run_scheduler_job(components, item.job_type, scheduled_at=scheduled_at)
 
+    def _run_flow_schedule_event(
+        self,
+        components: RuntimeComponents,
+        row: dict[str, object],
+        *,
+        scheduled_at: datetime,
+    ) -> None:
+        event_type = str(row.get("event_type", "")).strip()
+        recipient_role = str(row.get("recipient_role", "")).strip().lower()
+        if event_type == "weekly_focus_prompt":
+            if recipient_role not in {"участник", "participant"}:
+                return
+            reminder_type = _focus_reminder_type(row)
+            components.scheduler_service.run_reminder(
+                reminder_type,
+                now=scheduled_at,
+                flow_id=str(row.get("flow_id", "")).strip() or None,
+                event_id=str(row.get("event_id", "")).strip(),
+            )
+        elif event_type == "participant_message" and recipient_role in {"участник", "participant"}:
+            flow_id = str(row.get("flow_id", "")).strip()
+            event_id = str(row.get("event_id", "")).strip()
+            message_text = str(row.get("message_text", "")).strip()
+            condition = str(row.get("condition_code", "")).strip()
+            if not flow_id or not event_id or not message_text or condition != "goal_missing":
+                return
+            result = components.scheduler_service.send_scheduled_participant_message(
+                text=message_text,
+                condition=condition,
+                now=scheduled_at,
+                flow_id=flow_id,
+                event_id=event_id,
+            )
+            if result.failed_count:
+                raise RuntimeError("scheduled participant message incomplete")
+        elif event_type == "weekly_focus_summary" and recipient_role in {"капитан", "captain"}:
+            components.scheduler_service.send_weekly_focus_summary_to_captains(
+                now=scheduled_at,
+                flow_id=str(row.get("flow_id", "")).strip() or None,
+                event_id=str(row.get("event_id", "")).strip(),
+            )
+
     def _run_loop(self, components: RuntimeComponents) -> None:
         logger.info("scheduler runner started")
         while not self.stop_event.is_set():
@@ -355,7 +539,24 @@ class LiveSchedulerRunner:
                 self.run_due_jobs_once(components)
             except Exception as exc:
                 logger.exception("scheduler runner tick failed")
-                _notify_scheduler_runner_error(components.notification_router, exc)
+                self._consecutive_tick_failures += 1
+                if (
+                    self._consecutive_tick_failures >= RUNTIME_FAILURE_ALERT_THRESHOLD
+                    and not self._tick_failure_alerted
+                ):
+                    self._tick_failure_alerted = _notify_scheduler_runner_error(
+                        components.notification_router,
+                        exc,
+                        consecutive_failures=self._consecutive_tick_failures,
+                    )
+            else:
+                if self._tick_failure_alerted:
+                    recovery_sent = _notify_runtime_recovery(
+                        components.notification_router,
+                        event="scheduler_runner_recovered",
+                    )
+                    self._tick_failure_alerted = not recovery_sent
+                self._consecutive_tick_failures = 0
             self.stop_event.wait(self.check_interval_seconds)
         logger.info("scheduler runner stopped")
 
@@ -381,6 +582,22 @@ class LiveSchedulerRunner:
             )
             return
 
+        if job_type == "weekly_focus_summary_captain":
+            result = components.scheduler_service.send_weekly_focus_summary_to_captains(
+                now=scheduled_at
+            )
+            logger.info(
+                "scheduler weekly focus summary completed",
+                extra={
+                    "job_type": job_type,
+                    "scheduled_at": scheduled_at.isoformat(),
+                    "sent_count": result.sent_count,
+                    "skipped_count": result.skipped_count,
+                    "failed_count": result.failed_count,
+                },
+            )
+            return
+
         result = components.scheduler_service.run_reminder(job_type, now=scheduled_at)
         logger.info(
             "scheduler reminder completed",
@@ -399,6 +616,48 @@ class LiveSchedulerRunner:
         return datetime.now(ZoneInfo(TIMEZONE_NAME))
 
 
+def _flow_event_scheduled_at(row: dict[str, object]) -> datetime | None:
+    if str(row.get("scheduled_timezone", "")).strip() != TIMEZONE_NAME:
+        return None
+    raw_date = str(row.get("scheduled_date", "")).strip()
+    raw_time = str(row.get("scheduled_time", "")).strip()
+    try:
+        parsed_date = date.fromisoformat(raw_date)
+    except ValueError:
+        try:
+            parsed_date = datetime.strptime(raw_date, "%d.%m.%Y").date()
+        except ValueError:
+            return None
+    try:
+        parsed_time = time.fromisoformat(raw_time)
+    except ValueError:
+        return None
+    return datetime.combine(parsed_date, parsed_time, tzinfo=ZoneInfo(TIMEZONE_NAME))
+
+
+def _focus_reminder_type(row: dict[str, object]) -> str:
+    raw_time = str(row.get("scheduled_time", "")).strip()
+    if raw_time.startswith("13:"):
+        return "monday_focus_1300"
+    if raw_time.startswith("19:"):
+        return "monday_focus_1900"
+    return "monday_reminder"
+
+
+def _is_valid_focus_schedule_row(row: dict[str, object]) -> bool:
+    event_type = str(row.get("event_type", "")).strip()
+    recipient = str(row.get("recipient_role", "")).strip().lower()
+    if str(row.get("scheduled_timezone", "")).strip() != TIMEZONE_NAME:
+        return False
+    if _flow_event_scheduled_at(row) is None or not str(row.get("event_id", "")).strip():
+        return False
+    return (
+        event_type == "weekly_focus_prompt" and recipient in {"участник", "participant"}
+    ) or (
+        event_type == "weekly_focus_summary" and recipient in {"капитан", "captain"}
+    )
+
+
 def run_bot(
     settings: Settings,
     *,
@@ -409,6 +668,7 @@ def run_bot(
 ) -> None:
     """Run the live Telegram polling runtime."""
 
+    configure_challenge_calendar(start_date=settings.challenge.start_date)
     initialize_runtime(settings)
     if components_factory is None:
         try:
@@ -419,10 +679,11 @@ def run_bot(
         except Exception as exc:
             _notify_startup_readiness_failure(settings, exc)
             raise
-        components_factory = lambda runtime_settings: compose_runtime(
-            runtime_settings,
-            google_service_factory=google_service_factory,
-        )
+        def components_factory(runtime_settings: Settings) -> RuntimeComponents:
+            return compose_runtime(
+                runtime_settings,
+                google_service_factory=google_service_factory,
+            )
 
     components = components_factory(settings)
     register_main_bot_commands(components)
@@ -475,13 +736,22 @@ def _last_scheduled_at(item: ScheduleItem, local_now: datetime) -> datetime | No
     return scheduled_at
 
 
-def _notify_scheduler_runner_error(router: NotificationRouter, error: Exception) -> None:
+def _notify_scheduler_runner_error(
+    router: NotificationRouter,
+    error: Exception,
+    *,
+    consecutive_failures: int,
+) -> bool:
     try:
         router.send(
             category=NotificationCategory.TECHNICAL_ERROR,
-            text=f"scheduler_runner_tick_failed error_type={type(error).__name__}",
+            text=(
+                f"scheduler_runner_tick_failed error_type={type(error).__name__} "
+                f"consecutive_failures={consecutive_failures}"
+            ),
             recipients=(),
         )
+        return True
     except Exception as notify_error:
         logger.exception(
             "failed to notify scheduler runner error",
@@ -490,6 +760,7 @@ def _notify_scheduler_runner_error(router: NotificationRouter, error: Exception)
                 "notify_error_type": type(notify_error).__name__,
             },
         )
+        return False
 
 
 def main(
@@ -513,6 +784,7 @@ def main(
 
     try:
         settings = load_settings(env_file=env_file, strict=True)
+        configure_challenge_calendar(start_date=settings.challenge.start_date)
         logger = setup_logging(settings)
         result = initialize_runtime(settings)
         logger.info("runtime storage ready", extra={"sqlite_db_path": str(result.sqlite_db_path)})
@@ -533,6 +805,8 @@ def main(
 
 
 def create_google_sheets_service(settings: Settings) -> object:
+    import httplib2
+    from google_auth_httplib2 import AuthorizedHttp
     from google.oauth2.service_account import Credentials
     from googleapiclient.discovery import build
 
@@ -540,7 +814,8 @@ def create_google_sheets_service(settings: Settings) -> object:
         str(settings.google_sheets.application_credentials),
         scopes=["https://www.googleapis.com/auth/spreadsheets"],
     )
-    return build("sheets", "v4", credentials=credentials, cache_discovery=False)
+    authorized_http = AuthorizedHttp(credentials, http=httplib2.Http(timeout=5.0))
+    return build("sheets", "v4", http=authorized_http, cache_discovery=False)
 
 
 def _build_transcriber(settings: Settings, *, http_client: httpx.Client):
@@ -557,6 +832,22 @@ def _build_transcriber(settings: Settings, *, http_client: httpx.Client):
             http_client=http_client,
         )
     raise ConfigurationError("Unsupported transcription provider")
+
+
+def _configure_challenge_calendar_from_sheets(settings: Settings, gateway: GoogleSheetsGateway) -> None:
+    flow = gateway.get_active_challenge_flow()
+    if flow is None:
+        configure_challenge_calendar(start_date=settings.challenge.start_date)
+        return
+
+    raw_start_date = flow.get("challenge_start_date")
+    if raw_start_date is None or str(raw_start_date).strip() == "":
+        raise ConfigurationError("Active ChallengeFlows.challenge_start_date is required")
+    try:
+        start_date = date.fromisoformat(str(raw_start_date).strip())
+    except ValueError as exc:
+        raise ConfigurationError("Active ChallengeFlows.challenge_start_date must be YYYY-MM-DD") from exc
+    configure_challenge_calendar(start_date=start_date)
 
 
 def _required_token(value: str | None, key: str) -> str:
@@ -598,16 +889,20 @@ def _notify_polling_error(
     event: str,
     error: Exception,
     update_id: int | None = None,
-) -> None:
+    consecutive_failures: int | None = None,
+) -> bool:
     parts = [event, f"error_type={type(error).__name__}"]
     if update_id is not None:
         parts.append(f"update_id={update_id}")
+    if consecutive_failures is not None:
+        parts.append(f"consecutive_failures={consecutive_failures}")
     try:
         router.send(
             category=NotificationCategory.TECHNICAL_ERROR,
             text=" ".join(parts),
             recipients=(),
         )
+        return True
     except Exception as notify_error:
         logger.exception(
             "failed to notify polling error",
@@ -618,6 +913,23 @@ def _notify_polling_error(
                 "update_id": update_id,
             },
         )
+        return False
+
+
+def _notify_runtime_recovery(router: NotificationRouter, *, event: str) -> bool:
+    try:
+        router.send(
+            category=NotificationCategory.TECHNICAL_ERROR,
+            text=event,
+            recipients=(),
+        )
+        return True
+    except Exception as notify_error:
+        logger.exception(
+            "failed to notify runtime recovery",
+            extra={"event": event, "notify_error_type": type(notify_error).__name__},
+        )
+        return False
 
 
 def _install_shutdown_handlers(stop_event: Event) -> None:

@@ -24,7 +24,7 @@ def test_scheduler_reminder_texts_are_approved_russian_copy() -> None:
     assert format_scheduler_reminder_text("sunday_2300_reminder") == (
         "Последнее напоминание.\n\n"
         "Если отчёт не будет отправлен до 23:59 по Екатеринбургу, "
-        "неделя будет отмечена как ⬜ нет ответа."
+        "неделя будет отмечена как ⬛ нет отчёта в срок."
     )
 
     sunday_1800 = format_scheduler_reminder_text("sunday_1800_checkin")

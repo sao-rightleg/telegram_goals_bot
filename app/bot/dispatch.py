@@ -14,6 +14,8 @@ from app.bot.menus import (
     CAPTAIN_STEPS_CALLBACK_PREFIX,
     CAPTAIN_TEAM_CALLBACK,
     CONSENT_ACCEPT_CALLBACK,
+    CONSENT_DECLINE_CALLBACK,
+    CONSENT_DECLINE_CONFIRM_CALLBACK,
     INSIGHT_ADD_CALLBACK,
     INSIGHT_CANCEL_CALLBACK,
     INSIGHT_DONE_CALLBACK,
@@ -35,6 +37,7 @@ from app.bot.messages import MESSAGE_WITHOUT_FLOW_TEXT, NOT_AVAILABLE_TEXT
 from app.scheduler.calendar import TIMEZONE_NAME
 from app.services.notifications import NotificationCategory, NotificationRouter
 from app.services.participant_models import FlowResponse, TelegramUserContext
+from app.services.participant_flows import RegistrationClosedError
 from app.services.weekly_report_models import WeeklyReportStatus
 from app.storage.dialog_state import DialogStateRepository
 
@@ -57,6 +60,8 @@ class TelegramMessage:
     chat_id: str
     telegram_id: int
     username: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
     text: str | None = None
     command: str | None = None
     voice_file_id: str | None = None
@@ -94,12 +99,18 @@ class TelegramUpdateDispatcher:
         update = parse_telegram_update(payload)
         now = self.now_provider()
 
-        if update.message is not None:
-            return self._dispatch_message(update.message, now=now)
-        if update.callback is not None:
-            try:
+        try:
+            if update.message is not None:
+                return self._dispatch_message(update.message, now=now)
+            if update.callback is not None:
                 return self._dispatch_callback(update.callback, now=now)
-            except TelegramCallbackError as exc:
+        except RegistrationClosedError:
+            chat_id = update.message.chat_id if update.message is not None else update.callback.chat_id
+            response = FlowResponse(chat_id=chat_id, text="Данный поток уже набран")
+            self.notification_router.main_bot.send_message(chat_id=chat_id, text=response.text)
+            return response
+        except TelegramCallbackError as exc:
+            if update.callback is not None:
                 self._notify_malformed_callback(update.callback, now=now, error=exc)
                 return FlowResponse(chat_id=update.callback.chat_id, text=NOT_AVAILABLE_TEXT)
         return None
@@ -155,6 +166,12 @@ class TelegramUpdateDispatcher:
                 now=now,
                 telegram_message_id=message.message_id,
             )
+        if state.flow == "registration":
+            return self.participant_service.handle_registration_text(
+                user,
+                message.text or "",
+                occurred_at=now.isoformat(),
+            )
 
         return None
 
@@ -199,6 +216,26 @@ class TelegramUpdateDispatcher:
 
         if data == CONSENT_ACCEPT_CALLBACK:
             return self.participant_service.accept_consent(user, consent_given_at=now.isoformat())
+        if data == CONSENT_DECLINE_CALLBACK:
+            return self.participant_service.decline_consent(user, occurred_at=now.isoformat())
+        if data == CONSENT_DECLINE_CONFIRM_CALLBACK:
+            return self.participant_service.confirm_consent_decline(user, occurred_at=now.isoformat())
+        if data.startswith("registration:captain:"):
+            return self.participant_service.select_registration_captain(
+                user,
+                captain_id=_required_suffix(data, "registration:captain:"),
+                occurred_at=now.isoformat(),
+            )
+        if data == "registration:confirm":
+            return self.participant_service.confirm_registration(user, occurred_at=now.isoformat())
+        if data == "registration:edit_first_name":
+            return self.participant_service.edit_registration_name(
+                user, field="first_name", occurred_at=now.isoformat()
+            )
+        if data == "registration:edit_last_name":
+            return self.participant_service.edit_registration_name(
+                user, field="last_name", occurred_at=now.isoformat()
+            )
         if data.startswith(WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX):
             return self.participant_service.select_weekly_focus(
                 user,
@@ -348,6 +385,8 @@ def _parse_message(payload: Mapping[str, object]) -> TelegramMessage:
         chat_id=str(_required_scalar(chat_payload.get("id"), field_name="message.chat.id")),
         telegram_id=_required_int(user_payload.get("id"), field_name="message.from.id"),
         username=_optional_string(user_payload.get("username")),
+        first_name=_optional_string(user_payload.get("first_name")),
+        last_name=_optional_string(user_payload.get("last_name")),
         text=text,
         command=command,
         voice_file_id=voice_file_id,
@@ -385,6 +424,8 @@ def _user_from_message(message: TelegramMessage) -> TelegramUserContext:
         telegram_id=message.telegram_id,
         chat_id=message.chat_id,
         username=message.username,
+        first_name=message.first_name,
+        last_name=message.last_name,
     )
 
 

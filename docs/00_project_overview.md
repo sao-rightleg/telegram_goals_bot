@@ -29,10 +29,10 @@ Each week the participant should complete at least one remaining planned step or
 
 Challenge calendar:
 - all teams start simultaneously
-- week 1: goal formulation
-- week 2: route / planned steps
-- weeks 3-8: six working execution weeks
-- challenge end date: `2026-07-31`
+- setup phase 1 `goal_setup`: goal formulation
+- setup phase 2 `steps_setup`: route / planned steps
+- working phases `week_01` through `week_08`: planned step work and reports
+- active flow dates are configured in a separate Google Sheets document `ChallengeFlows`
 - all times use `Asia/Yekaterinburg`
 
 ## MVP goal
