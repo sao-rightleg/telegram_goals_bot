@@ -78,6 +78,9 @@ class SheetsGateway(Protocol):
     def get_active_goal(self, participant_id: str) -> SheetRow | None:
         """Return the participant's active goal row when available."""
 
+    def append_goal(self, row: SheetRow) -> None:
+        """Append one confirmed participant goal business row."""
+
     def list_planned_steps(self, participant_id: str, goal_id: str) -> list[SheetRow]:
         """Return planned steps scoped to the participant and goal."""
 
@@ -409,6 +412,9 @@ class GoogleSheetsGateway:
             if row.get("participant_id") == participant_id and row.get("goal_status") == "active":
                 return row
         return None
+
+    def append_goal(self, row: SheetRow) -> None:
+        self._append_row("Goals", row)
 
     def list_planned_steps(self, participant_id: str, goal_id: str) -> list[SheetRow]:
         return [
@@ -808,6 +814,11 @@ class FakeSheetsGateway:
                 return dict(row)
         return None
 
+    def append_goal(self, row: SheetRow) -> None:
+        if self.get_active_goal(str(row.get("participant_id", ""))) is not None:
+            return
+        self._goals.append(dict(row))
+
     def list_planned_steps(self, participant_id: str, goal_id: str) -> list[SheetRow]:
         return [
             dict(row)
@@ -1105,6 +1116,7 @@ def _add_read_aliases(row: SheetRow) -> None:
         "Статус проверки": "validation_status",
         "Последняя проверка": "last_validated_at",
         "Комментарий": "notes",
+        "Ссылка на вложение": "attachment_url",
     }
     for source, alias in schedule_headers.items():
         if source in row and alias not in row:

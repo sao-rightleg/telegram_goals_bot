@@ -15,6 +15,8 @@ from app.bot.menus import (
     CONSENT_ACCEPT_CALLBACK,
     CONSENT_DECLINE_CALLBACK,
     CONSENT_DECLINE_CONFIRM_CALLBACK,
+    GOAL_CANCEL_CALLBACK,
+    GOAL_CONFIRM_CALLBACK,
     MENU_CALLBACK_PREFIX,
     WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX,
     MenuAction,
@@ -228,6 +230,7 @@ def test_live_scheduler_runner_routes_due_goal_setup_message(tmp_path: Path) -> 
         "recipient_role": "участник",
         "condition_code": "goal_missing",
         "message_text": text,
+        "attachment_url": "https://drive.google.com/uc?export=download&id=FILE_123456",
         "is_enabled": True,
     }]
     components = _runtime_components(tmp_path).with_replacements(
@@ -245,6 +248,9 @@ def test_live_scheduler_runner_routes_due_goal_setup_message(tmp_path: Path) -> 
         (text, "goal_missing", datetime(2026, 9, 10, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME)))
     ]
     assert scheduler_service.scheduled_calls == [("FLOW_1", "GOAL_START_01")]
+    assert scheduler_service.participant_attachment_urls == [
+        "https://drive.google.com/uc?export=download&id=FILE_123456"
+    ]
 
 
 @pytest.mark.parametrize(
@@ -760,6 +766,19 @@ def test_dispatcher_routes_consent_decline_callbacks(tmp_path: Path) -> None:
     ]
 
 
+def test_dispatcher_routes_goal_text_confirm_and_cancel(tmp_path: Path) -> None:
+    dispatcher, services, _error_bot = _dispatcher(tmp_path)
+    _state(dispatcher.dialog_states, flow="goal_setup", step="awaiting_title")
+
+    dispatcher.dispatch_update(_message_update(text="Моя цель"))
+    dispatcher.dispatch_update(_callback_update(data=GOAL_CONFIRM_CALLBACK))
+    dispatcher.dispatch_update(_callback_update(data=GOAL_CANCEL_CALLBACK))
+
+    assert services.participant.goal_texts == ["Моя цель"]
+    assert services.participant.goal_confirms == 1
+    assert services.participant.goal_cancels == 1
+
+
 def test_polling_runner_reports_dispatch_error_and_continues_without_raw_update(tmp_path: Path) -> None:
     components = _runtime_components(tmp_path)
     dispatcher, services, _dispatcher_error_bot = _dispatcher(tmp_path)
@@ -1023,6 +1042,9 @@ class RecordingParticipantService:
         self.consents: list[tuple[TelegramUserContext, str]] = []
         self.declines: list[tuple[TelegramUserContext, str]] = []
         self.confirmed_declines: list[tuple[TelegramUserContext, str]] = []
+        self.goal_texts: list[str] = []
+        self.goal_confirms = 0
+        self.goal_cancels = 0
 
     def handle_start(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
         self.starts.append((user, occurred_at))
@@ -1039,6 +1061,18 @@ class RecordingParticipantService:
     def confirm_consent_decline(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
         self.confirmed_declines.append((user, occurred_at))
         return FlowResponse(chat_id=user.chat_id, text="decline confirmed")
+
+    def handle_goal_text(self, user: TelegramUserContext, text: str, *, occurred_at: str) -> FlowResponse:
+        self.goal_texts.append(text)
+        return FlowResponse(chat_id=user.chat_id, text="goal text")
+
+    def confirm_goal(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
+        self.goal_confirms += 1
+        return FlowResponse(chat_id=user.chat_id, text="goal confirmed")
+
+    def cancel_goal(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
+        self.goal_cancels += 1
+        return FlowResponse(chat_id=user.chat_id, text="goal cancelled")
 
 
 class RecordingWeeklyReportService:
@@ -1267,6 +1301,8 @@ class RecordingSchedulerService:
         self.scheduled_calls: list[tuple[str | None, str | None]] = []
         self.participant_messages: list[tuple[str, str, datetime]] = []
         self.participant_message_failed_count = 0
+        self.participant_attachment_urls: list[str | None] = []
+        self.steps_summary_calls: list[tuple[str, str, str]] = []
 
     def run_reminder(
         self,
@@ -1301,16 +1337,79 @@ class RecordingSchedulerService:
         *,
         text: str,
         condition: str,
+        attachment_url: str | None = None,
         now: datetime,
         flow_id: str,
         event_id: str,
     ) -> ReminderJobResult:
         self.participant_messages.append((text, condition, now))
+        self.participant_attachment_urls.append(attachment_url)
         self.scheduled_calls.append((flow_id, event_id))
         return ReminderJobResult(
             sent_count=0 if self.participant_message_failed_count else 1,
             failed_count=self.participant_message_failed_count,
         )
+
+    def send_steps_setup_summary(
+        self,
+        *,
+        template: str,
+        recipient_role: str,
+        now: datetime,
+        flow_id: str,
+        event_id: str,
+    ) -> ReminderJobResult:
+        self.steps_summary_calls.append((recipient_role, flow_id, event_id))
+        return ReminderJobResult(sent_count=1)
+
+
+def test_live_scheduler_routes_steps_messages_and_all_summary_roles(tmp_path: Path) -> None:
+    scheduler_service = RecordingSchedulerService()
+    rows = [
+        {
+            "event_id": "STEPS_START_01",
+            "flow_id": "FLOW_1",
+            "scheduled_date": "2026-09-14",
+            "scheduled_time": "10:00",
+            "scheduled_timezone": TIMEZONE_NAME,
+            "event_type": "participant_message",
+            "recipient_role": "участник",
+            "condition_code": "steps_missing",
+            "message_text": "Сформируй шесть шагов.",
+            "is_enabled": True,
+        },
+        *[
+            {
+                "event_id": f"STEPS_SUMMARY_{role}",
+                "flow_id": "FLOW_1",
+                "scheduled_date": "2026-09-14",
+                "scheduled_time": "10:00",
+                "scheduled_timezone": TIMEZONE_NAME,
+                "event_type": "setup_progress_summary",
+                "recipient_role": role,
+                "message_text": "Сводка {active_count}",
+                "is_enabled": True,
+            }
+            for role in ("капитан", "трекер", "администратор", "ситников")
+        ],
+    ]
+    components = _runtime_components(tmp_path).with_replacements(
+        scheduler_service=scheduler_service,
+        sheets_gateway=FakeSheetsGateway(flow_schedule=rows),
+    )
+
+    LiveSchedulerRunner(stop_event=Event()).run_due_jobs_once(
+        components,
+        now=datetime(2026, 9, 14, 10, 5, tzinfo=ZoneInfo(TIMEZONE_NAME)),
+    )
+
+    assert scheduler_service.participant_messages == [
+        ("Сформируй шесть шагов.", "steps_missing", datetime(2026, 9, 14, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME)))
+    ]
+    assert scheduler_service.steps_summary_calls == [
+        (role, "FLOW_1", f"STEPS_SUMMARY_{role}")
+        for role in ("капитан", "трекер", "администратор", "ситников")
+    ]
 
 
 def _runtime_components(tmp_path: Path) -> RuntimeComponents:

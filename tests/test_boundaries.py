@@ -297,6 +297,38 @@ def test_live_telegram_client_sends_document_request(tmp_path: Path) -> None:
     assert requests[0].url.path == "/botdocument-token-123/sendDocument"
 
 
+def test_live_telegram_client_sends_only_approved_drive_download_url() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 79}})
+
+    client = LiveTelegramBotClient(
+        purpose=BotPurpose.MAIN,
+        token="document-token-123",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    url = "https://drive.google.com/uc?export=download&id=107MJKyevSQ_AbxbymvLd9WSq6sIOKeAM"
+
+    document = client.send_document_url(chat_id="1001", file_url=url, caption="Инструкция")
+
+    assert document.file_url == url
+    assert requests[0].url.path == "/botdocument-token-123/sendDocument"
+    assert requests[0].read().decode() == (
+        "chat_id=1001&document=https%3A%2F%2Fdrive.google.com%2Fuc%3Fexport%3Ddownload%26id%3D107MJKyevSQ_AbxbymvLd9WSq6sIOKeAM&caption=%D0%98%D0%BD%D1%81%D1%82%D1%80%D1%83%D0%BA%D1%86%D0%B8%D1%8F"
+    )
+
+    for unsafe in (
+        "https://evil.example/file.pdf",
+        "https://drive.google.com.evil.example/uc?export=download&id=1234567890",
+        "https://user@drive.google.com/uc?export=download&id=1234567890",
+        "https://drive.google.com/uc?export=download&id=1234567890&extra=1",
+    ):
+        with pytest.raises(TelegramApiError, match="invalid document URL"):
+            client.send_document_url(chat_id="1001", file_url=unsafe)
+
+
 def test_live_telegram_file_downloader_writes_requested_path(tmp_path: Path) -> None:
     requests: list[httpx.Request] = []
     destination = tmp_path / "audio" / "voice.ogg"

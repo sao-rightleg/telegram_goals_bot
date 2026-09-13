@@ -21,6 +21,7 @@ REQUIRED_TECHNICAL_TABLES = {
     "report_delivery_log",
     "error_events",
     "registration_drafts",
+    "goal_drafts",
 }
 
 BUSINESS_PRIMARY_TABLES = {
@@ -38,6 +39,22 @@ BUSINESS_PRIMARY_TABLES = {
 
 
 SCHEMA_STATEMENTS = [
+    """
+    CREATE TABLE IF NOT EXISTS goal_drafts (
+        telegram_id INTEGER PRIMARY KEY,
+        participant_id TEXT NOT NULL,
+        flow_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('active', 'finalizing')),
+        goal_title TEXT,
+        goal_description TEXT,
+        goal_value_amount TEXT,
+        goal_value_currency TEXT,
+        permission_condition TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+    )
+    """,
     """
     CREATE TABLE IF NOT EXISTS registration_drafts (
         telegram_id INTEGER PRIMARY KEY,
@@ -83,6 +100,7 @@ SCHEMA_STATEMENTS = [
             flow IN (
                 'consent',
                 'registration',
+                'goal_setup',
                 'weekly_report',
                 'insight',
                 'captain_manual_report',

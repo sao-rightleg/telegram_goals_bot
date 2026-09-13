@@ -47,6 +47,9 @@ CAPTAIN_STATUS_CALLBACK_PREFIX = "captain:status:"
 CAPTAIN_STEPS_CALLBACK_PREFIX = "captain:steps:"
 CAPTAIN_DONE_CALLBACK = "captain:done"
 
+GOAL_CONFIRM_CALLBACK = "goal:confirm"
+GOAL_CANCEL_CALLBACK = "goal:cancel"
+
 
 PARTICIPANT_MENU_ITEMS = (
     MenuItem(MenuAction.VIEW_GOAL, "🎯 Моя цель"),

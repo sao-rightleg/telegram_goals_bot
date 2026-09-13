@@ -20,6 +20,7 @@ from app.services.participant_flows import ParticipantFlowService
 from app.services.participant_models import TelegramUserContext
 from app.sheets.gateway import FakeSheetsGateway
 from app.storage.dialog_state import DialogStateRepository
+from app.storage.goal_drafts import GoalDraftRepository
 from app.storage.registration import RegistrationDraftRepository
 from app.storage.sqlite import initialize_schema
 
@@ -30,6 +31,71 @@ REGISTRATION_CLOSED = "2026-09-16T18:00:01+05:00"
 
 
 NOW = "2026-07-02T10:00:00+05:00"
+
+
+def test_participant_creates_confirmed_goal_in_google_sheets_boundary(tmp_path: Path) -> None:
+    participant = {
+        "flow_id": "FLOW_2", "participant_id": "P001", "telegram_id": 1001,
+        "team_id": "T001", "role": "participant", "status": "active", "consent_given": True,
+    }
+    service, gateway, _main_bot, _error_bot, _notification_bot, repository = _build_service(
+        tmp_path, participants=[participant], challenge_flows=[_active_flow()]
+    )
+    user = TelegramUserContext(telegram_id=1001, chat_id="chat-1001")
+
+    start = service.handle_menu_action(user, "view_goal", occurred_at=REGISTRATION_NOW)
+    assert "Кратко напиши цель" in start.text
+    prompts = []
+    for value in (
+        "Запустить новое направление",
+        "Получить первые оплаченные заказы",
+        "3",
+        "клиента",
+        "Подписаны договоры и получена оплата от трёх клиентов",
+    ):
+        prompts.append(service.handle_goal_text(user, value, occurred_at=REGISTRATION_NOW).text)
+    assert prompts[-1] == (
+        "Проверь цель перед сохранением:\n\n"
+        "Цель: Запустить новое направление\n"
+        "Результат: Получить первые оплаченные заказы\n"
+        "Значение: 3 клиента\n"
+        "Условие достижения: Подписаны договоры и получена оплата от трёх клиентов"
+    )
+
+    response = service.confirm_goal(user, occurred_at=REGISTRATION_NOW)
+
+    assert response.text == "Цель сохранена."
+    goal = gateway.get_active_goal("P001")
+    assert goal is not None
+    assert {key: goal[key] for key in (
+        "flow_id", "participant_id", "team_id", "goal_title", "goal_description",
+        "goal_value_amount", "goal_value_currency", "permission_condition", "goal_status",
+    )} == {
+        "flow_id": "FLOW_2", "participant_id": "P001", "team_id": "T001",
+        "goal_title": "Запустить новое направление",
+        "goal_description": "Получить первые оплаченные заказы",
+        "goal_value_amount": "3", "goal_value_currency": "клиента",
+        "permission_condition": "Подписаны договоры и получена оплата от трёх клиентов",
+        "goal_status": "active",
+    }
+    assert repository.get(1001).flow == "idle"
+
+
+def test_goal_creation_does_not_create_second_active_goal(tmp_path: Path) -> None:
+    participant = {
+        "flow_id": "FLOW_2", "participant_id": "P001", "telegram_id": 1001,
+        "team_id": "T001", "role": "participant", "status": "active", "consent_given": True,
+    }
+    service, gateway, *_ = _build_service(
+        tmp_path, participants=[participant], challenge_flows=[_active_flow()]
+    )
+    gateway.append_goal({"goal_id": "G001", "participant_id": "P001", "goal_status": "active"})
+    user = TelegramUserContext(telegram_id=1001, chat_id="chat-1001")
+
+    response = service.handle_menu_action(user, "view_goal", occurred_at=REGISTRATION_NOW)
+
+    assert "G001" not in response.text
+    assert len(gateway.list_goals()) == 1
 
 
 def test_start_unknown_user_sends_approved_message_and_error_notification(tmp_path: Path) -> None:
@@ -656,6 +722,7 @@ def _build_service(
             dialog_states=repository,
             registration_flows=gateway,
             registration_drafts=RegistrationDraftRepository(db_path),
+            goal_drafts=GoalDraftRepository(db_path),
         ),
         gateway,
         main_bot,

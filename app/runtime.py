@@ -38,6 +38,7 @@ from app.speech.transcription import FakeSpeechTranscriber, YandexSpeechKitTrans
 from app.storage.dialog_state import DialogStateRepository
 from app.storage.registration import RegistrationDraftRepository
 from app.storage.insight_drafts import InsightDraftRepository
+from app.storage.goal_drafts import GoalDraftRepository
 from app.storage.paths import StoragePathPolicy
 from app.storage.scheduler import SchedulerJobRepository
 from app.storage.sqlite import REQUIRED_TECHNICAL_TABLES, initialize_schema, list_tables
@@ -213,6 +214,7 @@ def compose_runtime(
     db_path = settings.storage.sqlite_db_path
     dialog_states = DialogStateRepository(db_path)
     registration_drafts = RegistrationDraftRepository(db_path)
+    goal_drafts = GoalDraftRepository(db_path)
     weekly_drafts = WeeklyReportDraftRepository(db_path)
     insight_drafts = InsightDraftRepository(db_path)
     scheduler_jobs = SchedulerJobRepository(db_path)
@@ -249,6 +251,7 @@ def compose_runtime(
         dialog_states=dialog_states,
         registration_flows=challenge_flows_gateway,
         registration_drafts=registration_drafts,
+        goal_drafts=goal_drafts,
     )
     weekly_report_service = WeeklyReportService(
         sheets=sheets_gateway,
@@ -274,6 +277,8 @@ def compose_runtime(
         sheets=sheets_gateway,
         notification_router=notification_router,
         repository=scheduler_jobs,
+        admin_telegram_id=settings.admin.admin_telegram_id,
+        sitnikov_telegram_id=settings.admin.sitnikov_telegram_id,
     )
     dispatcher = TelegramUpdateDispatcher(
         participant_service=participant_service,
@@ -513,18 +518,42 @@ class LiveSchedulerRunner:
             flow_id = str(row.get("flow_id", "")).strip()
             event_id = str(row.get("event_id", "")).strip()
             message_text = str(row.get("message_text", "")).strip()
+            attachment_url = str(row.get("attachment_url", "")).strip() or None
             condition = str(row.get("condition_code", "")).strip()
-            if not flow_id or not event_id or not message_text or condition != "goal_missing":
+            if not flow_id or not event_id or not message_text or condition not in {
+                "goal_missing",
+                "steps_missing",
+            }:
+                return
+            if attachment_url and (condition != "goal_missing" or not event_id.startswith("GOAL_START")):
                 return
             result = components.scheduler_service.send_scheduled_participant_message(
                 text=message_text,
                 condition=condition,
+                attachment_url=attachment_url,
                 now=scheduled_at,
                 flow_id=flow_id,
                 event_id=event_id,
             )
             if result.failed_count:
                 raise RuntimeError("scheduled participant message incomplete")
+        elif event_type == "setup_progress_summary":
+            flow_id = str(row.get("flow_id", "")).strip()
+            event_id = str(row.get("event_id", "")).strip()
+            message_text = str(row.get("message_text", "")).strip()
+            if not flow_id or not event_id or not message_text or recipient_role not in {
+                "капитан", "captain", "трекер", "tracker", "администратор", "admin", "ситников", "sitnikov"
+            }:
+                return
+            result = components.scheduler_service.send_steps_setup_summary(
+                template=message_text,
+                recipient_role=recipient_role,
+                now=scheduled_at,
+                flow_id=flow_id,
+                event_id=event_id,
+            )
+            if result.failed_count:
+                raise RuntimeError("steps setup summary incomplete")
         elif event_type == "weekly_focus_summary" and recipient_role in {"капитан", "captain"}:
             components.scheduler_service.send_weekly_focus_summary_to_captains(
                 now=scheduled_at,

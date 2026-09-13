@@ -122,7 +122,19 @@ Bot shows:
 - goal value
 - permission condition
 
-No editing in MVP.
+If no active goal exists, the same button starts goal creation:
+
+1. Enter a short goal title.
+2. Describe the concrete result.
+3. Enter the measurable value/amount.
+4. Enter the unit or currency.
+5. Describe the achievement condition.
+6. Review and confirm the complete goal.
+
+The draft is technical state in SQLite. Only the confirmed active goal is appended to the
+current flow's `Goals` tab. A participant cannot create a second active goal.
+
+Editing a confirmed goal is not available in MVP.
 
 ## View Planned Steps
 

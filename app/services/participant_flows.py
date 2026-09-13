@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from uuid import uuid4
 
@@ -26,6 +27,16 @@ from app.bot.messages import (
     CONSENT_DECLINED_TEXT,
     CONSENT_TEXT,
     GOAL_SETUP_INTRO_TEXT,
+    GOAL_ALREADY_EXISTS_TEXT,
+    GOAL_CANCEL_BUTTON,
+    GOAL_CONDITION_PROMPT_TEXT,
+    GOAL_CONFIRM_BUTTON,
+    GOAL_DESCRIPTION_PROMPT_TEXT,
+    GOAL_DRAFT_CANCELLED_TEXT,
+    GOAL_SAVED_TEXT,
+    GOAL_TITLE_PROMPT_TEXT,
+    GOAL_UNIT_PROMPT_TEXT,
+    GOAL_VALUE_PROMPT_TEXT,
     TELEGRAM_HTML_PARSE_MODE,
     WEEKLY_REPORT_EDIT_STEP_BUTTON,
     WEEKLY_REPORT_START_STEP_BUTTON,
@@ -54,6 +65,7 @@ from app.services.participant_models import (
 )
 from app.sheets.gateway import SheetRow, SheetsGateway
 from app.storage.dialog_state import DialogState, DialogStateRepository
+from app.storage.goal_drafts import GoalDraft, GoalDraftRepository
 from app.storage.registration import RegistrationDraft, RegistrationDraftRepository
 
 
@@ -69,6 +81,7 @@ class ParticipantFlowService:
     dialog_states: DialogStateRepository
     registration_flows: SheetsGateway | None = None
     registration_drafts: RegistrationDraftRepository | None = None
+    goal_drafts: GoalDraftRepository | None = None
 
     def handle_start(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
         participant = self._participant_for_current_flow(user.telegram_id)
@@ -130,6 +143,125 @@ class ParticipantFlowService:
         )
         self._show_menu(user, participant=participant, occurred_at=consent_given_at)
         return intro_response
+
+    def handle_goal_text(
+        self,
+        user: TelegramUserContext,
+        text: str,
+        *,
+        occurred_at: str,
+    ) -> FlowResponse:
+        participant = self._eligible_goal_participant(user, occurred_at=occurred_at)
+        state = self.dialog_states.get(user.telegram_id)
+        draft = self._goal_repository().get(user.telegram_id)
+        if state is None or state.flow != "goal_setup" or draft is None or draft.status != "active":
+            return self._show_menu(user, participant=participant, occurred_at=occurred_at)
+        if datetime.fromisoformat(occurred_at) > datetime.fromisoformat(draft.expires_at):
+            self._goal_repository().clear(user.telegram_id)
+            return self._start_goal_creation(
+                user, participant=participant, occurred_at=occurred_at
+            )
+        if (
+            draft.participant_id != _string_value(participant.get("participant_id"))
+            or draft.flow_id != _string_value(participant.get("flow_id"))
+        ):
+            self._goal_repository().clear(user.telegram_id)
+            return self._start_goal_creation(
+                user, participant=participant, occurred_at=occurred_at
+            )
+        value = " ".join(text.strip().split())
+        if not value:
+            return self._send_simple_response(
+                user, participant=participant, text="Ответ не должен быть пустым.",
+                flow="goal_setup", step=state.step, occurred_at=occurred_at,
+            )
+        fields = {
+            "awaiting_title": ("goal_title", GOAL_DESCRIPTION_PROMPT_TEXT, "awaiting_description", 200),
+            "awaiting_description": ("goal_description", GOAL_VALUE_PROMPT_TEXT, "awaiting_value", 1500),
+            "awaiting_value": ("goal_value_amount", GOAL_UNIT_PROMPT_TEXT, "awaiting_unit", 80),
+            "awaiting_unit": ("goal_value_currency", GOAL_CONDITION_PROMPT_TEXT, "awaiting_condition", 40),
+        }
+        if state.step in fields:
+            field, prompt, next_step, limit = fields[state.step]
+            if len(value) > limit:
+                return self._send_simple_response(
+                    user, participant=participant, text=f"Сократи ответ до {limit} символов.",
+                    flow="goal_setup", step=state.step, occurred_at=occurred_at,
+                )
+            if field == "goal_value_amount":
+                normalized_amount = _normalized_positive_amount(value)
+                if normalized_amount is None:
+                    return self._send_simple_response(
+                        user, participant=participant,
+                        text="Укажи положительное число, например 3 или 150000,50.",
+                        flow="goal_setup", step=state.step, occurred_at=occurred_at,
+                    )
+                value = normalized_amount
+            self._goal_repository().update(
+                user.telegram_id, field=field, value=value, occurred_at=occurred_at
+            )
+            return self._send_simple_response(
+                user, participant=participant, text=prompt,
+                flow="goal_setup", step=next_step, occurred_at=occurred_at,
+            )
+        if state.step != "awaiting_condition":
+            return self._show_menu(user, participant=participant, occurred_at=occurred_at)
+        if len(value) > 500:
+            return self._send_simple_response(
+                user, participant=participant, text="Сократи условие до 500 символов.",
+                flow="goal_setup", step=state.step, occurred_at=occurred_at,
+            )
+        draft = self._goal_repository().update(
+            user.telegram_id, field="permission_condition", value=value, occurred_at=occurred_at
+        )
+        return self._send_simple_response(
+            user, participant=participant, text=_goal_confirmation_text(draft),
+            flow="goal_setup", step="awaiting_confirmation", occurred_at=occurred_at,
+            buttons=(GOAL_CONFIRM_BUTTON, GOAL_CANCEL_BUTTON),
+        )
+
+    def confirm_goal(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
+        participant = self._eligible_goal_participant(user, occurred_at=occurred_at)
+        participant_id = _string_value(participant.get("participant_id"))
+        if self.sheets.get_active_goal(participant_id) is not None:
+            self._goal_repository().clear(user.telegram_id)
+            return self._send_simple_response(
+                user, participant=participant, text=GOAL_ALREADY_EXISTS_TEXT,
+                flow="idle", step="goal_exists", occurred_at=occurred_at,
+            )
+        state = self.dialog_states.get(user.telegram_id)
+        draft = self._goal_repository().get(user.telegram_id)
+        if state is None or state.flow != "goal_setup" or state.step != "awaiting_confirmation":
+            return self._show_menu(user, participant=participant, occurred_at=occurred_at)
+        if (
+            not _goal_draft_complete(draft)
+            or draft.participant_id != participant_id
+            or draft.flow_id != _string_value(participant.get("flow_id"))
+        ):
+            return self._start_goal_creation(user, participant=participant, occurred_at=occurred_at)
+        if not self._goal_repository().claim(user.telegram_id, occurred_at=occurred_at):
+            return self._send_simple_response(
+                user, participant=participant, text="Цель уже сохраняется. Подожди несколько секунд.",
+                flow="goal_setup", step="awaiting_confirmation", occurred_at=occurred_at,
+            )
+        try:
+            self.sheets.append_goal(_goal_row(draft, participant=participant, occurred_at=occurred_at))
+        except Exception:
+            self._goal_repository().release(user.telegram_id, occurred_at=occurred_at)
+            raise
+        self._goal_repository().clear(user.telegram_id)
+        return self._send_simple_response(
+            user, participant=participant, text=GOAL_SAVED_TEXT,
+            flow="idle", step="goal_saved", occurred_at=occurred_at,
+        )
+
+    def cancel_goal(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
+        participant = self._eligible_goal_participant(user, occurred_at=occurred_at)
+        self._goal_repository().clear(user.telegram_id)
+        return self._send_simple_response(
+            user, participant=participant, text=GOAL_DRAFT_CANCELLED_TEXT,
+            flow="idle", step="goal_cancelled", occurred_at=occurred_at,
+        )
 
     def handle_registration_text(
         self,
@@ -501,6 +633,16 @@ class ParticipantFlowService:
 
         goal_row = self.sheets.get_active_goal(participant_id)
         if goal_row is None:
+            if (
+                normalized_action is MenuAction.VIEW_GOAL
+                and self.goal_drafts is not None
+                and _optional_string_value(participant.get("flow_id"))
+            ):
+                return self._start_goal_creation(
+                    user,
+                    participant=participant,
+                    occurred_at=occurred_at,
+                )
             return self._handle_missing_data(
                 user,
                 participant=participant,
@@ -731,6 +873,57 @@ class ParticipantFlowService:
     def _active_registration_flow(self) -> SheetRow | None:
         gateway = self.registration_flows or self.sheets
         return gateway.get_active_challenge_flow()
+
+    def _start_goal_creation(
+        self,
+        user: TelegramUserContext,
+        *,
+        participant: SheetRow,
+        occurred_at: str,
+    ) -> FlowResponse:
+        participant = self._eligible_goal_participant(user, occurred_at=occurred_at)
+        participant_id = _string_value(participant.get("participant_id"))
+        flow_id = _string_value(participant.get("flow_id"))
+        self._goal_repository().create(
+            telegram_id=user.telegram_id,
+            participant_id=participant_id,
+            flow_id=flow_id,
+            occurred_at=occurred_at,
+        )
+        return self._send_simple_response(
+            user,
+            participant=participant,
+            text=f"{GOAL_SETUP_INTRO_TEXT}\n\n{GOAL_TITLE_PROMPT_TEXT}",
+            flow="goal_setup",
+            step="awaiting_title",
+            occurred_at=occurred_at,
+        )
+
+    def _eligible_goal_participant(
+        self,
+        user: TelegramUserContext,
+        *,
+        occurred_at: str,
+    ) -> SheetRow:
+        active_flow = self._active_registration_flow()
+        flow_id = _optional_string_value(active_flow.get("flow_id")) if active_flow else None
+        if active_flow is None or not flow_id or not _goal_setup_is_open(active_flow, occurred_at):
+            raise PermissionError("Goal setup stage is not active")
+        participant = self.sheets.find_participant_in_flow(flow_id, user.telegram_id)
+        if participant is None:
+            raise PermissionError("Goal participant is not available")
+        if not _consent_is_given(participant):
+            raise PermissionError("Goal participant consent is missing")
+        if _string_value(participant.get("status")).strip().lower() != "active":
+            raise PermissionError("Goal participant is not active")
+        if not _string_value(participant.get("participant_id")) or not _string_value(participant.get("flow_id")):
+            raise ValueError("Goal participant scope is incomplete")
+        return participant
+
+    def _goal_repository(self) -> GoalDraftRepository:
+        if self.goal_drafts is None:
+            raise RuntimeError("Goal draft repository is not configured")
+        return self.goal_drafts
 
     def _handle_registration_start(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
         if self.registration_drafts is None:
@@ -986,6 +1179,77 @@ def _dialog_state_for(
         started_at=occurred_at,
         updated_at=occurred_at,
     )
+
+
+def _goal_draft_complete(draft: GoalDraft | None) -> bool:
+    if draft is None or draft.status != "active":
+        return False
+    return all(
+        _optional_string_value(value)
+        for value in (
+            draft.goal_title,
+            draft.goal_description,
+            draft.goal_value_amount,
+            draft.goal_value_currency,
+            draft.permission_condition,
+        )
+    )
+
+
+def _goal_setup_is_open(flow: SheetRow, occurred_at: str) -> bool:
+    current_date = datetime.fromisoformat(occurred_at).date()
+    start = datetime.fromisoformat(_string_value(flow.get("goal_setup_start_date"))).date()
+    end = datetime.fromisoformat(_string_value(flow.get("goal_setup_end_date"))).date()
+    return start <= current_date <= end
+
+
+def _normalized_positive_amount(value: str) -> str | None:
+    normalized = value.replace(" ", "").replace(",", ".")
+    try:
+        amount = Decimal(normalized)
+    except InvalidOperation:
+        return None
+    if not amount.is_finite() or amount <= 0 or amount > Decimal("1000000000000000"):
+        return None
+    return format(amount.normalize(), "f")
+
+
+def _goal_confirmation_text(draft: GoalDraft) -> str:
+    return "\n".join(
+        (
+            "Проверь цель перед сохранением:",
+            "",
+            f"Цель: {draft.goal_title}",
+            f"Результат: {draft.goal_description}",
+            f"Значение: {draft.goal_value_amount} {draft.goal_value_currency}",
+            f"Условие достижения: {draft.permission_condition}",
+        )
+    )
+
+
+def _goal_row(
+    draft: GoalDraft,
+    *,
+    participant: SheetRow,
+    occurred_at: str,
+) -> SheetRow:
+    digest = sha256(
+        f"{draft.flow_id}:{draft.participant_id}:{draft.created_at}".encode("utf-8")
+    ).hexdigest()[:12].upper()
+    return {
+        "flow_id": draft.flow_id,
+        "goal_id": f"G{digest}",
+        "participant_id": draft.participant_id,
+        "team_id": _string_value(participant.get("team_id")),
+        "goal_title": draft.goal_title,
+        "goal_description": draft.goal_description,
+        "goal_value_amount": draft.goal_value_amount,
+        "goal_value_currency": draft.goal_value_currency,
+        "permission_condition": draft.permission_condition,
+        "goal_status": "active",
+        "created_at": occurred_at,
+        "updated_at": occurred_at,
+    }
 
 
 def _flow_timestamp(flow: SheetRow, field: str) -> datetime:

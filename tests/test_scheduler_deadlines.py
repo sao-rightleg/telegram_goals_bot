@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.bot.clients import BotPurpose, FakeBotClient, OutgoingMessage
+from app.bot.clients import BotPurpose, FakeBotClient, OutgoingDocument, OutgoingMessage
 from app.bot.menus import WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX
 from app.scheduler.calendar import TIMEZONE_NAME
 from app.scheduler.jobs import ReminderJobResult, SchedulerService
@@ -61,6 +61,57 @@ def test_goal_setup_message_is_sent_once_to_active_consented_participants_withou
     assert [(message.chat_id, message.text) for message in main_bot.sent_messages] == [("1001", text)]
 
 
+def test_goal_start_sends_pdf_as_single_captioned_document(tmp_path: Path) -> None:
+    service, _gateway, main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[{**_participant("P001", 1001, consent=True), "flow_id": "FLOW_1"}],
+    )
+    text = "До конца недели необходимо поставить цель на проект."
+    url = "https://drive.google.com/uc?export=download&id=FILE_123456"
+
+    result = service.send_scheduled_participant_message(
+        text=text,
+        condition="goal_missing",
+        attachment_url=url,
+        now=GOAL_SETUP_START,
+        flow_id="FLOW_1",
+        event_id="GOAL_START_01",
+    )
+
+    assert result == ReminderJobResult(sent_count=1, skipped_count=0, failed_count=0)
+    assert main_bot.sent_messages == []
+    assert [(item.chat_id, item.file_url, item.caption) for item in main_bot.sent_documents] == [
+        ("1001", url, text)
+    ]
+
+
+def test_goal_start_pdf_failure_is_reported_then_retried_without_duplicate(tmp_path: Path) -> None:
+    service, _gateway, main_bot, error_bot = _service(
+        tmp_path,
+        participants=[{**_participant("P001", 1001, consent=True), "flow_id": "FLOW_1"}],
+        failing_chat_ids={"1001"},
+    )
+    kwargs = {
+        "text": "Инструкция",
+        "condition": "goal_missing",
+        "attachment_url": "https://drive.google.com/uc?export=download&id=FILE_123456",
+        "now": GOAL_SETUP_START,
+        "flow_id": "FLOW_1",
+        "event_id": "GOAL_START_01",
+    }
+
+    first = service.send_scheduled_participant_message(**kwargs)
+    main_bot.failing_chat_ids.clear()
+    second = service.send_scheduled_participant_message(**kwargs)
+    third = service.send_scheduled_participant_message(**kwargs)
+
+    assert first.failed_count == 1
+    assert second.sent_count == 1
+    assert third.skipped_count == 1
+    assert len(main_bot.sent_documents) == 1
+    assert "scheduled_attachment_send_failed" in error_bot.sent_messages[0].text
+
+
 def test_goal_setup_message_reports_missing_chat_and_continues_after_send_failure(
     tmp_path: Path,
 ) -> None:
@@ -100,6 +151,62 @@ def test_goal_setup_message_reports_missing_chat_and_continues_after_send_failur
         "reminder_send_failed",
         "scheduled_message_missing_chat_id",
     ]
+
+
+def test_steps_stage_reminds_incomplete_participants_and_sends_scoped_role_summaries(
+    tmp_path: Path,
+) -> None:
+    participants = [
+        {**_participant("P001", 1001, consent=True, team_id="T001", full_name="Готов Один"), "flow_id": "FLOW_1"},
+        {**_participant("P002", 1002, consent=True, team_id="T001", full_name="Не готов Один"), "flow_id": "FLOW_1"},
+        {**_participant("P003", 1003, consent=True, team_id="T002", full_name="Не готов Два"), "flow_id": "FLOW_1"},
+        {**_participant("C001", 2001, consent=True, role="captain", team_id="T001", full_name="Капитан Один"), "flow_id": "FLOW_1"},
+        {**_participant("C002", 2002, consent=True, role="captain", team_id="T002", full_name="Капитан Два"), "flow_id": "FLOW_1"},
+    ]
+    goals = [_goal("G001", "P001"), _goal("G002", "P002"), _goal("GC1", "C001"), _goal("GC2", "C002")]
+    steps = [_step(f"S00{number}", "P001", "G001", number, f"Шаг {number}", "open") for number in range(1, 7)]
+    gateway = FakeSheetsGateway(
+        participants=participants,
+        teams=[
+            {"flow_id": "FLOW_1", "team_id": "T001", "team_name": "Первая", "captain_id": "C001", "tracker_id": "TR001", "is_active": True},
+            {"flow_id": "FLOW_1", "team_id": "T002", "team_name": "Вторая", "captain_id": "C002", "tracker_id": "TR002", "is_active": True},
+        ],
+        trackers=[
+            {"tracker_id": "TR001", "telegram_id": 3001, "role": "tracker", "is_active": True},
+            {"tracker_id": "TR002", "telegram_id": 3002, "role": "tracker", "is_active": True},
+        ],
+        goals=goals,
+        planned_steps=steps,
+    )
+    service, _gateway, main_bot, _error_bot = _service(tmp_path, participants=[], gateway=gateway)
+    service = SchedulerService(
+        sheets=gateway,
+        notification_router=service.notification_router,
+        repository=service.repository,
+        admin_telegram_id=4001,
+        sitnikov_telegram_id=5001,
+    )
+
+    result = service.send_scheduled_participant_message(
+        text="Сформируй шесть шагов.", condition="steps_missing", now=GOAL_SETUP_START,
+        flow_id="FLOW_1", event_id="STEPS_START_01",
+    )
+    for role, event_id in (("капитан", "CAP"), ("трекер", "TRACK"), ("администратор", "ADMIN"), ("ситников", "SIT")):
+        service.send_steps_setup_summary(
+            template=(
+                "Итоги {team_name}. {completed_count}/{active_count} ({completed_percent}%). "
+                "Не заполнили {missing_count} ({missing_percent}%): {missing_participants}.\n{team_breakdown}"
+            ),
+            recipient_role=role, now=GOAL_SETUP_START, flow_id="FLOW_1", event_id=event_id,
+        )
+
+    assert result == ReminderJobResult(sent_count=4, skipped_count=1, failed_count=0)
+    assert [message.chat_id for message in main_bot.sent_messages] == ["1002", "1003", "2001", "2002"]
+    messages = service.notification_router.notification_bot.sent_messages
+    assert [message.chat_id for message in messages] == ["2001", "2002", "3001", "3002", "4001", "5001"]
+    assert "Команда «Первая»" in messages[0].text and "Команда «Вторая»" not in messages[0].text
+    assert "Команда «Вторая»" in messages[3].text and "Команда «Первая»" not in messages[3].text
+    assert "1/5 (20%)" in messages[-1].text
 
 
 def test_reminder_sends_only_to_active_consenting_participants_without_report(tmp_path: Path) -> None:
@@ -854,6 +961,7 @@ class FailingBotClient:
     failing_chat_ids: set[str] = field(default_factory=set)
     failure_message: str | None = None
     sent_messages: list[OutgoingMessage] = field(default_factory=list)
+    sent_documents: list[OutgoingDocument] = field(default_factory=list)
     attempts_by_chat_id: dict[str, int] = field(default_factory=dict)
 
     def send_message(
@@ -869,6 +977,22 @@ class FailingBotClient:
         message = OutgoingMessage(chat_id=chat_id, text=text, buttons=buttons)
         self.sent_messages.append(message)
         return message
+
+    def send_document_url(
+        self,
+        *,
+        chat_id: str,
+        file_url: str,
+        caption: str | None = None,
+    ) -> OutgoingDocument:
+        self.attempts_by_chat_id[chat_id] = self.attempts_by_chat_id.get(chat_id, 0) + 1
+        if chat_id in self.failing_chat_ids:
+            raise RuntimeError(self.failure_message or f"send failed for {chat_id}")
+        document = OutgoingDocument(
+            chat_id=chat_id, file_path=None, caption=caption, file_url=file_url
+        )
+        self.sent_documents.append(document)
+        return document
 
 
 class FailsOnceAfterFirstGrayGateway(FakeSheetsGateway):

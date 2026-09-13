@@ -16,6 +16,8 @@ from app.bot.menus import (
     CONSENT_ACCEPT_CALLBACK,
     CONSENT_DECLINE_CALLBACK,
     CONSENT_DECLINE_CONFIRM_CALLBACK,
+    GOAL_CANCEL_CALLBACK,
+    GOAL_CONFIRM_CALLBACK,
     INSIGHT_ADD_CALLBACK,
     INSIGHT_CANCEL_CALLBACK,
     INSIGHT_DONE_CALLBACK,
@@ -172,6 +174,12 @@ class TelegramUpdateDispatcher:
                 message.text or "",
                 occurred_at=now.isoformat(),
             )
+        if state.flow == "goal_setup":
+            return self.participant_service.handle_goal_text(
+                user,
+                message.text or "",
+                occurred_at=now.isoformat(),
+            )
 
         return None
 
@@ -220,6 +228,10 @@ class TelegramUpdateDispatcher:
             return self.participant_service.decline_consent(user, occurred_at=now.isoformat())
         if data == CONSENT_DECLINE_CONFIRM_CALLBACK:
             return self.participant_service.confirm_consent_decline(user, occurred_at=now.isoformat())
+        if data == GOAL_CONFIRM_CALLBACK:
+            return self.participant_service.confirm_goal(user, occurred_at=now.isoformat())
+        if data == GOAL_CANCEL_CALLBACK:
+            return self.participant_service.cancel_goal(user, occurred_at=now.isoformat())
         if data.startswith("registration:captain:"):
             return self.participant_service.select_registration_captain(
                 user,

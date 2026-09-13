@@ -82,3 +82,21 @@ class NotificationRouter:
             )
             for recipient in recipients
         ]
+
+    def send_document_url(
+        self,
+        *,
+        category: NotificationCategory,
+        file_url: str,
+        recipients: Iterable[Recipient],
+        caption: str | None = None,
+    ) -> list[OutgoingDocument]:
+        bot = (
+            self.main_bot
+            if category is NotificationCategory.PARTICIPANT_MESSAGE
+            else self.notification_bot
+        )
+        return [
+            bot.send_document_url(chat_id=recipient.chat_id, file_url=file_url, caption=caption)
+            for recipient in recipients
+        ]

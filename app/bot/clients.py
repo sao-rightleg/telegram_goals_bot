@@ -9,11 +9,14 @@ from pathlib import Path
 from typing import Protocol
 
 import httpx
+from urllib.parse import parse_qs, urlparse
 
 from app.bot.menus import (
     CONSENT_ACCEPT_CALLBACK,
     CONSENT_DECLINE_CALLBACK,
     CONSENT_DECLINE_CONFIRM_CALLBACK,
+    GOAL_CANCEL_CALLBACK,
+    GOAL_CONFIRM_CALLBACK,
     INSIGHT_ADD_CALLBACK,
     INSIGHT_CANCEL_CALLBACK,
     INSIGHT_DONE_CALLBACK,
@@ -27,6 +30,8 @@ from app.bot.messages import (
     CONSENT_DECLINE_BUTTON,
     CONSENT_DECLINE_CONFIRM_BUTTON,
     CONSENT_DECLINE_RECONSIDER_BUTTON,
+    GOAL_CANCEL_BUTTON,
+    GOAL_CONFIRM_BUTTON,
     INSIGHT_ADD_BUTTON,
     INSIGHT_CANCEL_BUTTON,
     INSIGHT_DONE_BUTTON,
@@ -72,8 +77,9 @@ class BotCommand:
 @dataclass(frozen=True)
 class OutgoingDocument:
     chat_id: str
-    file_path: Path
+    file_path: Path | None
     caption: str | None = None
+    file_url: str | None = None
 
 
 class BotClient(Protocol):
@@ -98,6 +104,15 @@ class BotClient(Protocol):
         caption: str | None = None,
     ) -> OutgoingDocument:
         """Send a document through a concrete bot client."""
+
+    def send_document_url(
+        self,
+        *,
+        chat_id: str,
+        file_url: str,
+        caption: str | None = None,
+    ) -> OutgoingDocument:
+        """Send a public HTTPS document without persisting a local copy."""
 
     def set_commands(self, commands: tuple[BotCommand, ...]) -> None:
         """Register Telegram bot commands shown in the client command menu."""
@@ -180,6 +195,26 @@ class LiveTelegramBotClient:
                 files={"document": (file_path.name, document)},
             )
         return OutgoingDocument(chat_id=chat_id, file_path=file_path, caption=caption)
+
+    def send_document_url(
+        self,
+        *,
+        chat_id: str,
+        file_url: str,
+        caption: str | None = None,
+    ) -> OutgoingDocument:
+        if not _is_approved_drive_download_url(file_url):
+            raise TelegramApiError("Telegram sendDocument failed: invalid document URL")
+        data = {"chat_id": chat_id, "document": file_url}
+        if caption is not None:
+            data["caption"] = caption
+        self._post_api("sendDocument", data=data)
+        return OutgoingDocument(
+            chat_id=chat_id,
+            file_path=None,
+            caption=caption,
+            file_url=file_url,
+        )
 
     def get_updates(
         self,
@@ -327,6 +362,24 @@ class FakeBotClient:
         self.sent_documents.append(document)
         return document
 
+    def send_document_url(
+        self,
+        *,
+        chat_id: str,
+        file_url: str,
+        caption: str | None = None,
+    ) -> OutgoingDocument:
+        if not _is_approved_drive_download_url(file_url):
+            raise TelegramApiError("Telegram sendDocument failed: invalid document URL")
+        document = OutgoingDocument(
+            chat_id=chat_id,
+            file_path=None,
+            caption=caption,
+            file_url=file_url,
+        )
+        self.sent_documents.append(document)
+        return document
+
     def set_commands(self, commands: tuple[BotCommand, ...]) -> None:
         self.commands = commands
 
@@ -349,6 +402,27 @@ class FakeTelegramFileDownloader:
 
 def _api_url(base_url: str, token: str, method: str) -> str:
     return f"{base_url.rstrip('/')}/bot{token}/{method}"
+
+
+def _is_approved_drive_download_url(value: str) -> bool:
+    parsed = urlparse(value)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "drive.google.com"
+        or parsed.port not in (None, 443)
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path != "/uc"
+        or parsed.fragment
+    ):
+        return False
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    if set(query) != {"export", "id"} or query.get("export") != ["download"]:
+        return False
+    file_ids = query.get("id", [])
+    return len(file_ids) == 1 and 10 <= len(file_ids[0]) <= 100 and all(
+        char.isalnum() or char in "-_" for char in file_ids[0]
+    )
 
 
 def _file_url(base_url: str, token: str, file_path: str) -> str:
@@ -434,6 +508,8 @@ _BUTTON_CALLBACKS = {
     CONSENT_DECLINE_BUTTON: CONSENT_DECLINE_CALLBACK,
     CONSENT_DECLINE_RECONSIDER_BUTTON: CONSENT_ACCEPT_CALLBACK,
     CONSENT_DECLINE_CONFIRM_BUTTON: CONSENT_DECLINE_CONFIRM_CALLBACK,
+    GOAL_CONFIRM_BUTTON: GOAL_CONFIRM_CALLBACK,
+    GOAL_CANCEL_BUTTON: GOAL_CANCEL_CALLBACK,
     WEEKLY_REPORT_GREEN_BUTTON: f"{WEEKLY_REPORT_STATUS_CALLBACK_PREFIX}green",
     WEEKLY_REPORT_BLUE_BUTTON: f"{WEEKLY_REPORT_STATUS_CALLBACK_PREFIX}blue",
     WEEKLY_REPORT_RED_BUTTON: f"{WEEKLY_REPORT_STATUS_CALLBACK_PREFIX}red",
