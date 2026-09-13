@@ -130,6 +130,74 @@ def test_init_migrates_legacy_dialog_flow_constraint_for_registration(tmp_path: 
     assert "idx_dialog_states_telegram_id" in list_indexes(db_path)
 
 
+def test_init_migrates_pre_goal_dialog_flow_constraint_for_goal_setup(tmp_path: Path) -> None:
+    db_path = tmp_path / "state.sqlite3"
+    initialize_schema(db_path)
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("DROP TABLE dialog_states")
+        connection.execute(
+            """
+            CREATE TABLE dialog_states (
+                telegram_id INTEGER PRIMARY KEY,
+                participant_id TEXT,
+                role TEXT,
+                flow TEXT NOT NULL CHECK (
+                    flow IN (
+                        'consent', 'registration', 'weekly_report', 'insight',
+                        'captain_manual_report', 'view_goal', 'view_steps',
+                        'view_progress', 'view_team', 'idle'
+                    )
+                ),
+                step TEXT NOT NULL,
+                week_number INTEGER,
+                selected_status TEXT,
+                selected_participant_id TEXT,
+                selected_step_ids TEXT,
+                draft_id TEXT,
+                started_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                expires_at TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO dialog_states (
+                telegram_id, participant_id, role, flow, step, started_at, updated_at
+            ) VALUES (1001, 'P001', 'participant', 'idle', 'menu', 'before', 'before')
+            """
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """
+                INSERT INTO dialog_states (
+                    telegram_id, participant_id, role, flow, step, started_at, updated_at
+                ) VALUES (
+                    1002, 'P002', 'participant', 'goal_setup', 'awaiting_title', 'now', 'now'
+                )
+                """
+            )
+
+    initialize_schema(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO dialog_states (
+                telegram_id, participant_id, role, flow, step, started_at, updated_at
+            ) VALUES (
+                1002, 'P002', 'participant', 'goal_setup', 'awaiting_title', 'now', 'now'
+            )
+            """
+        )
+        assert connection.execute(
+            "SELECT flow, step FROM dialog_states WHERE telegram_id = 1002"
+        ).fetchone() == ("goal_setup", "awaiting_title")
+        assert connection.execute(
+            "SELECT flow, step FROM dialog_states WHERE telegram_id = 1001"
+        ).fetchone() == ("idle", "menu")
+
+
 def test_dialog_states_migration_rolls_back_on_rebuild_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -472,7 +472,7 @@ def _migrate_dialog_states_flow_constraint(connection: sqlite3.Connection) -> No
     ).fetchone()
     schema_sql = str(schema_row[0] or "") if schema_row is not None else ""
     required_flows = (
-        "consent", "registration", "weekly_report", "insight",
+        "consent", "registration", "goal_setup", "weekly_report", "insight",
         "captain_manual_report", "view_goal", "view_steps", "view_progress",
         "view_team", "idle",
     )
