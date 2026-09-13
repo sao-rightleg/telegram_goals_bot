@@ -226,7 +226,7 @@ def test_live_scheduler_runner_routes_due_goal_setup_message(tmp_path: Path) -> 
         "scheduled_timezone": TIMEZONE_NAME,
         "event_type": "participant_message",
         "recipient_role": "участник",
-        "condition": "goal_missing",
+        "condition_code": "goal_missing",
         "message_text": text,
         "is_enabled": True,
     }]
@@ -251,7 +251,7 @@ def test_live_scheduler_runner_routes_due_goal_setup_message(tmp_path: Path) -> 
     ("override"),
     [
         {"recipient_role": "капитан"},
-        {"condition": "consent_given"},
+        {"condition_code": "consent_given"},
         {"flow_id": ""},
         {"event_id": ""},
         {"message_text": ""},
@@ -270,7 +270,7 @@ def test_live_scheduler_runner_rejects_invalid_goal_setup_message(
         "scheduled_timezone": TIMEZONE_NAME,
         "event_type": "participant_message",
         "recipient_role": "участник",
-        "condition": "goal_missing",
+        "condition_code": "goal_missing",
         "message_text": "Поставь и согласуй цель.",
         "is_enabled": True,
     }
@@ -301,7 +301,7 @@ def test_live_scheduler_runner_retries_goal_setup_event_after_incomplete_deliver
         "scheduled_timezone": TIMEZONE_NAME,
         "event_type": "participant_message",
         "recipient_role": "участник",
-        "condition": "goal_missing",
+        "condition_code": "goal_missing",
         "message_text": "Поставь и согласуй цель.",
         "is_enabled": True,
     }]

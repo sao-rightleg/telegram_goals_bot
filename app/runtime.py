@@ -513,7 +513,7 @@ class LiveSchedulerRunner:
             flow_id = str(row.get("flow_id", "")).strip()
             event_id = str(row.get("event_id", "")).strip()
             message_text = str(row.get("message_text", "")).strip()
-            condition = str(row.get("condition", "")).strip()
+            condition = str(row.get("condition_code", "")).strip()
             if not flow_id or not event_id or not message_text or condition != "goal_missing":
                 return
             result = components.scheduler_service.send_scheduled_participant_message(
