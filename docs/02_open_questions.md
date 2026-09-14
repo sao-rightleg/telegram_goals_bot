@@ -15,6 +15,10 @@ Codex must treat these decisions as current source of truth. If older documents 
 - Working weeks: 8.
 - Main route planned steps: 6.
 - Setup phases do not count as working weeks.
+- An explicitly configured recovery extension may overlap `goal_setup` and
+  `steps_setup` without shifting working weeks. For the active September 2026
+  test flow, goal entry is extended through `2026-09-16`; steps setup remains
+  `2026-09-14`–`2026-09-20`.
 - Main progress bar has 6 cells.
 - Active flow dates are configured in a separate Google Sheets document `ChallengeFlows`.
 - Timezone for all dates, deadlines, and reminders: `Asia/Yekaterinburg`.

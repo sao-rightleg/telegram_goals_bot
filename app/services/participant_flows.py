@@ -1344,8 +1344,9 @@ def _registration_schedule_lines(flow: SheetRow) -> tuple[str, ...]:
     configured_last_day = parsed["week_08_end_date"]
     if not (
         goal_start <= goal_end
-        and steps_start == goal_end + timedelta(days=1)
+        and goal_start <= steps_start <= goal_end + timedelta(days=1)
         and steps_start <= steps_end
+        and goal_end <= steps_end
         and first_week_start == steps_end + timedelta(days=1)
     ):
         raise ValueError("Registration schedule phases are inconsistent")

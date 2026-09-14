@@ -302,6 +302,10 @@ Challenge route:
 - Setup phase `goal_setup`: goal formulation
 - Setup phase `steps_setup`: route / planned steps
 - Working phases `week_01` through `week_08`: planned step execution
+- Setup phases may overlap for an explicitly configured recovery window. In the
+  active September 2026 test flow, goal entry remains open through `2026-09-16`
+  while `steps_setup` remains `2026-09-14` through `2026-09-20`; working-week
+  dates do not move.
 - Main route contains 6 planned steps
 - Main progress bar has 6 cells
 - Setup phases are not included in the main progress bar

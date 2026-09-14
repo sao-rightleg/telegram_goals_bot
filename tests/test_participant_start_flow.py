@@ -352,7 +352,7 @@ def test_registration_collects_name_and_creates_participant_after_confirmation(t
             "Краткое расписание:",
             "",
             "Постановка цели:",
-            "09.09.2026–13.09.2026",
+            "09.09.2026–16.09.2026",
             "",
             "Формирование шагов:",
             "14.09.2026–20.09.2026",
@@ -468,8 +468,8 @@ def test_registration_loads_participants_and_teams_once_for_captain_buttons(
     ("flow_change", "error_match"),
     [
         ({"week_08_end_date": "2026-11-14"}, "eight consecutive"),
-        ({"steps_setup_start_date": "2026-09-13"}, "phases are inconsistent"),
-        ({"goal_setup_start_date": "2026-09-14"}, "phases are inconsistent"),
+        ({"steps_setup_start_date": "2026-09-08"}, "phases are inconsistent"),
+        ({"goal_setup_start_date": "2026-09-17"}, "phases are inconsistent"),
         (
             {"week_01_start_date": "2026-09-22", "week_08_end_date": "2026-11-16"},
             "phases are inconsistent",
@@ -741,7 +741,7 @@ def _active_flow() -> dict[str, object]:
         "registration_opens_at": REGISTRATION_OPEN,
         "registration_closes_at": "2026-09-16T18:00:00+05:00",
         "goal_setup_start_date": "2026-09-09",
-        "goal_setup_end_date": "2026-09-13",
+        "goal_setup_end_date": "2026-09-16",
         "steps_setup_start_date": "2026-09-14",
         "steps_setup_end_date": "2026-09-20",
         "week_01_start_date": "2026-09-21",
