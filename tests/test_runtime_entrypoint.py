@@ -530,6 +530,23 @@ def test_compose_runtime_uses_active_challenge_flow_start_date(tmp_path: Path) -
     assert current_challenge_stage(datetime(2026, 6, 8, 10, tzinfo=ZoneInfo(TIMEZONE_NAME))) == "week_01"
 
 
+def test_compose_runtime_binds_to_flow_matching_business_spreadsheet(tmp_path: Path) -> None:
+    settings = load_settings(environ=runtime_env(tmp_path))
+    service = _fake_google_service()
+    registry = service.spreadsheet_docs["challenge-flows-sheet-id"]["ChallengeFlows"]
+    header = registry[0]
+    other = list(registry[1])
+    other[header.index("flow_id")] = "other-flow"
+    other[header.index("flow_spreadsheet_id")] = "other-sheet-id"
+    registry.append(other)
+
+    components = compose_runtime(settings, google_service_factory=lambda _settings: service)
+
+    assert components.participant_service.registration_flows.get_active_challenge_flow()["flow_id"] == (
+        "test-live-2026"
+    )
+
+
 def test_cli_check_config_uses_env_file_and_initializes_storage(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     env_file.write_text(

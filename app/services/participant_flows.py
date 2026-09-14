@@ -89,7 +89,8 @@ class ParticipantFlowService:
             return self._handle_registration_start(user, occurred_at=occurred_at)
 
         participant_id = _string_value(participant.get("participant_id"))
-        self.sheets.mark_participant_bot_started(participant_id, started_at=occurred_at)
+        if not _optional_string_value(participant.get("bot_started_at")):
+            self.sheets.mark_participant_bot_started(participant_id, started_at=occurred_at)
         participant = dict(participant)
         participant.setdefault("bot_started_at", occurred_at)
         participant["participant_stage"] = "onboarding"

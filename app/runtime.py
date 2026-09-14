@@ -31,6 +31,7 @@ from app.services.weekly_reports import WeeklyReportService
 from app.sheets.gateway import (
     GoogleSheetsError,
     GoogleSheetsGateway,
+    SheetRow,
     validate_challenge_flows_schema,
     validate_required_schema,
 )
@@ -76,6 +77,16 @@ class RuntimeComponents:
 
     def with_replacements(self, **changes: object) -> "RuntimeComponents":
         return replace(self, **changes)
+
+
+@dataclass(frozen=True)
+class BoundFlowGateway:
+    """In-memory flow binding used after one startup registry lookup."""
+
+    flow: SheetRow
+
+    def get_active_challenge_flow(self) -> SheetRow:
+        return dict(self.flow)
 
 
 class PollingRunner(Protocol):
@@ -152,13 +163,12 @@ def validate_runtime_readiness(
                 google_service,
                 spreadsheet_id=settings.google_sheets.challenge_flows_sheet_id,
             )
-            _configure_challenge_calendar_from_sheets(
-                settings,
-                GoogleSheetsGateway(
-                    service=google_service,
-                    spreadsheet_id=settings.google_sheets.challenge_flows_sheet_id,
-                ),
+            registry = GoogleSheetsGateway(
+                service=google_service,
+                spreadsheet_id=settings.google_sheets.challenge_flows_sheet_id,
             )
+            bound_flow = _bound_flow_for_spreadsheet(registry, settings.google_sheets.sheet_id)
+            _configure_challenge_calendar_from_sheets(settings, BoundFlowGateway(bound_flow))
         _build_transcriber(settings, http_client=httpx.Client())
     except ConfigurationError:
         raise
@@ -227,7 +237,11 @@ def compose_runtime(
         service=google_service,
         spreadsheet_id=settings.google_sheets.challenge_flows_sheet_id,
     )
-    _configure_challenge_calendar_from_sheets(settings, challenge_flows_gateway)
+    bound_flow = _bound_flow_for_spreadsheet(
+        challenge_flows_gateway, settings.google_sheets.sheet_id
+    )
+    bound_flow_gateway = BoundFlowGateway(bound_flow)
+    _configure_challenge_calendar_from_sheets(settings, bound_flow_gateway)
     voice_service = VoiceMessageService(
         dialog_states=dialog_states,
         weekly_report_drafts=weekly_drafts,
@@ -249,7 +263,7 @@ def compose_runtime(
         main_bot=main_bot,
         notification_router=notification_router,
         dialog_states=dialog_states,
-        registration_flows=challenge_flows_gateway,
+        registration_flows=bound_flow_gateway,
         registration_drafts=registration_drafts,
         goal_drafts=goal_drafts,
     )
@@ -863,7 +877,28 @@ def _build_transcriber(settings: Settings, *, http_client: httpx.Client):
     raise ConfigurationError("Unsupported transcription provider")
 
 
-def _configure_challenge_calendar_from_sheets(settings: Settings, gateway: GoogleSheetsGateway) -> None:
+def _bound_flow_for_spreadsheet(
+    registry: GoogleSheetsGateway,
+    spreadsheet_id: str,
+) -> SheetRow:
+    rows = registry.list_challenge_flows()
+    explicit = [
+        row for row in rows
+        if str(row.get("flow_spreadsheet_id", "")).strip() == spreadsheet_id
+    ]
+    active = [
+        row for row in explicit
+        if str(row.get("flow_status", "")).strip().lower() == "active"
+    ]
+    if len(active) != 1:
+        raise ConfigurationError("Configured spreadsheet must have exactly one active flow")
+    return dict(active[0])
+
+
+def _configure_challenge_calendar_from_sheets(
+    settings: Settings,
+    gateway: GoogleSheetsGateway | BoundFlowGateway,
+) -> None:
     flow = gateway.get_active_challenge_flow()
     if flow is None:
         configure_challenge_calendar(start_date=settings.challenge.start_date)

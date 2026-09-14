@@ -263,6 +263,7 @@ def minimal_challenge_flows_sheets(**overrides: list[list[object]]) -> dict[str,
                 "active_team_count",
                 "created_at",
                 "updated_at",
+                "flow_spreadsheet_id",
             ],
             [
                 "test-live-2026",
@@ -287,6 +288,7 @@ def minimal_challenge_flows_sheets(**overrides: list[list[object]]) -> dict[str,
                 "1",
                 "2026-05-20T10:00:00+05:00",
                 "2026-05-20T10:00:00+05:00",
+                "sheet-id",
             ],
         ]
     }

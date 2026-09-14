@@ -28,6 +28,13 @@ Out of MVP:
 
 ## High-Level Architecture
 
+Each deployed Main/Notification bot instance is bound to one flow spreadsheet.
+The challenge-flow registry is resolved once during startup by
+`flow_spreadsheet_id`; participant requests use the in-memory bound flow and do
+not query the registry. New flows use separate Main and Notification bot
+instances and separate SQLite/file storage. The technical Error bot remains
+shared.
+
 ```text
 Telegram users
   |

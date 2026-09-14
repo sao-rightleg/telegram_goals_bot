@@ -21,6 +21,11 @@ The first MVP channel is Telegram.
 
 Web form is not part of the first MVP, but the architecture must allow adding it later.
 
+Each deployed participant bot instance serves exactly one configured challenge
+flow. The flow registry may be read during startup, but `/start`, `/menu`, and
+other participant actions must not scan it. A new flow receives separate Main
+and Notification bot instances; the administrator may keep one shared Error bot.
+
 ## 3. Storage
 
 ### 3.1 Business storage

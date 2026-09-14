@@ -142,6 +142,37 @@ def test_start_known_user_without_consent_shows_consent_and_marks_start(tmp_path
     assert repository.get(1001).flow == "consent"
 
 
+def test_repeat_start_does_not_write_bot_started_timestamp_again(tmp_path: Path) -> None:
+    service, gateway, *_ = _build_service(
+        tmp_path,
+        participants=[
+            {
+                "participant_id": "P001",
+                "telegram_id": 1001,
+                "role": "participant",
+                "consent_given": True,
+                "bot_started_at": NOW,
+            }
+        ],
+    )
+    writes = 0
+    original = gateway.mark_participant_bot_started
+
+    def count_write(participant_id: str, *, started_at: str) -> None:
+        nonlocal writes
+        writes += 1
+        original(participant_id, started_at=started_at)
+
+    gateway.mark_participant_bot_started = count_write
+
+    service.handle_start(
+        TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+        occurred_at="2026-07-03T10:00:00+05:00",
+    )
+
+    assert writes == 0
+
+
 def test_accept_consent_updates_sheets_and_shows_menu(tmp_path: Path) -> None:
     service, gateway, main_bot, error_bot, _notification_bot, repository = _build_service(
         tmp_path,
