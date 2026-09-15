@@ -68,8 +68,11 @@ def test_steps_view_shows_current_participant_steps_only(tmp_path: Path) -> None
     assert "Чужой шаг" not in response.text
     assert "⬜ Шаг 1. Мой открытый шаг" in response.text
     assert "🟩 Шаг 2. Мой закрытый шаг" in response.text
-    assert "Подробное описа<tg-spoiler>ние открытого шага</tg-spoiler>" in response.text
-    assert "<blockquote expandable>" not in response.text
+    assert (
+        "<blockquote expandable>Подробное описание открытого шага</blockquote>"
+        in response.text
+    )
+    assert "<tg-spoiler>" not in response.text
     assert response.parse_mode == TELEGRAM_HTML_PARSE_MODE
     assert [button.text for button in response.buttons] == [
         "Шаг 1. Мой открытый шаг - Отчитаться",

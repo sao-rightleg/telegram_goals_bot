@@ -159,7 +159,8 @@ Example:
 ⬜ Шаг 5. Подписать договор
 ```
 
-Step description is shown under the title with the first 15 characters visible and the remaining text hidden in a Telegram spoiler.
+Step description is shown under the title as a native expandable Telegram blockquote,
+the same way full insight text is displayed. It must not use spoiler blur.
 
 Buttons:
 - `Шаг {number}. {step_title} - Отчитаться` for open steps

@@ -115,7 +115,7 @@ def test_progress_formatter_uses_six_cells_and_percent() -> None:
     assert "Неделя 8: ⬜" in text
 
 
-def test_steps_formatter_renders_focus_and_spoiler_description_after_15_chars() -> None:
+def test_steps_formatter_renders_focus_and_expandable_description() -> None:
     steps = [
         PlannedStep(
             step_id="S001",
@@ -131,8 +131,11 @@ def test_steps_formatter_renders_focus_and_spoiler_description_after_15_chars() 
     text = format_planned_steps_view(steps, focus_step_id="S001")
 
     assert "⬜ Шаг 2. 🎯 Созвон с клиентом" in text
-    assert "Подробно описат<tg-spoiler>ь следующий шаг и критерий готовности</tg-spoiler>" in text
-    assert "<blockquote expandable>" not in text
+    assert (
+        "<blockquote expandable>Подробно описать следующий шаг и критерий "
+        "готовности</blockquote>"
+    ) in text
+    assert "<tg-spoiler>" not in text
 
 
 def test_missing_data_message_hides_internal_fields() -> None:
