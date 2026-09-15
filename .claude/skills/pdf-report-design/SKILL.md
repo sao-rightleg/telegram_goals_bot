@@ -34,7 +34,7 @@ The MVP generates:
 
 ## Report rules
 
-- Use approved statuses: 🟩 🟦 🟥 ⬜.
+- Use approved final statuses: 🟩 🟦 🟥 ⬛. Use ⬜ only for a current/future weekly-history cell before deadline.
 - Do not use yellow late status.
 - Dropped participants remain visible but are excluded from victory percentage statistics.
 - Insights are separate from progress.

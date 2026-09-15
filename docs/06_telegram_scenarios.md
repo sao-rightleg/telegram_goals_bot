@@ -30,7 +30,7 @@ Avoid:
 ## Common Rules
 
 - Identify user by Telegram ID.
-- If user is unknown, show approved not-in-base message and notify admin.
+- Unknown users may self-register only during the active flow's registration window.
 - Require consent before continuing.
 - Generate menu by role.
 - Captains see only own team.
@@ -70,19 +70,25 @@ After click:
 
 If user does not consent, bot must not continue.
 
-### Unknown User
+### New User During Registration Window
+
+1. User sends `/start` between `registration_opens_at` and `registration_closes_at`.
+2. Bot shows the project welcome and personal-data consent.
+3. After consent, bot asks for first name and surname in separate steps.
+4. Bot shows both values for confirmation and allows either value to be corrected.
+5. Bot creates one participant record identified by `flow_id + telegram_id`.
+
+Before the deadline, repeated `/start` resumes an unfinished registration draft or opens the menu for an already registered participant; it never creates a duplicate.
+
+### New User After Registration Window
 
 Message:
 
 ```text
-Извините, вас нет в базе участников. Свяжитесь со своим капитаном.
+Данный поток уже набран
 ```
 
-Admin notification:
-- error type: unknown Telegram user
-- Telegram ID
-- username if available
-- date/time
+This rejection applies when the Telegram ID has no participant record for the active flow. Existing registered participants continue normally; an unfinished registration draft does not reserve a place after the deadline.
 
 ## Participant Menu
 
@@ -116,7 +122,19 @@ Bot shows:
 - goal value
 - permission condition
 
-No editing in MVP.
+If no active goal exists, the same button starts goal creation:
+
+1. Enter a short goal title.
+2. Describe the concrete result.
+3. Enter the measurable value/amount.
+4. Enter the unit or currency.
+5. Describe the achievement condition.
+6. Review and confirm the complete goal.
+
+The draft is technical state in SQLite. Only the confirmed active goal is appended to the
+current flow's `Goals` tab. A participant cannot create a second active goal.
+
+Editing a confirmed goal is not available in MVP.
 
 ## View Planned Steps
 
@@ -141,7 +159,8 @@ Example:
 ⬜ Шаг 5. Подписать договор
 ```
 
-Step description is shown under the title with the first 15 characters visible and the remaining text hidden in a Telegram spoiler.
+Step description is shown under the title as a native expandable Telegram blockquote,
+the same way full insight text is displayed. It must not use spoiler blur.
 
 Buttons:
 - `Шаг {number}. {step_title} - Отчитаться` for open steps
@@ -248,7 +267,7 @@ Confirmation:
 ### No Answer
 
 If participant does not submit any step report before Sunday 23:59 Yekaterinburg time:
-- system creates or records status `gray` / `⬜`
+- system creates or records status `gray` / `⬛`
 - score is `0`
 - no yellow late status is created
 
@@ -388,6 +407,8 @@ Saved data:
 
 ## Reminders
 
+Scheduled messages are selected from the active flow's materialized `FlowSchedule`. The table shows the exact date, calculated weekday, week number, week position, local time, role, and message for every event. The examples below form the default weekly template. Administrators may adjust a planned flow's schedule, enabled state, and Russian message text without changing recipient permissions or system behavior.
+
 ### Monday 10:00
 
 If the participant has open planned steps and no focus for the current week, bot sends the weekly focus prompt with step selection buttons.
@@ -428,7 +449,7 @@ Otherwise bot sends:
 ```text
 Последнее напоминание.
 
-Если отчёт не будет отправлен до 23:59 по Екатеринбургу, неделя будет отмечена как ⬜ нет ответа.
+Если отчёт не будет отправлен до 23:59 по Екатеринбургу, неделя будет отмечена как ⬛ нет отчёта в срок.
 ```
 
 If weekly report already exists, do not send more reminders that week.

@@ -8,10 +8,10 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.bot.clients import BotPurpose, FakeBotClient, OutgoingMessage
+from app.bot.clients import BotPurpose, FakeBotClient, OutgoingDocument, OutgoingMessage
 from app.bot.menus import WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX
 from app.scheduler.calendar import TIMEZONE_NAME
-from app.scheduler.jobs import SchedulerService
+from app.scheduler.jobs import ReminderJobResult, SchedulerService
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.sheets.gateway import FakeSheetsGateway
 from app.storage.scheduler import SchedulerJobRepository
@@ -21,6 +21,192 @@ from app.storage.weekly_report_drafts import WeeklyReportDraftRepository
 
 NOW = datetime(2026, 7, 2, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME))
 MONDAY_START = datetime(2026, 6, 8, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME))
+GOAL_SETUP_START = datetime(2026, 9, 10, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME))
+
+
+def test_goal_setup_message_is_sent_once_to_active_consented_participants_without_goal(
+    tmp_path: Path,
+) -> None:
+    participants = [
+        {**_participant("P001", 1001, consent=True), "flow_id": "FLOW_1"},
+        {**_participant("P002", 1002, consent=True), "flow_id": "FLOW_1"},
+        {**_participant("P003", 1003, consent=False), "flow_id": "FLOW_1"},
+        {**_participant("P004", 1004, consent=True, status="dropped"), "flow_id": "FLOW_1"},
+        {**_participant("P005", 1005, consent=True), "flow_id": "FLOW_2"},
+    ]
+    service, _gateway, main_bot, _error_bot = _service(
+        tmp_path,
+        participants=participants,
+        goals=[_goal("G002", "P002")],
+    )
+    text = "Получи инструкции капитана, согласуй цель и запиши её в бота."
+
+    first = service.send_scheduled_participant_message(
+        text=text,
+        condition="goal_missing",
+        now=GOAL_SETUP_START,
+        flow_id="FLOW_1",
+        event_id="GOAL_START_01",
+    )
+    second = service.send_scheduled_participant_message(
+        text=text,
+        condition="goal_missing",
+        now=GOAL_SETUP_START,
+        flow_id="FLOW_1",
+        event_id="GOAL_START_01",
+    )
+
+    assert first == ReminderJobResult(sent_count=1, skipped_count=3, failed_count=0)
+    assert second == ReminderJobResult(sent_count=0, skipped_count=4, failed_count=0)
+    assert [(message.chat_id, message.text) for message in main_bot.sent_messages] == [("1001", text)]
+
+
+def test_goal_start_sends_pdf_as_single_captioned_document(tmp_path: Path) -> None:
+    service, _gateway, main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[{**_participant("P001", 1001, consent=True), "flow_id": "FLOW_1"}],
+    )
+    text = "До конца недели необходимо поставить цель на проект."
+    url = "https://drive.google.com/uc?export=download&id=FILE_123456"
+
+    result = service.send_scheduled_participant_message(
+        text=text,
+        condition="goal_missing",
+        attachment_url=url,
+        now=GOAL_SETUP_START,
+        flow_id="FLOW_1",
+        event_id="GOAL_START_01",
+    )
+
+    assert result == ReminderJobResult(sent_count=1, skipped_count=0, failed_count=0)
+    assert main_bot.sent_messages == []
+    assert [(item.chat_id, item.file_url, item.caption) for item in main_bot.sent_documents] == [
+        ("1001", url, text)
+    ]
+
+
+def test_goal_start_pdf_failure_is_reported_then_retried_without_duplicate(tmp_path: Path) -> None:
+    service, _gateway, main_bot, error_bot = _service(
+        tmp_path,
+        participants=[{**_participant("P001", 1001, consent=True), "flow_id": "FLOW_1"}],
+        failing_chat_ids={"1001"},
+    )
+    kwargs = {
+        "text": "Инструкция",
+        "condition": "goal_missing",
+        "attachment_url": "https://drive.google.com/uc?export=download&id=FILE_123456",
+        "now": GOAL_SETUP_START,
+        "flow_id": "FLOW_1",
+        "event_id": "GOAL_START_01",
+    }
+
+    first = service.send_scheduled_participant_message(**kwargs)
+    main_bot.failing_chat_ids.clear()
+    second = service.send_scheduled_participant_message(**kwargs)
+    third = service.send_scheduled_participant_message(**kwargs)
+
+    assert first.failed_count == 1
+    assert second.sent_count == 1
+    assert third.skipped_count == 1
+    assert len(main_bot.sent_documents) == 1
+    assert "scheduled_attachment_send_failed" in error_bot.sent_messages[0].text
+
+
+def test_goal_setup_message_reports_missing_chat_and_continues_after_send_failure(
+    tmp_path: Path,
+) -> None:
+    participants = [
+        {**_participant("P001", 1001, consent=True), "flow_id": "FLOW_1"},
+        {**_participant("P002", 1002, consent=True), "flow_id": "FLOW_1"},
+        {**_participant("P003", 0, consent=True), "flow_id": "FLOW_1", "telegram_id": ""},
+    ]
+    service, _gateway, main_bot, error_bot = _service(
+        tmp_path,
+        participants=participants,
+        failing_chat_ids={"1001"},
+    )
+
+    first = service.send_scheduled_participant_message(
+        text="Поставь и согласуй цель.",
+        condition="goal_missing",
+        now=GOAL_SETUP_START,
+        flow_id="FLOW_1",
+        event_id="GOAL_START_01",
+    )
+    second = service.send_scheduled_participant_message(
+        text="Поставь и согласуй цель.",
+        condition="goal_missing",
+        now=GOAL_SETUP_START,
+        flow_id="FLOW_1",
+        event_id="GOAL_START_01",
+    )
+
+    assert first == ReminderJobResult(sent_count=1, skipped_count=1, failed_count=1)
+    assert second == ReminderJobResult(sent_count=0, skipped_count=2, failed_count=1)
+    assert main_bot.attempts_by_chat_id == {"1001": 2, "1002": 1}
+    assert [message.chat_id for message in main_bot.sent_messages] == ["1002"]
+    assert [message.text.split()[0] for message in error_bot.sent_messages] == [
+        "reminder_send_failed",
+        "scheduled_message_missing_chat_id",
+        "reminder_send_failed",
+        "scheduled_message_missing_chat_id",
+    ]
+
+
+def test_steps_stage_reminds_incomplete_participants_and_sends_scoped_role_summaries(
+    tmp_path: Path,
+) -> None:
+    participants = [
+        {**_participant("P001", 1001, consent=True, team_id="T001", full_name="Готов Один"), "flow_id": "FLOW_1"},
+        {**_participant("P002", 1002, consent=True, team_id="T001", full_name="Не готов Один"), "flow_id": "FLOW_1"},
+        {**_participant("P003", 1003, consent=True, team_id="T002", full_name="Не готов Два"), "flow_id": "FLOW_1"},
+        {**_participant("C001", 2001, consent=True, role="captain", team_id="T001", full_name="Капитан Один"), "flow_id": "FLOW_1"},
+        {**_participant("C002", 2002, consent=True, role="captain", team_id="T002", full_name="Капитан Два"), "flow_id": "FLOW_1"},
+    ]
+    goals = [_goal("G001", "P001"), _goal("G002", "P002"), _goal("GC1", "C001"), _goal("GC2", "C002")]
+    steps = [_step(f"S00{number}", "P001", "G001", number, f"Шаг {number}", "open") for number in range(1, 7)]
+    gateway = FakeSheetsGateway(
+        participants=participants,
+        teams=[
+            {"flow_id": "FLOW_1", "team_id": "T001", "team_name": "Первая", "captain_id": "C001", "tracker_id": "TR001", "is_active": True},
+            {"flow_id": "FLOW_1", "team_id": "T002", "team_name": "Вторая", "captain_id": "C002", "tracker_id": "TR002", "is_active": True},
+        ],
+        trackers=[
+            {"tracker_id": "TR001", "telegram_id": 3001, "role": "tracker", "is_active": True},
+            {"tracker_id": "TR002", "telegram_id": 3002, "role": "tracker", "is_active": True},
+        ],
+        goals=goals,
+        planned_steps=steps,
+    )
+    service, _gateway, main_bot, _error_bot = _service(tmp_path, participants=[], gateway=gateway)
+    service = SchedulerService(
+        sheets=gateway,
+        notification_router=service.notification_router,
+        repository=service.repository,
+        admin_telegram_id=4001,
+        sitnikov_telegram_id=5001,
+    )
+
+    result = service.send_scheduled_participant_message(
+        text="Сформируй шесть шагов.", condition="steps_missing", now=GOAL_SETUP_START,
+        flow_id="FLOW_1", event_id="STEPS_START_01",
+    )
+    for role, event_id in (("капитан", "CAP"), ("трекер", "TRACK"), ("администратор", "ADMIN"), ("ситников", "SIT")):
+        service.send_steps_setup_summary(
+            template=(
+                "Итоги {team_name}. {completed_count}/{active_count} ({completed_percent}%). "
+                "Не заполнили {missing_count} ({missing_percent}%): {missing_participants}.\n{team_breakdown}"
+            ),
+            recipient_role=role, now=GOAL_SETUP_START, flow_id="FLOW_1", event_id=event_id,
+        )
+
+    assert result == ReminderJobResult(sent_count=4, skipped_count=1, failed_count=0)
+    assert [message.chat_id for message in main_bot.sent_messages] == ["1002", "1003", "2001", "2002"]
+    messages = service.notification_router.notification_bot.sent_messages
+    assert [message.chat_id for message in messages] == ["2001", "2002", "3001", "3002", "4001", "5001"]
+    assert "Команда «Первая»" in messages[0].text and "Команда «Вторая»" not in messages[0].text
+    assert "Команда «Вторая»" in messages[3].text and "Команда «Первая»" not in messages[3].text
+    assert "1/5 (20%)" in messages[-1].text
 
 
 def test_reminder_sends_only_to_active_consenting_participants_without_report(tmp_path: Path) -> None:
@@ -91,6 +277,165 @@ def test_monday_reminder_falls_back_to_plain_text_when_focus_already_selected(
 
     assert "Новая неделя началась." in main_bot.sent_messages[0].text
     assert main_bot.sent_messages[0].buttons == ()
+
+
+@pytest.mark.parametrize(
+    ("reminder_type", "expected_text"),
+    [
+        ("monday_focus_1300", "Ты ещё не выбрал цель на эту неделю"),
+        ("monday_focus_1900", "Ты ещё не определил цель недели"),
+    ],
+)
+def test_followup_focus_reminders_only_go_to_participants_without_focus(
+    tmp_path: Path,
+    reminder_type: str,
+    expected_text: str,
+) -> None:
+    service, _gateway, main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[
+            _participant("P001", 1001, consent=True),
+            _participant("P002", 1002, consent=True),
+        ],
+        goals=[_goal("G001", "P001"), _goal("G002", "P002")],
+        planned_steps=[
+            _step("S001", "P001", "G001", 1, "Первый шаг", "open"),
+            _step("S002", "P002", "G002", 1, "Другой шаг", "open"),
+        ],
+        weekly_focus=[
+            {
+                "focus_id": "WF:P002:week-01",
+                "participant_id": "P002",
+                "goal_id": "G002",
+                "step_id": "S002",
+                "week_number": 1,
+                "focus_status": "active",
+            }
+        ],
+    )
+
+    result = service.run_reminder(reminder_type, now=MONDAY_START)
+
+    assert result.sent_count == 1
+    assert result.skipped_count == 1
+    assert [message.chat_id for message in main_bot.sent_messages] == ["1001"]
+    assert expected_text in main_bot.sent_messages[0].text
+    assert [button.text for button in main_bot.sent_messages[0].buttons] == ["Шаг 1. Первый шаг"]
+
+
+def test_focus_followups_have_independent_delivery_keys(tmp_path: Path) -> None:
+    service, _gateway, main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[_participant("P001", 1001, consent=True)],
+        goals=[_goal("G001", "P001")],
+        planned_steps=[_step("S001", "P001", "G001", 1, "Первый шаг", "open")],
+    )
+
+    service.run_reminder("monday_reminder", now=MONDAY_START)
+    service.run_reminder("monday_focus_1300", now=MONDAY_START.replace(hour=13))
+    service.run_reminder("monday_focus_1900", now=MONDAY_START.replace(hour=19))
+
+    assert len(main_bot.sent_messages) == 3
+
+
+def test_weekly_focus_jobs_do_nothing_outside_working_weeks(tmp_path: Path) -> None:
+    service, _gateway, main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[_participant("P001", 1001, consent=True)],
+        goals=[_goal("G001", "P001")],
+        planned_steps=[_step("S001", "P001", "G001", 1, "Первый шаг", "open")],
+    )
+    setup_monday = datetime(2026, 5, 25, 13, 0, tzinfo=ZoneInfo(TIMEZONE_NAME))
+
+    reminder = service.run_reminder("monday_focus_1300", now=setup_monday)
+    summary = service.send_weekly_focus_summary_to_captains(now=setup_monday.replace(hour=21))
+
+    assert reminder == ReminderJobResult()
+    assert summary == ReminderJobResult()
+    assert main_bot.sent_messages == []
+
+
+def test_weekly_focus_summary_to_captain_contains_team_percentages_and_selected_steps(
+    tmp_path: Path,
+) -> None:
+    participants = [
+        _participant("C001", 9001, consent=True, role="captain", full_name="Капитан"),
+        _participant("P001", 1001, consent=True, full_name="Иван Иванов"),
+        _participant("P002", 1002, consent=True, full_name="Анна Петрова"),
+        _participant("P003", 1003, consent=True, full_name="Сергей Сидоров"),
+    ]
+    service, _gateway, _main_bot, _error_bot, notification_bot = _service_with_notification_bot(
+        tmp_path,
+        participants=participants,
+        teams=[{"team_id": "T001", "team_name": "Достигаторы", "captain_id": "C001"}],
+        trackers=[],
+        goals=[
+            _goal("GC001", "C001"),
+            _goal("G001", "P001"),
+            _goal("G002", "P002"),
+            _goal("G003", "P003"),
+        ],
+        planned_steps=[
+            _step("SC001", "C001", "GC001", 1, "План капитана", "open"),
+            _step("S001", "P001", "G001", 1, "Провести 10 встреч", "open"),
+            _step("S002", "P002", "G002", 1, "Подготовить оффер", "open"),
+            _step("S003", "P003", "G003", 1, "Сделать 20 касаний", "open"),
+        ],
+        weekly_focus=[
+            {"focus_id": "WF1", "participant_id": "C001", "goal_id": "GC001", "step_id": "SC001", "week_number": 1},
+            {"focus_id": "WF2", "participant_id": "P001", "goal_id": "G001", "step_id": "S001", "week_number": 1},
+            {"focus_id": "WF3", "participant_id": "P002", "goal_id": "G002", "step_id": "S002", "week_number": 1},
+        ],
+    )
+
+    first = service.send_weekly_focus_summary_to_captains(now=MONDAY_START.replace(hour=21))
+    second = service.send_weekly_focus_summary_to_captains(now=MONDAY_START.replace(hour=21))
+
+    assert first.sent_count == 1
+    assert second.sent_count == 0
+    assert second.skipped_count == 1
+    assert len(notification_bot.sent_messages) == 1
+    message = notification_bot.sent_messages[0]
+    assert message.chat_id == "9001"
+    assert "команде «Достигаторы»" in message.text
+    assert "3 из 4 (75%)" in message.text
+    assert "1 из 4 (25%)" in message.text
+    assert "Иван Иванов — «Провести 10 встреч»" in message.text
+    assert "Анна Петрова — «Подготовить оффер»" in message.text
+    assert "Сергей Сидоров" in message.text
+    assert message.buttons == ()
+
+
+def test_weekly_focus_summary_does_not_mix_participants_from_another_flow(
+    tmp_path: Path,
+) -> None:
+    captain = _participant("C001", 9001, consent=True, role="captain", full_name="Капитан")
+    own = _participant("P001", 1001, consent=True, full_name="Свой участник")
+    foreign = _participant("P002", 1002, consent=True, full_name="Чужой участник")
+    for row in (captain, own):
+        row["flow_id"] = "FLOW_1"
+    foreign["flow_id"] = "FLOW_2"
+    team = {
+        "flow_id": "FLOW_1",
+        "team_id": "T001",
+        "team_name": "Команда 1",
+        "captain_id": "C001",
+    }
+    service, _gateway, _main_bot, _error_bot, notification_bot = _service_with_notification_bot(
+        tmp_path,
+        participants=[captain, own, foreign],
+        teams=[team],
+        trackers=[],
+        weekly_focus=[],
+    )
+
+    service.send_weekly_focus_summary_to_captains(now=MONDAY_START.replace(hour=21))
+
+    assert len(notification_bot.sent_messages) == 1
+    text = notification_bot.sent_messages[0].text
+    assert "0 из 2 (0%)" in text
+    assert "Свой участник" in text
+    assert "Чужой участник" not in text
 
 
 def test_reminder_skips_dropped_non_consenting_and_already_reported_participants(tmp_path: Path) -> None:
@@ -226,7 +571,7 @@ def test_week_close_creates_gray_reports_for_active_missing_participants(tmp_pat
     reports = gateway.list_weekly_reports()
     assert [row["participant_id"] for row in reports] == ["P001", "P002"]
     assert {row["status_code"] for row in reports} == {"gray"}
-    assert {row["status_symbol"] for row in reports} == {"⬜"}
+    assert {row["status_symbol"] for row in reports} == {"⬛"}
     assert {row["submitted_by_role"] for row in reports} == {"system"}
     assert {row["submitted_source"] for row in reports} == {"system_deadline"}
     assert {row["score"] for row in reports} == {0}
@@ -591,11 +936,21 @@ def _service_with_notification_bot(
     participants: list[dict[str, object]],
     teams: list[dict[str, object]],
     trackers: list[dict[str, object]],
+    goals: list[dict[str, object]] | None = None,
+    planned_steps: list[dict[str, object]] | None = None,
+    weekly_focus: list[dict[str, object]] | None = None,
 ) -> tuple[SchedulerService, FakeSheetsGateway, FailingBotClient, FakeBotClient, FakeBotClient]:
     service, gateway, main_bot, error_bot = _service(
         tmp_path,
         participants=participants,
-        gateway=FakeSheetsGateway(participants=participants, teams=teams, trackers=trackers),
+        gateway=FakeSheetsGateway(
+            participants=participants,
+            teams=teams,
+            trackers=trackers,
+            goals=goals or [],
+            planned_steps=planned_steps or [],
+            weekly_focus=weekly_focus or [],
+        ),
     )
     return service, gateway, main_bot, error_bot, service.notification_router.notification_bot
 
@@ -606,6 +961,7 @@ class FailingBotClient:
     failing_chat_ids: set[str] = field(default_factory=set)
     failure_message: str | None = None
     sent_messages: list[OutgoingMessage] = field(default_factory=list)
+    sent_documents: list[OutgoingDocument] = field(default_factory=list)
     attempts_by_chat_id: dict[str, int] = field(default_factory=dict)
 
     def send_message(
@@ -621,6 +977,22 @@ class FailingBotClient:
         message = OutgoingMessage(chat_id=chat_id, text=text, buttons=buttons)
         self.sent_messages.append(message)
         return message
+
+    def send_document_url(
+        self,
+        *,
+        chat_id: str,
+        file_url: str,
+        caption: str | None = None,
+    ) -> OutgoingDocument:
+        self.attempts_by_chat_id[chat_id] = self.attempts_by_chat_id.get(chat_id, 0) + 1
+        if chat_id in self.failing_chat_ids:
+            raise RuntimeError(self.failure_message or f"send failed for {chat_id}")
+        document = OutgoingDocument(
+            chat_id=chat_id, file_path=None, caption=caption, file_url=file_url
+        )
+        self.sent_documents.append(document)
+        return document
 
 
 class FailsOnceAfterFirstGrayGateway(FakeSheetsGateway):

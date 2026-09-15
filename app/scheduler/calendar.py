@@ -1,4 +1,4 @@
-"""Executable challenge calendar and scheduler constants."""
+"""Challenge calendar and scheduler constants."""
 
 from __future__ import annotations
 
@@ -8,11 +8,13 @@ from zoneinfo import ZoneInfo
 
 
 TIMEZONE_NAME = "Asia/Yekaterinburg"
-CHALLENGE_END_DATE = date(2026, 7, 31)
-CHALLENGE_TOTAL_WEEKS = 8
+DEFAULT_CHALLENGE_START_DATE = date(2026, 5, 25)
 SETUP_WEEK_COUNT = 2
-EXECUTION_WEEK_COUNT = 6
+WORKING_WEEK_COUNT = 8
+CHALLENGE_TOTAL_WEEKS = WORKING_WEEK_COUNT
+CHALLENGE_TOTAL_CALENDAR_WEEKS = SETUP_WEEK_COUNT + WORKING_WEEK_COUNT
 FINAL_SUMMARY_WINDOW_DAYS = 4
+_challenge_start_date = DEFAULT_CHALLENGE_START_DATE
 
 
 @dataclass(frozen=True)
@@ -23,20 +25,74 @@ class ScheduleItem:
     description: str
 
 
-def challenge_start_date() -> date:
-    """Return the first date of week 1 from the approved shared calendar."""
+def configure_challenge_calendar(*, start_date: date) -> None:
+    """Configure the shared challenge start date for the running process."""
 
-    return CHALLENGE_END_DATE - timedelta(weeks=CHALLENGE_TOTAL_WEEKS) + timedelta(days=1)
+    global _challenge_start_date
+    _challenge_start_date = start_date
+
+
+def challenge_start_date() -> date:
+    """Return the first setup-week date from the active challenge flow."""
+
+    return _challenge_start_date
+
+
+def working_weeks_start_date() -> date:
+    return challenge_start_date() + timedelta(weeks=SETUP_WEEK_COUNT)
+
+
+def challenge_end_date() -> date:
+    return challenge_start_date() + timedelta(weeks=CHALLENGE_TOTAL_CALENDAR_WEEKS) - timedelta(days=1)
 
 
 def final_summary_end_date() -> date:
-    return CHALLENGE_END_DATE + timedelta(days=FINAL_SUMMARY_WINDOW_DAYS)
+    return challenge_end_date() + timedelta(days=FINAL_SUMMARY_WINDOW_DAYS)
 
 
 def current_challenge_week_number(now: datetime) -> int:
     local_now = _as_yekaterinburg(now)
-    days_since_start = (local_now.date() - challenge_start_date()).days
-    return max(1, min(CHALLENGE_TOTAL_WEEKS, days_since_start // 7 + 1))
+    days_since_working_start = (local_now.date() - working_weeks_start_date()).days
+    return max(1, min(WORKING_WEEK_COUNT, days_since_working_start // 7 + 1))
+
+
+def closed_challenge_week_count(now: datetime) -> int:
+    """Return how many working-week deadlines have passed."""
+
+    local_now = _as_yekaterinburg(now)
+    first_deadline = datetime.combine(
+        working_weeks_start_date() + timedelta(days=6),
+        time(23, 59),
+        tzinfo=ZoneInfo(TIMEZONE_NAME),
+    )
+    return sum(
+        local_now > first_deadline + timedelta(weeks=week_offset)
+        for week_offset in range(WORKING_WEEK_COUNT)
+    )
+
+
+def current_challenge_stage(now: datetime) -> str:
+    local_now = _as_yekaterinburg(now)
+    current_date = local_now.date()
+    if current_date < challenge_start_date():
+        return "pre_start"
+
+    days_since_start = (current_date - challenge_start_date()).days
+    if days_since_start < 7:
+        return "goal_setup"
+    if days_since_start < 14:
+        return "steps_setup"
+
+    working_week_number = days_since_start // 7 - SETUP_WEEK_COUNT + 1
+    if 1 <= working_week_number <= WORKING_WEEK_COUNT:
+        return f"week_{working_week_number:02d}"
+    if current_date <= final_summary_end_date():
+        return "final_summary"
+    return "completed"
+
+
+def is_working_week(now: datetime) -> bool:
+    return current_challenge_stage(now).startswith("week_")
 
 
 def challenge_week_date_range(now: datetime) -> tuple[date, date]:
@@ -54,12 +110,20 @@ def weekly_report_deadline(now: datetime) -> datetime:
 
 def is_weekly_report_open(now: datetime) -> bool:
     local_now = _as_yekaterinburg(now)
-    return local_now <= weekly_report_deadline(local_now)
+    return is_working_week(local_now) and local_now <= weekly_report_deadline(local_now)
 
 
 def reminder_schedule() -> tuple[ScheduleItem, ...]:
     return (
         ScheduleItem("monday_reminder", 0, time(10, 0), "start-of-week reminder"),
+        ScheduleItem("monday_focus_1300", 0, time(13, 0), "missing weekly focus reminder"),
+        ScheduleItem("monday_focus_1900", 0, time(19, 0), "last missing weekly focus reminder"),
+        ScheduleItem(
+            "weekly_focus_summary_captain",
+            0,
+            time(21, 0),
+            "captain weekly focus summary",
+        ),
         ScheduleItem("wednesday_checkin", 2, time(10, 0), "soft check-in"),
         ScheduleItem("sunday_1800_checkin", 6, time(18, 0), "final check-in"),
         ScheduleItem("sunday_2230_reminder", 6, time(22, 30), "missing-report reminder"),

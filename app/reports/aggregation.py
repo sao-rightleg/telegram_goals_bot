@@ -14,7 +14,7 @@ STATUS_SYMBOLS = {
     "green": "🟩",
     "blue": "🟦",
     "red": "🟥",
-    "gray": "⬜",
+    "gray": "⬛",
 }
 STATUS_SCORES = {
     "green": 1.0,
@@ -99,7 +99,7 @@ def _build_team_report(
     )
     active_sections = [section for section in participant_sections if not section.is_dropped]
     status_distribution = {code: 0 for code in STATUS_CODES}
-    for section in participant_sections:
+    for section in active_sections:
         status_distribution[_status_code_from_symbol(section.status)] += 1
 
     captain = participants_by_id.get(str(team.get("captain_id")), {})
@@ -128,7 +128,11 @@ def _build_participant_section(
 ) -> ParticipantReportSection:
     goal = _active_goal(goals)
     sorted_steps = sorted(steps, key=lambda row: int(row.get("step_number") or 0))
-    status_code = _weekly_status_code(weekly_report)
+    status_code = _weekly_status_code(
+        weekly_report,
+        participant_id=str(participant.get("participant_id", "")),
+        is_dropped=participant.get("status") == "dropped",
+    )
     return ParticipantReportSection(
         participant_id=str(participant.get("participant_id", "")),
         team_id=str(participant.get("team_id", "")),
@@ -177,11 +181,17 @@ def _active_goal(goals: list[SheetRow]) -> SheetRow:
     return goals[0] if goals else {}
 
 
-def _weekly_status_code(weekly_report: SheetRow | None) -> str:
+def _weekly_status_code(
+    weekly_report: SheetRow | None, *, participant_id: str, is_dropped: bool
+) -> str:
     if weekly_report is None:
-        return "gray"
-    code = str(weekly_report.get("status_code") or "gray")
-    return code if code in STATUS_CODES else "gray"
+        if is_dropped:
+            return "gray"
+        raise ValueError(f"Missing final weekly report for active participant {participant_id}")
+    code = str(weekly_report.get("status_code") or "")
+    if code not in STATUS_CODES:
+        raise ValueError(f"Unknown weekly report status_code for participant {participant_id}")
+    return code
 
 
 def _status_code_from_symbol(symbol: str) -> str:

@@ -9,6 +9,7 @@ from app.bot.clients import BotClient, TelegramInlineButton
 from app.bot.menus import WEEKLY_REPORT_DONE_CALLBACK
 from app.bot.messages import (
     CONSENT_ACCEPT_BUTTON,
+    CONSENT_DECLINE_BUTTON,
     CONSENT_TEXT,
     MISSING_DATA_TEXT,
     UNKNOWN_USER_TEXT,
@@ -410,7 +411,7 @@ class WeeklyReportService:
             return self._handle_unknown_user(user, occurred_at=occurred_at)
 
         if not _consent_is_given(participant):
-            return self._send(user, text=CONSENT_TEXT, buttons=(CONSENT_ACCEPT_BUTTON,))
+            return self._send(user, text=CONSENT_TEXT, buttons=(CONSENT_ACCEPT_BUTTON, CONSENT_DECLINE_BUTTON))
 
         if not is_weekly_report_open(now):
             return self._send(user, text=WEEKLY_REPORT_LATE_TEXT)

@@ -1,9 +1,10 @@
 from pathlib import Path
 
 import pytest
+from pypdf import PdfReader
 
 from app.reports.generator import LocalReportGenerator, ReportRequest, ReportType
-from app.reports.models import ParticipantReportSection, TeamReportData
+from app.reports.models import AllTeamsReportData, ParticipantReportSection, TeamReportData
 from app.reports.pdf import LocalPdfRenderer
 from app.storage.paths import StoragePathPolicy
 
@@ -32,13 +33,86 @@ def test_pdf_renderer_includes_required_team_and_participant_content(tmp_path: P
 
     generated = renderer.render_team_report(_team_report(), year=2026)
 
-    text = generated.file_path.read_bytes().decode("utf-8", errors="ignore")
+    text = _pdf_text(generated.file_path)
     assert "Команда: Команда А" in text
     assert "Капитан: Ирина Капитан" in text
     assert "Активных: 1" in text
     assert "Анна Иванова" in text
     assert "Новый контракт" in text
     assert "Расшифровка отчёта" in text
+
+
+def test_pdf_renderer_preserves_cyrillic_and_wraps_long_content(tmp_path: Path) -> None:
+    renderer = LocalPdfRenderer(StoragePathPolicy(pdf_root=tmp_path / "reports" / "pdf"))
+    participant = _team_report().participants[0]
+    long_report = " ".join(["Подробный русский текст отчёта"] * 250)
+    report = TeamReportData(
+        **{
+            **_team_report().__dict__,
+            "participants": (
+                ParticipantReportSection(**{**participant.__dict__, "report_text": long_report}),
+            ),
+        }
+    )
+
+    generated = renderer.render_team_report(report, year=2026)
+    reader = PdfReader(str(generated.file_path))
+
+    assert len(reader.pages) >= 2
+    assert "Подробный русский текст отчёта" in "\n".join(page.extract_text() or "" for page in reader.pages)
+
+
+def test_pdf_renderer_builds_tracker_report_for_assigned_teams_only(tmp_path: Path) -> None:
+    renderer = LocalPdfRenderer(StoragePathPolicy(pdf_root=tmp_path / "reports" / "pdf"))
+    other = TeamReportData(**{**_team_report().__dict__, "team_id": "T002", "team_name": "Команда Б"})
+
+    generated = renderer.render_tracker_report(
+        (_team_report(), other), tracker_id="TR001", tracker_name="Мария Трекер", week_number=5, year=2026
+    )
+    text = _pdf_text(generated.file_path)
+
+    assert "Отчёт трекера" in text
+    assert "Мария Трекер" in text
+    assert "Команда А" in text
+    assert "Команда Б" in text
+
+
+def test_pdf_renderer_builds_full_report_for_admin_and_sitnikov(tmp_path: Path) -> None:
+    renderer = LocalPdfRenderer(StoragePathPolicy(pdf_root=tmp_path / "reports" / "pdf"))
+    all_teams = AllTeamsReportData(
+        week_number=5,
+        teams=(_team_report(),),
+        total_active_count=1,
+        total_dropped_count=0,
+        average_victory_percent=100,
+    )
+
+    generated = renderer.render_full_report(all_teams, year=2026)
+    text = _pdf_text(generated.file_path)
+
+    assert "Полный отчёт по потоку" in text
+    assert "Всего активных: 1" in text
+    assert "Команда А" in text
+    assert "Анна Иванова" in text
+
+
+def test_pdf_summary_counts_red_as_submitted_and_only_gray_as_missing(tmp_path: Path) -> None:
+    renderer = LocalPdfRenderer(StoragePathPolicy(pdf_root=tmp_path / "reports" / "pdf"))
+    red_team = TeamReportData(
+        **{
+            **_team_report().__dict__,
+            "active_count": 1,
+            "status_distribution": {"green": 0, "blue": 0, "red": 1, "gray": 0},
+        }
+    )
+
+    generated = renderer.render_tracker_report(
+        (red_team,), tracker_id="TR001", tracker_name="Трекер", week_number=5, year=2026
+    )
+    text = _pdf_text(generated.file_path)
+
+    assert "1 из 1 (100%)" in text
+    assert "0 из 1 (0%)" in text
 
 
 def test_pdf_renderer_does_not_open_audio_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -111,3 +185,7 @@ def _team_report(*, transcription_text: str = "Расшифровка отчёт
             ),
         ),
     )
+
+
+def _pdf_text(path: Path) -> str:
+    return "\n".join(page.extract_text() or "" for page in PdfReader(str(path)).pages)

@@ -68,8 +68,11 @@ def test_steps_view_shows_current_participant_steps_only(tmp_path: Path) -> None
     assert "Чужой шаг" not in response.text
     assert "⬜ Шаг 1. Мой открытый шаг" in response.text
     assert "🟩 Шаг 2. Мой закрытый шаг" in response.text
-    assert "Подробное описа<tg-spoiler>ние открытого шага</tg-spoiler>" in response.text
-    assert "<blockquote expandable>" not in response.text
+    assert (
+        "<blockquote expandable>Подробное описание открытого шага</blockquote>"
+        in response.text
+    )
+    assert "<tg-spoiler>" not in response.text
     assert response.parse_mode == TELEGRAM_HTML_PARSE_MODE
     assert [button.text for button in response.buttons] == [
         "Шаг 1. Мой открытый шаг - Отчитаться",
@@ -255,6 +258,30 @@ def test_weekly_history_is_secondary_when_available(tmp_path: Path) -> None:
 
     assert "История недель:" in response.text
     assert "Неделя 1: 🟩" in response.text
+    assert "Неделя 2: ⬛" in response.text
+    assert "Неделя 4: ⬜" in response.text
+    assert "Неделя 8: ⬜" in response.text
+
+
+def test_legacy_gray_week_is_rendered_as_black_square(tmp_path: Path) -> None:
+    service, _gateway, _main_bot, _error_bot, _notification_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        goals=[_goal("G001", "P001", "Моя цель")],
+        planned_steps=[_step("S001", "P001", "G001", 1, "Шаг 1", "open")],
+        weekly_reports=[
+            {"weekly_report_id": "WR001", "participant_id": "P001", "week_number": 1,
+             "status_symbol": "⬜", "status_code": "gray"}
+        ],
+    )
+
+    response = service.handle_menu_action(
+        TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+        MenuAction.VIEW_PROGRESS,
+        occurred_at=NOW,
+    )
+
+    assert "Неделя 1: ⬛" in response.text
 
 
 def test_view_requires_consent_before_data(tmp_path: Path) -> None:

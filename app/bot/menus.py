@@ -19,6 +19,8 @@ class MenuAction(str, Enum):
 
 
 CONSENT_ACCEPT_CALLBACK = "consent:accept"
+CONSENT_DECLINE_CALLBACK = "consent:decline"
+CONSENT_DECLINE_CONFIRM_CALLBACK = "consent:decline_confirm"
 
 MENU_CALLBACK_PREFIX = "menu:"
 
@@ -44,6 +46,9 @@ CAPTAIN_MANUAL_REPORT_CALLBACK_PREFIX = "captain:manual:"
 CAPTAIN_STATUS_CALLBACK_PREFIX = "captain:status:"
 CAPTAIN_STEPS_CALLBACK_PREFIX = "captain:steps:"
 CAPTAIN_DONE_CALLBACK = "captain:done"
+
+GOAL_CONFIRM_CALLBACK = "goal:confirm"
+GOAL_CANCEL_CALLBACK = "goal:cancel"
 
 
 PARTICIPANT_MENU_ITEMS = (
