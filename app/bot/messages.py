@@ -248,7 +248,7 @@ def format_full_insight_text(item: InsightListItem) -> str:
 
 
 def format_goal_view(goal: Goal) -> str:
-    return "\n".join(
+    return "\n\n".join(
         (
             f"Цель: {goal.goal_title}",
             f"Описание: {goal.goal_description}",

@@ -83,10 +83,12 @@ def test_goal_formatter_renders_goal_fields() -> None:
 
     text = format_goal_view(goal)
 
-    assert "Новый контракт" in text
-    assert "Заключить контракт с клиентом" in text
-    assert "100000 RUB" in text
-    assert "Оплата получена" in text
+    assert text == (
+        "Цель: Новый контракт\n\n"
+        "Описание: Заключить контракт с клиентом\n\n"
+        "Ценность: 100000 RUB\n\n"
+        "Условие разрешения: Оплата получена"
+    )
 
 
 def test_progress_formatter_uses_six_cells_and_percent() -> None:
