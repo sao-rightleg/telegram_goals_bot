@@ -145,6 +145,7 @@ def reminder_schedule() -> tuple[ScheduleItem, ...]:
         ScheduleItem("sunday_2230_reminder", 6, time(22, 30), "missing-report reminder"),
         ScheduleItem("sunday_2300_reminder", 6, time(23, 0), "last missing-report reminder"),
         ScheduleItem("week_close", 6, time(23, 59), "hard weekly report deadline"),
+        ScheduleItem("weekly_reports", 0, time(0, 15), "generate and send weekly reports"),
     )
 
 

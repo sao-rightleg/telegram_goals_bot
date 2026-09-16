@@ -19,7 +19,16 @@ from app.bot.clients import BotCommand, BotPurpose, LiveTelegramBotClient, LiveT
 from app.logging import setup_logging
 from app.bot.dispatch import TelegramUpdateDispatcher
 from app.config import ConfigurationError, Settings, load_settings
-from app.scheduler.calendar import TIMEZONE_NAME, ScheduleItem, reminder_schedule
+from app.reports.delivery import ReportDeliveryService
+from app.reports.pdf import LocalPdfRenderer
+from app.reports.service import ReportService
+from app.scheduler.calendar import (
+    TIMEZONE_NAME,
+    ScheduleItem,
+    closed_challenge_week_count,
+    is_working_week,
+    reminder_schedule,
+)
 from app.scheduler.calendar import configure_challenge_calendar
 from app.scheduler.jobs import SchedulerService
 from app.services.captains import CaptainService
@@ -41,6 +50,7 @@ from app.storage.registration import RegistrationDraftRepository
 from app.storage.insight_drafts import InsightDraftRepository
 from app.storage.goal_drafts import GoalDraftRepository
 from app.storage.paths import StoragePathPolicy
+from app.storage.reports import ReportStateRepository
 from app.storage.scheduler import SchedulerJobRepository
 from app.storage.sqlite import REQUIRED_TECHNICAL_TABLES, initialize_schema, list_tables
 from app.storage.weekly_report_drafts import WeeklyReportDraftRepository
@@ -74,6 +84,7 @@ class RuntimeComponents:
     sheets_gateway: GoogleSheetsGateway
     voice_service: VoiceMessageService
     scheduler_service: SchedulerService
+    report_service: ReportService | None = None
 
     def with_replacements(self, **changes: object) -> "RuntimeComponents":
         return replace(self, **changes)
@@ -294,6 +305,22 @@ def compose_runtime(
         admin_telegram_id=settings.admin.admin_telegram_id,
         sitnikov_telegram_id=settings.admin.sitnikov_telegram_id,
     )
+    report_repository = ReportStateRepository(db_path)
+    report_service = ReportService(
+        sheets_gateway=sheets_gateway,
+        report_repository=report_repository,
+        pdf_renderer=LocalPdfRenderer(
+            StoragePathPolicy(pdf_root=settings.storage.pdf_storage_dir)
+        ),
+        delivery_service=ReportDeliveryService(
+            repository=report_repository,
+            notification_router=notification_router,
+        ),
+        flow_id=str(bound_flow.get("flow_id", "")).strip(),
+        flow_name=str(bound_flow.get("flow_name", "")).strip() or None,
+        admin_telegram_id=settings.admin.admin_telegram_id,
+        sitnikov_telegram_id=settings.admin.sitnikov_telegram_id,
+    )
     dispatcher = TelegramUpdateDispatcher(
         participant_service=participant_service,
         weekly_report_service=weekly_report_service,
@@ -315,6 +342,7 @@ def compose_runtime(
         sheets_gateway=sheets_gateway,
         voice_service=voice_service,
         scheduler_service=scheduler_service,
+        report_service=report_service,
     )
 
 
@@ -474,7 +502,6 @@ class LiveSchedulerRunner:
         current = now or self._now()
         local_current = current.astimezone(ZoneInfo(TIMEZONE_NAME))
         schedule_rows = components.sheets_gateway.list_flow_schedule()
-        dynamic_focus_defined = any(_is_valid_focus_schedule_row(row) for row in schedule_rows)
         for row in schedule_rows:
             scheduled_at = _flow_event_scheduled_at(row)
             if scheduled_at is None or row.get("is_enabled") is not True:
@@ -489,25 +516,29 @@ class LiveSchedulerRunner:
             self._dispatched_keys.add(dispatch_key)
 
         for item in reminder_schedule():
-            if dynamic_focus_defined and item.job_type in {
-                "monday_reminder",
-                "monday_focus_1300",
-                "monday_focus_1900",
-                "weekly_focus_summary_captain",
-            }:
-                continue
             scheduled_at = _last_scheduled_at(item, local_current)
             if scheduled_at is None:
                 continue
-            if local_current - scheduled_at > self.catch_up_window:
+            if _has_matching_dynamic_focus_event(
+                schedule_rows,
+                job_type=item.job_type,
+                scheduled_at=scheduled_at,
+            ):
+                continue
+            catch_up_window = (
+                timedelta(hours=1)
+                if item.job_type in {"week_close", "weekly_reports"}
+                else self.catch_up_window
+            )
+            if local_current - scheduled_at > catch_up_window:
                 continue
 
             dispatch_key = f"{item.job_type}:{scheduled_at.isoformat()}"
             if dispatch_key in self._dispatched_keys:
                 continue
 
-            self._dispatched_keys.add(dispatch_key)
             self._run_scheduler_job(components, item.job_type, scheduled_at=scheduled_at)
+            self._dispatched_keys.add(dispatch_key)
 
     def _run_flow_schedule_event(
         self,
@@ -641,6 +672,20 @@ class LiveSchedulerRunner:
             )
             return
 
+        if job_type == "weekly_reports":
+            if not is_working_week(scheduled_at - timedelta(days=1)):
+                return
+            week_number = closed_challenge_week_count(scheduled_at)
+            if week_number == 0 or components.report_service is None:
+                return
+            result = components.report_service.generate_and_send_week(
+                week_number,
+                now=scheduled_at,
+            )
+            if result.failed_count:
+                raise RuntimeError("weekly report generation or delivery incomplete")
+            return
+
         result = components.scheduler_service.run_reminder(job_type, now=scheduled_at)
         logger.info(
             "scheduler reminder completed",
@@ -690,6 +735,8 @@ def _focus_reminder_type(row: dict[str, object]) -> str:
 def _is_valid_focus_schedule_row(row: dict[str, object]) -> bool:
     event_type = str(row.get("event_type", "")).strip()
     recipient = str(row.get("recipient_role", "")).strip().lower()
+    if row.get("is_enabled") is not True:
+        return False
     if str(row.get("scheduled_timezone", "")).strip() != TIMEZONE_NAME:
         return False
     if _flow_event_scheduled_at(row) is None or not str(row.get("event_id", "")).strip():
@@ -699,6 +746,28 @@ def _is_valid_focus_schedule_row(row: dict[str, object]) -> bool:
     ) or (
         event_type == "weekly_focus_summary" and recipient in {"капитан", "captain"}
     )
+
+
+def _has_matching_dynamic_focus_event(
+    rows: Sequence[dict[str, object]],
+    *,
+    job_type: str,
+    scheduled_at: datetime,
+) -> bool:
+    for row in rows:
+        if not _is_valid_focus_schedule_row(row):
+            continue
+        if _flow_event_scheduled_at(row) != scheduled_at:
+            continue
+        event_type = str(row.get("event_type", "")).strip()
+        dynamic_job_type = (
+            "weekly_focus_summary_captain"
+            if event_type == "weekly_focus_summary"
+            else _focus_reminder_type(row)
+        )
+        if dynamic_job_type == job_type:
+            return True
+    return False
 
 
 def run_bot(

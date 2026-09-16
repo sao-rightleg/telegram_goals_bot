@@ -214,6 +214,64 @@ def test_live_scheduler_runner_uses_enabled_flow_schedule_focus_events(tmp_path:
     ]
 
 
+def test_disabled_focus_schedule_rows_do_not_suppress_static_fallback(tmp_path: Path) -> None:
+    scheduler_service = RecordingSchedulerService()
+    schedule = [{
+        "event_id": "W01_FOCUS_REMINDER_1300",
+        "flow_id": "FLOW_OLD",
+        "scheduled_date": "2026-06-08",
+        "scheduled_time": "13:00",
+        "scheduled_timezone": TIMEZONE_NAME,
+        "event_type": "weekly_focus_prompt",
+        "recipient_role": "участник",
+        "is_enabled": False,
+    }]
+    components = _runtime_components(tmp_path).with_replacements(
+        scheduler_service=scheduler_service,
+        sheets_gateway=FakeSheetsGateway(flow_schedule=schedule),
+    )
+    runner = LiveSchedulerRunner(stop_event=Event())
+
+    runner.run_due_jobs_once(
+        components,
+        now=datetime(2026, 6, 8, 13, 5, tzinfo=ZoneInfo(TIMEZONE_NAME)),
+    )
+
+    assert scheduler_service.reminders == [
+        ("monday_focus_1300", datetime(2026, 6, 8, 13, 0, tzinfo=ZoneInfo(TIMEZONE_NAME)))
+    ]
+    assert scheduler_service.scheduled_calls == []
+
+
+def test_historical_enabled_focus_row_does_not_suppress_next_week_fallback(tmp_path: Path) -> None:
+    scheduler_service = RecordingSchedulerService()
+    schedule = [{
+        "event_id": "W01_FOCUS",
+        "flow_id": "FLOW_1",
+        "scheduled_date": "2026-06-08",
+        "scheduled_time": "10:00",
+        "scheduled_timezone": TIMEZONE_NAME,
+        "event_type": "weekly_focus_prompt",
+        "recipient_role": "участник",
+        "is_enabled": True,
+    }]
+    components = _runtime_components(tmp_path).with_replacements(
+        scheduler_service=scheduler_service,
+        sheets_gateway=FakeSheetsGateway(flow_schedule=schedule),
+    )
+    runner = LiveSchedulerRunner(stop_event=Event())
+
+    runner.run_due_jobs_once(
+        components,
+        now=datetime(2026, 6, 15, 10, 5, tzinfo=ZoneInfo(TIMEZONE_NAME)),
+    )
+
+    assert scheduler_service.reminders == [
+        ("monday_reminder", datetime(2026, 6, 15, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME)))
+    ]
+    assert scheduler_service.scheduled_calls == []
+
+
 def test_live_scheduler_runner_routes_due_goal_setup_message(tmp_path: Path) -> None:
     scheduler_service = RecordingSchedulerService()
     text = (
@@ -383,6 +441,63 @@ def test_live_scheduler_runner_catches_week_close_after_midnight(tmp_path: Path)
         datetime(2026, 6, 14, 23, 59, tzinfo=ZoneInfo(TIMEZONE_NAME))
     ]
     assert scheduler_service.reminders == []
+
+
+def test_live_scheduler_runner_generates_previous_week_reports_after_close(tmp_path: Path) -> None:
+    report_service = RecordingReportService()
+    scheduler_service = RecordingSchedulerService()
+    components = _runtime_components(tmp_path).with_replacements(
+        scheduler_service=scheduler_service,
+        report_service=report_service,
+    )
+    runner = LiveSchedulerRunner(stop_event=Event())
+    now = datetime(2026, 6, 15, 0, 20, tzinfo=ZoneInfo(TIMEZONE_NAME))
+
+    runner.run_due_jobs_once(components, now=now)
+
+    assert scheduler_service.week_closes == [
+        datetime(2026, 6, 14, 23, 59, tzinfo=ZoneInfo(TIMEZONE_NAME))
+    ]
+    assert report_service.calls == [
+        (1, datetime(2026, 6, 15, 0, 15, tzinfo=ZoneInfo(TIMEZONE_NAME)))
+    ]
+
+
+def test_live_scheduler_runner_retries_incomplete_weekly_reports(tmp_path: Path) -> None:
+    report_service = RecordingReportService(failed_counts=[1, 0])
+    components = _runtime_components(tmp_path).with_replacements(
+        scheduler_service=RecordingSchedulerService(),
+        report_service=report_service,
+    )
+    runner = LiveSchedulerRunner(stop_event=Event())
+    now = datetime(2026, 6, 15, 0, 20, tzinfo=ZoneInfo(TIMEZONE_NAME))
+
+    with pytest.raises(RuntimeError, match="weekly report generation or delivery incomplete"):
+        runner.run_due_jobs_once(components, now=now)
+    runner.run_due_jobs_once(components, now=now)
+
+    assert report_service.calls == [
+        (1, datetime(2026, 6, 15, 0, 15, tzinfo=ZoneInfo(TIMEZONE_NAME))),
+        (1, datetime(2026, 6, 15, 0, 15, tzinfo=ZoneInfo(TIMEZONE_NAME))),
+    ]
+
+
+def test_live_scheduler_runner_does_not_repeat_week_eight_reports_after_challenge(
+    tmp_path: Path,
+) -> None:
+    report_service = RecordingReportService()
+    components = _runtime_components(tmp_path).with_replacements(
+        scheduler_service=RecordingSchedulerService(),
+        report_service=report_service,
+    )
+    runner = LiveSchedulerRunner(stop_event=Event())
+
+    runner.run_due_jobs_once(
+        components,
+        now=datetime(2026, 8, 10, 0, 20, tzinfo=ZoneInfo(TIMEZONE_NAME)),
+    )
+
+    assert report_service.calls == []
 
 
 def test_live_scheduler_runner_alerts_after_three_failures_and_reports_recovery(
@@ -1390,6 +1505,17 @@ class RecordingSchedulerService:
     ) -> ReminderJobResult:
         self.steps_summary_calls.append((recipient_role, flow_id, event_id))
         return ReminderJobResult(sent_count=1)
+
+
+class RecordingReportService:
+    def __init__(self, failed_counts: list[int] | None = None) -> None:
+        self.calls: list[tuple[int, datetime]] = []
+        self.failed_counts = list(failed_counts or [0])
+
+    def generate_and_send_week(self, week_number: int, *, now: datetime) -> object:
+        self.calls.append((week_number, now))
+        failed_count = self.failed_counts.pop(0) if self.failed_counts else 0
+        return type("ReportResult", (), {"failed_count": failed_count})()
 
 
 def test_live_scheduler_routes_steps_messages_and_all_summary_roles(tmp_path: Path) -> None:

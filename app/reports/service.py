@@ -29,6 +29,8 @@ class ReportService:
     flow_id: str
     year: int = 2026
     flow_name: str | None = None
+    admin_telegram_id: int | None = None
+    sitnikov_telegram_id: int | None = None
 
     def generate_and_send_week(self, week_number: int, *, now: datetime) -> ReportRunResult:
         started_at = now.isoformat()
@@ -66,9 +68,14 @@ class ReportService:
                     report, flow_name=self.flow_name or self.flow_id
                 ),
             )
+            participants = _participants_with_global_recipients(
+                self.sheets_gateway.list_participants(),
+                admin_telegram_id=self.admin_telegram_id,
+                sitnikov_telegram_id=self.sitnikov_telegram_id,
+            )
             plan = planner.build_plan(
                 report,
-                participants=self.sheets_gateway.list_participants(),
+                participants=participants,
                 teams=teams,
                 trackers=trackers,
             )
@@ -225,3 +232,30 @@ def _unique_active_trackers(
         counts[tracker_id] = counts.get(tracker_id, 0) + 1
     duplicates = tuple(sorted(tracker_id for tracker_id, count in counts.items() if not tracker_id or count > 1))
     return [row for row in active if str(row.get("tracker_id") or "") not in duplicates], duplicates
+
+
+def _participants_with_global_recipients(
+    participants: list[dict[str, object]],
+    *,
+    admin_telegram_id: int | None,
+    sitnikov_telegram_id: int | None,
+) -> list[dict[str, object]]:
+    result = list(participants)
+    roles = {str(row.get("role") or "").strip().lower() for row in participants}
+    if "admin" not in roles and admin_telegram_id is not None:
+        result.append(
+            {
+                "participant_id": "configured_admin",
+                "role": "admin",
+                "telegram_id": admin_telegram_id,
+            }
+        )
+    if "sitnikov" not in roles and sitnikov_telegram_id is not None:
+        result.append(
+            {
+                "participant_id": "configured_sitnikov",
+                "role": "sitnikov",
+                "telegram_id": sitnikov_telegram_id,
+            }
+        )
+    return result

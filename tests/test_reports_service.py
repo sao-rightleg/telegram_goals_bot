@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 from app.bot.clients import BotPurpose, FakeBotClient
 from app.reports.pdf import LocalPdfRenderer
-from app.reports.service import ReportService
+from app.reports.service import ReportService, _participants_with_global_recipients
 from app.scheduler.calendar import TIMEZONE_NAME
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.sheets.gateway import FakeSheetsGateway
@@ -15,6 +15,37 @@ from app.storage.sqlite import initialize_schema
 
 
 NOW = datetime(2026, 7, 12, 23, 59, tzinfo=ZoneInfo(TIMEZONE_NAME))
+
+
+def test_configured_global_recipients_are_added_when_sheet_roles_are_absent() -> None:
+    participants = [{"participant_id": "P001", "role": "participant", "telegram_id": 1001}]
+
+    result = _participants_with_global_recipients(
+        participants,
+        admin_telegram_id=9001,
+        sitnikov_telegram_id=9002,
+    )
+
+    assert result == [
+        participants[0],
+        {"participant_id": "configured_admin", "role": "admin", "telegram_id": 9001},
+        {"participant_id": "configured_sitnikov", "role": "sitnikov", "telegram_id": 9002},
+    ]
+
+
+def test_sheet_global_recipient_takes_precedence_over_configured_fallback() -> None:
+    participants = [
+        {"participant_id": "A001", "role": "admin", "telegram_id": 7001},
+        {"participant_id": "S001", "role": "sitnikov", "telegram_id": 7002},
+    ]
+
+    result = _participants_with_global_recipients(
+        participants,
+        admin_telegram_id=9001,
+        sitnikov_telegram_id=9002,
+    )
+
+    assert result == participants
 
 
 def test_generate_and_send_week_orchestrates_reports_from_final_sheets_facts(tmp_path: Path) -> None:
