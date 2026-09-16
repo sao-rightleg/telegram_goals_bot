@@ -233,6 +233,43 @@ def test_reminder_sends_only_to_active_consenting_participants_without_report(tm
     assert all("Короткий чек-ап" in message.text for message in main_bot.sent_messages)
 
 
+def test_wednesday_checkin_reminds_participant_of_selected_focus_step(tmp_path: Path) -> None:
+    service, _gateway, main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[_participant("P001", 1001, consent=True)],
+        goals=[_goal("G001", "P001")],
+        planned_steps=[
+            _step(
+                "S004",
+                "P001",
+                "G001",
+                4,
+                "Согласовать коммерческое предложение",
+                "open",
+            )
+        ],
+        weekly_focus=[
+            {
+                "focus_id": "WF:P001:week-04",
+                "participant_id": "P001",
+                "goal_id": "G001",
+                "step_id": "S004",
+                "week_number": 4,
+                "focus_status": "active",
+            }
+        ],
+    )
+
+    result = service.run_reminder("wednesday_checkin", now=NOW)
+
+    assert result.sent_count == 1
+    assert main_bot.sent_messages[0].text == (
+        "Твой фокус недели — «Согласовать коммерческое предложение».\n\n"
+        "Как продвигается выполнение?"
+    )
+    assert main_bot.sent_messages[0].buttons == ()
+
+
 def test_monday_reminder_prompts_weekly_focus_when_open_steps_exist(tmp_path: Path) -> None:
     service, _gateway, main_bot, _error_bot = _service(
         tmp_path,

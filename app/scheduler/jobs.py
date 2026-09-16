@@ -627,6 +627,18 @@ class SchedulerService:
         week_number: int,
         now: datetime,
     ) -> tuple[str, tuple[TelegramInlineButton, ...]]:
+        if reminder_type == "wednesday_checkin":
+            focus_title = _weekly_focus_step_title(
+                self.sheets,
+                participant_id=_string_value(participant.get("participant_id")),
+                week_number=week_number,
+            )
+            if focus_title:
+                return (
+                    f"Твой фокус недели — «{focus_title}».\n\n"
+                    "Как продвигается выполнение?",
+                    (),
+                )
         focus_reminders = {"monday_reminder", "monday_focus_1300", "monday_focus_1900"}
         if reminder_type not in focus_reminders:
             return format_scheduler_reminder_text(reminder_type), ()
@@ -1109,6 +1121,27 @@ def _weekly_focus_buttons(steps: list[dict[str, object]]) -> tuple[TelegramInlin
         )
         for step in sorted(steps, key=lambda row: _int_value(row.get("step_number")))
     )
+
+
+def _weekly_focus_step_title(
+    sheets: SheetsGateway,
+    *,
+    participant_id: str,
+    week_number: int,
+) -> str | None:
+    if not participant_id:
+        return None
+    focus = sheets.find_weekly_focus(participant_id, week_number=week_number)
+    if focus is None:
+        return None
+    focus_step_id = _string_value(focus.get("step_id"))
+    goal_id = _active_goal_id(sheets, participant_id)
+    if not focus_step_id or not goal_id:
+        return None
+    for step in sheets.list_planned_steps(participant_id, goal_id):
+        if _string_value(step.get("step_id")) == focus_step_id:
+            return _string_value(step.get("step_title")).strip() or None
+    return None
 
 
 def _short_step_title(title: str, *, limit: int = 42) -> str:
