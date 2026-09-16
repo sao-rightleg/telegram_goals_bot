@@ -339,6 +339,8 @@ class TelegramUpdateDispatcher:
             return self.weekly_report_service.start_report(user, now=now)
         if action is MenuAction.VIEW_TEAM:
             return self.captain_service.show_team(user, occurred_at=now.isoformat())
+        if action is MenuAction.VIEW_TEAM_PROGRESS:
+            return self.captain_service.show_team_progress(user, now=now)
         if action is MenuAction.CAPTAIN_MANUAL_REPORT:
             raise TelegramCallbackError("captain manual report callback requires participant id")
         return self.participant_service.handle_menu_action(user, action, occurred_at=now.isoformat())

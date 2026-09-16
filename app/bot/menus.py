@@ -14,6 +14,7 @@ class MenuAction(str, Enum):
     START_WEEKLY_REPORT = "start_weekly_report"
     VIEW_INSIGHTS = "view_insights"
     VIEW_TEAM = "view_team"
+    VIEW_TEAM_PROGRESS = "view_team_progress"
     CAPTAIN_MANUAL_REPORT = "captain_manual_report"
     VIEW_TEAM_REPORT = "view_team_report"
 
@@ -61,6 +62,7 @@ PARTICIPANT_MENU_ITEMS = (
 
 CAPTAIN_ONLY_MENU_ITEMS = (
     MenuItem(MenuAction.VIEW_TEAM, "👥 Моя команда"),
+    MenuItem(MenuAction.VIEW_TEAM_PROGRESS, "📊 Прогресс команды"),
     MenuItem(MenuAction.CAPTAIN_MANUAL_REPORT, "➕ Внести отчёт за участника"),
     MenuItem(MenuAction.VIEW_TEAM_REPORT, "📄 Отчёт команды"),
 )

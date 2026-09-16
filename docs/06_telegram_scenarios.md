@@ -213,6 +213,28 @@ captain an own-team summary:
 This operational summary is captain-only. It is not sent to trackers, the
 administrator, or Alexander Sitnikov.
 
+## Captain Team Progress
+
+Captain menu button:
+
+```text
+📊 Прогресс команды
+```
+
+The response is calculated from current Google Sheets data on every press and
+contains only active consenting participants from the captain's own team:
+
+```text
+Прогресс команды на текущий момент
+
+{participant_name}
+Цель: {goal_symbol}
+Шаги: {steps_symbol} {configured_steps} из 8
+Фокус недели: {focus_step_or_state}
+Выполнено: {closed_steps} из 8 — {progress_percent}%
+{eight_cell_progress_bar}
+```
+
 ## View Progress
 
 Trigger:

@@ -807,6 +807,19 @@ def test_dispatcher_routes_weekly_report_menu_action_to_weekly_flow(tmp_path: Pa
     ]
 
 
+def test_dispatcher_routes_team_progress_menu_action_to_captain_flow(tmp_path: Path) -> None:
+    dispatcher, services, _error_bot = _dispatcher(tmp_path)
+
+    response = dispatcher.dispatch_update(
+        _callback_update(data=f"{MENU_CALLBACK_PREFIX}{MenuAction.VIEW_TEAM_PROGRESS.value}")
+    )
+
+    assert response == FlowResponse(chat_id="chat-1001", text="team progress")
+    assert services.captains.progress_requests == [
+        (TelegramUserContext(telegram_id=1001, chat_id="chat-1001", username="p001"), NOW)
+    ]
+
+
 def test_dispatcher_routes_step_report_callback_to_weekly_flow(tmp_path: Path) -> None:
     dispatcher, services, _error_bot = _dispatcher(tmp_path)
 
@@ -1276,7 +1289,12 @@ class RecordingInsightService:
 
 
 class RecordingCaptainService:
-    pass
+    def __init__(self) -> None:
+        self.progress_requests: list[tuple[TelegramUserContext, datetime]] = []
+
+    def show_team_progress(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
+        self.progress_requests.append((user, now))
+        return FlowResponse(chat_id=user.chat_id, text="team progress")
 
 
 def _router(*, error_bot: FakeBotClient) -> NotificationRouter:

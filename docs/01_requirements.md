@@ -93,6 +93,8 @@ Captain has additional responsibilities:
 - receives notifications about silent participants in own team
 - manually adds reports for participants in own team
 - receives PDF report for own team
+- can request the current goal, route, weekly focus, and completed-step progress
+  for every active consenting participant in own team from the captain menu
 
 Captain cannot:
 - add reports for other teams

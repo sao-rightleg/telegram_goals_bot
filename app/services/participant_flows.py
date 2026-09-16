@@ -1465,6 +1465,7 @@ def _truthy(value: object) -> bool:
 
 _INERT_ACTIONS = {
     MenuAction.VIEW_TEAM,
+    MenuAction.VIEW_TEAM_PROGRESS,
     MenuAction.CAPTAIN_MANUAL_REPORT,
     MenuAction.VIEW_TEAM_REPORT,
 }
