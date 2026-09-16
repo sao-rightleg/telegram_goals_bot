@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from uuid import uuid4
@@ -49,11 +49,13 @@ from app.bot.messages import (
     format_progress_view,
 )
 from app.scheduler.calendar import (
+    challenge_start_date,
     challenge_week_date_range,
     closed_challenge_week_count,
     current_challenge_week_number,
     is_weekly_report_open,
     is_working_week,
+    working_weeks_start_date,
 )
 from app.services.notifications import NotificationCategory, NotificationRouter
 from app.services.participant_models import (
@@ -634,6 +636,42 @@ class ParticipantFlowService:
             )
 
         goal_row = self.sheets.get_active_goal(participant_id)
+        if normalized_action is MenuAction.VIEW_PROGRESS:
+            goal = _goal_from_row(goal_row) if goal_row is not None else None
+            steps = (
+                [
+                    _planned_step_from_row(row)
+                    for row in self.sheets.list_planned_steps(participant_id, goal.goal_id)
+                ]
+                if goal is not None
+                else []
+            )
+            now = datetime.fromisoformat(occurred_at)
+            goal_status_symbol, steps_status_symbol = _setup_progress_symbols(
+                goal_exists=goal is not None,
+                steps=steps,
+                now=now,
+                flow=self._active_registration_flow(),
+            )
+            weekly_history = [
+                _weekly_status_from_row(row)
+                for row in self.sheets.list_weekly_status_history(participant_id)
+            ]
+            return self._send_simple_response(
+                user,
+                participant=participant,
+                text=format_progress_view(
+                    steps=steps,
+                    goal_status_symbol=goal_status_symbol,
+                    steps_status_symbol=steps_status_symbol,
+                    weekly_history=weekly_history,
+                    closed_week_number=closed_challenge_week_count(now),
+                ),
+                flow="view_progress",
+                step="render",
+                occurred_at=occurred_at,
+            )
+
         if goal_row is None:
             if (
                 normalized_action is MenuAction.VIEW_GOAL
@@ -691,24 +729,6 @@ class ParticipantFlowService:
                 occurred_at=occurred_at,
                 buttons=report_buttons,
                 parse_mode=TELEGRAM_HTML_PARSE_MODE,
-            )
-
-        if normalized_action is MenuAction.VIEW_PROGRESS:
-            weekly_history = [
-                _weekly_status_from_row(row)
-                for row in self.sheets.list_weekly_status_history(participant_id)
-            ]
-            return self._send_simple_response(
-                user,
-                participant=participant,
-                text=format_progress_view(
-                    steps=steps,
-                    weekly_history=weekly_history,
-                    closed_week_number=closed_challenge_week_count(datetime.fromisoformat(occurred_at)),
-                ),
-                flow="view_progress",
-                step="render",
-                occurred_at=occurred_at,
             )
 
         return self._send_simple_response(
@@ -1208,6 +1228,51 @@ def _goal_setup_is_open(flow: SheetRow, occurred_at: str) -> bool:
     start = datetime.fromisoformat(_string_value(flow.get("goal_setup_start_date"))).date()
     end = datetime.fromisoformat(_string_value(flow.get("goal_setup_end_date"))).date()
     return start <= current_date <= end
+
+
+def _setup_progress_symbols(
+    *,
+    goal_exists: bool,
+    steps: list[PlannedStep],
+    now: datetime,
+    flow: SheetRow | None,
+) -> tuple[str, str]:
+    goal_deadline = challenge_start_date() + timedelta(days=6)
+    steps_deadline = working_weeks_start_date() - timedelta(days=1)
+    if flow is not None:
+        goal_deadline = _flow_date(flow, "goal_setup_end_date")
+        steps_deadline = _flow_date(flow, "steps_setup_end_date")
+
+    goal_symbol = _completion_symbol(
+        complete=goal_exists,
+        deadline=goal_deadline,
+        current_date=now.date(),
+    )
+    steps_symbol = _completion_symbol(
+        complete=_has_complete_planned_steps(steps),
+        deadline=steps_deadline,
+        current_date=now.date(),
+    )
+    return goal_symbol, steps_symbol
+
+
+def _flow_date(flow: SheetRow, field: str) -> date:
+    return datetime.fromisoformat(_string_value(flow.get(field))).date()
+
+
+def _completion_symbol(*, complete: bool, deadline: date, current_date: date) -> str:
+    if complete:
+        return "🟩"
+    return "⬛" if current_date > deadline else "⬜"
+
+
+def _has_complete_planned_steps(steps: list[PlannedStep]) -> bool:
+    valid_numbers = {
+        step.step_number
+        for step in steps
+        if 1 <= step.step_number <= 6 and step.step_title.strip()
+    }
+    return valid_numbers == set(range(1, 7)) and len(steps) == 6
 
 
 def _normalized_positive_amount(value: str) -> str | None:

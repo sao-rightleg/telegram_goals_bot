@@ -257,6 +257,97 @@ def test_progress_view_uses_planned_steps_as_primary_progress(tmp_path: Path) ->
 
     assert "50%" in response.text
     assert "■■■□□□" in response.text
+    assert "Цель: 🟩" in response.text
+    assert "Шаги: 🟩" in response.text
+
+
+def test_progress_view_shows_open_setup_statuses_without_goal_or_steps(tmp_path: Path) -> None:
+    service, _gateway, _main_bot, error_bot, _notification_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+    )
+
+    response = service.handle_menu_action(
+        TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+        MenuAction.VIEW_PROGRESS,
+        occurred_at="2026-05-30T10:00:00+05:00",
+    )
+
+    assert "Цель: ⬜" in response.text
+    assert "Шаги: ⬜" in response.text
+    assert "Прогресс: 0%" in response.text
+    assert error_bot.sent_messages == []
+
+
+def test_progress_view_shows_missed_setup_statuses_after_deadlines(tmp_path: Path) -> None:
+    service, _gateway, _main_bot, error_bot, _notification_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+    )
+
+    response = service.handle_menu_action(
+        TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+        MenuAction.VIEW_PROGRESS,
+        occurred_at=NOW,
+    )
+
+    assert "Цель: ⬛" in response.text
+    assert "Шаги: ⬛" in response.text
+    assert error_bot.sent_messages == []
+
+
+def test_progress_view_keeps_incomplete_steps_white_before_steps_deadline(tmp_path: Path) -> None:
+    service, _gateway, _main_bot, _error_bot, _notification_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        goals=[_goal("G001", "P001", "Моя цель")],
+        planned_steps=[_step("S001", "P001", "G001", 1, "Шаг 1", "open")],
+    )
+
+    response = service.handle_menu_action(
+        TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+        MenuAction.VIEW_PROGRESS,
+        occurred_at=SETUP_NOW,
+    )
+
+    assert "Цель: 🟩" in response.text
+    assert "Шаги: ⬜" in response.text
+
+
+def test_progress_view_uses_flow_setup_deadlines_inclusively(tmp_path: Path) -> None:
+    flow = {
+        "flow_id": "FLOW_1",
+        "flow_status": "active",
+        "goal_setup_end_date": "2026-09-16",
+        "steps_setup_end_date": "2026-09-20",
+    }
+    service, _gateway, _main_bot, _error_bot, _notification_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        challenge_flows=[flow],
+    )
+    user = TelegramUserContext(telegram_id=1001, chat_id="chat-1001")
+
+    on_goal_deadline = service.handle_menu_action(
+        user,
+        MenuAction.VIEW_PROGRESS,
+        occurred_at="2026-09-16T23:59:00+05:00",
+    )
+    after_goal_deadline = service.handle_menu_action(
+        user,
+        MenuAction.VIEW_PROGRESS,
+        occurred_at="2026-09-17T00:00:00+05:00",
+    )
+    after_steps_deadline = service.handle_menu_action(
+        user,
+        MenuAction.VIEW_PROGRESS,
+        occurred_at="2026-09-21T00:00:00+05:00",
+    )
+
+    assert "Цель: ⬜" in on_goal_deadline.text
+    assert "Цель: ⬛" in after_goal_deadline.text
+    assert "Шаги: ⬜" in after_goal_deadline.text
+    assert "Шаги: ⬛" in after_steps_deadline.text
 
 
 def test_weekly_history_is_secondary_when_available(tmp_path: Path) -> None:
@@ -376,6 +467,7 @@ def _build_service(
     planned_steps: list[dict[str, object]] | None = None,
     weekly_reports: list[dict[str, object]] | None = None,
     weekly_focus: list[dict[str, object]] | None = None,
+    challenge_flows: list[dict[str, object]] | None = None,
 ) -> tuple[ParticipantFlowService, FakeSheetsGateway, FakeBotClient, FakeBotClient, FakeBotClient]:
     db_path = tmp_path / "state.sqlite3"
     initialize_schema(db_path)
@@ -385,6 +477,7 @@ def _build_service(
         planned_steps=planned_steps or [],
         weekly_reports=weekly_reports or [],
         weekly_focus=weekly_focus or [],
+        challenge_flows=challenge_flows or [],
     )
     main_bot = FakeBotClient(BotPurpose.MAIN)
     error_bot = FakeBotClient(BotPurpose.ERROR)

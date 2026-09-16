@@ -283,13 +283,22 @@ def format_planned_steps_view(steps: Sequence[PlannedStep], *, focus_step_id: st
 def format_progress_view(
     *,
     steps: Sequence[PlannedStep],
+    goal_status_symbol: str,
+    steps_status_symbol: str,
     weekly_history: Sequence[WeeklyStatus] = (),
     closed_week_number: int = 0,
 ) -> str:
     percent = calculate_progress_percent(steps)
     lines = [
+        "Мой прогресс",
+        "",
+        f"Цель: {goal_status_symbol}",
+        f"Шаги: {steps_status_symbol}",
+        "",
+        "Выполнение шагов",
         f"Прогресс: {percent}%",
-        f"Шаги: {_format_progress_bar(steps)}",
+        _format_progress_bar(steps),
+        "",
     ]
 
     history_by_week = {item.week_number: item.status_symbol for item in weekly_history}

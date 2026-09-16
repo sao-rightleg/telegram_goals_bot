@@ -203,10 +203,17 @@ Trigger:
 - `📊 Мой прогресс`
 
 Bot shows:
+- goal setup status: `🟩` when an active goal exists, `⬜` while the setup deadline is open, `⬛` after a missed deadline
+- planned-steps setup status: `🟩` when all six numbered steps are filled, `⬜` while the setup deadline is open, `⬛` after a missed deadline
 - progress percent
 - main 6-cell planned-step progress bar
 - weekly status history separately if useful
 - current week status if available
+
+The progress view remains available when the goal or planned steps are missing so
+that the participant can see the corresponding setup status. Setup deadlines are
+read from the bound active flow (`goal_setup_end_date` and
+`steps_setup_end_date`) and are inclusive through the configured date.
 
 ## Step Report Flow
 

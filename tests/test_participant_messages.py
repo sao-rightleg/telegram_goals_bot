@@ -106,9 +106,15 @@ def test_progress_formatter_uses_six_cells_and_percent() -> None:
     ]
     history = [WeeklyStatus(week_number=1, status_symbol="🟩", status_code="green")]
 
-    text = format_progress_view(steps=steps, weekly_history=history, closed_week_number=3)
+    text = format_progress_view(
+        steps=steps,
+        goal_status_symbol="🟩",
+        steps_status_symbol="🟩",
+        weekly_history=history,
+        closed_week_number=3,
+    )
 
-    assert "50%" in text
+    assert text.startswith("Мой прогресс\n\nЦель: 🟩\nШаги: 🟩\n\nВыполнение шагов\nПрогресс: 50%")
     assert text.count("■") == 3
     assert text.count("□") == 3
     assert "🟩" in text
