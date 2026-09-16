@@ -518,16 +518,28 @@ def test_run_bot_composes_three_bot_router_and_services(tmp_path: Path) -> None:
     assert components.dispatcher.captain_service is components.captain_service
 
 
-def test_compose_runtime_uses_active_challenge_flow_start_date(tmp_path: Path) -> None:
+def test_compose_runtime_uses_explicit_first_working_week_date(tmp_path: Path) -> None:
     settings = load_settings(environ=runtime_env(tmp_path))
     configure_challenge_calendar(start_date=settings.challenge.start_date)
+    service = _fake_google_service()
+    rows = service.spreadsheet_docs["challenge-flows-sheet-id"]["ChallengeFlows"]
+    header = rows[0]
+    rows[1][header.index("week_01_start_date")] = "2026-06-15"
 
-    compose_runtime(
-        settings,
-        google_service_factory=lambda _settings: _fake_google_service(),
-    )
+    try:
+        compose_runtime(
+            settings,
+            google_service_factory=lambda _settings: service,
+        )
 
-    assert current_challenge_stage(datetime(2026, 6, 8, 10, tzinfo=ZoneInfo(TIMEZONE_NAME))) == "week_01"
+        assert current_challenge_stage(
+            datetime(2026, 6, 8, 10, tzinfo=ZoneInfo(TIMEZONE_NAME))
+        ) == "steps_setup"
+        assert current_challenge_stage(
+            datetime(2026, 6, 15, 10, tzinfo=ZoneInfo(TIMEZONE_NAME))
+        ) == "week_01"
+    finally:
+        configure_challenge_calendar(start_date=settings.challenge.start_date)
 
 
 def test_compose_runtime_binds_to_flow_matching_business_spreadsheet(tmp_path: Path) -> None:

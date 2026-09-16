@@ -578,6 +578,21 @@ def test_week_close_creates_gray_reports_for_active_missing_participants(tmp_pat
     assert {row["status_score"] for row in reports} == {0}
 
 
+def test_week_close_does_nothing_outside_working_weeks(tmp_path: Path) -> None:
+    service, gateway, _main_bot, _error_bot = _service(
+        tmp_path,
+        participants=[_participant("P001", 1001, consent=True)],
+    )
+    before_challenge = datetime(2026, 5, 24, 23, 59, tzinfo=ZoneInfo(TIMEZONE_NAME))
+
+    result = service.close_week(now=before_challenge)
+
+    assert result.gray_created_count == 0
+    assert result.existing_count == 0
+    assert result.failed_count == 0
+    assert gateway.list_weekly_reports() == []
+
+
 def test_week_close_includes_non_consenting_active_participants(tmp_path: Path) -> None:
     service, gateway, _main_bot, _error_bot = _service(
         tmp_path,

@@ -15,6 +15,7 @@ CHALLENGE_TOTAL_WEEKS = WORKING_WEEK_COUNT
 CHALLENGE_TOTAL_CALENDAR_WEEKS = SETUP_WEEK_COUNT + WORKING_WEEK_COUNT
 FINAL_SUMMARY_WINDOW_DAYS = 4
 _challenge_start_date = DEFAULT_CHALLENGE_START_DATE
+_working_weeks_start_date = DEFAULT_CHALLENGE_START_DATE + timedelta(weeks=SETUP_WEEK_COUNT)
 
 
 @dataclass(frozen=True)
@@ -25,11 +26,22 @@ class ScheduleItem:
     description: str
 
 
-def configure_challenge_calendar(*, start_date: date) -> None:
+def configure_challenge_calendar(
+    *,
+    start_date: date,
+    working_start_date: date | None = None,
+) -> None:
     """Configure the shared challenge start date for the running process."""
 
-    global _challenge_start_date
+    resolved_working_start_date = working_start_date or start_date + timedelta(
+        weeks=SETUP_WEEK_COUNT
+    )
+    if resolved_working_start_date < start_date:
+        raise ValueError("Working weeks cannot start before the challenge")
+
+    global _challenge_start_date, _working_weeks_start_date
     _challenge_start_date = start_date
+    _working_weeks_start_date = resolved_working_start_date
 
 
 def challenge_start_date() -> date:
@@ -39,11 +51,11 @@ def challenge_start_date() -> date:
 
 
 def working_weeks_start_date() -> date:
-    return challenge_start_date() + timedelta(weeks=SETUP_WEEK_COUNT)
+    return _working_weeks_start_date
 
 
 def challenge_end_date() -> date:
-    return challenge_start_date() + timedelta(weeks=CHALLENGE_TOTAL_CALENDAR_WEEKS) - timedelta(days=1)
+    return working_weeks_start_date() + timedelta(weeks=WORKING_WEEK_COUNT) - timedelta(days=1)
 
 
 def final_summary_end_date() -> date:
@@ -77,13 +89,17 @@ def current_challenge_stage(now: datetime) -> str:
     if current_date < challenge_start_date():
         return "pre_start"
 
-    days_since_start = (current_date - challenge_start_date()).days
-    if days_since_start < 7:
-        return "goal_setup"
-    if days_since_start < 14:
+    if current_date < working_weeks_start_date():
+        setup_midpoint = min(
+            challenge_start_date() + timedelta(days=7),
+            working_weeks_start_date(),
+        )
+        if current_date < setup_midpoint:
+            return "goal_setup"
         return "steps_setup"
 
-    working_week_number = days_since_start // 7 - SETUP_WEEK_COUNT + 1
+    days_since_working_start = (current_date - working_weeks_start_date()).days
+    working_week_number = days_since_working_start // 7 + 1
     if 1 <= working_week_number <= WORKING_WEEK_COUNT:
         return f"week_{working_week_number:02d}"
     if current_date <= final_summary_end_date():

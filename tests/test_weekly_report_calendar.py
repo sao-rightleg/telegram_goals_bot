@@ -2,8 +2,11 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from app.scheduler.calendar import (
+    DEFAULT_CHALLENGE_START_DATE,
     TIMEZONE_NAME,
     closed_challenge_week_count,
+    configure_challenge_calendar,
+    current_challenge_stage,
     current_challenge_week_number,
     is_weekly_report_open,
     weekly_report_deadline,
@@ -52,3 +55,24 @@ def test_helpers_are_deterministic_with_explicit_now() -> None:
     assert current_challenge_week_number(first) == current_challenge_week_number(second)
     assert weekly_report_deadline(first) == weekly_report_deadline(second)
     assert is_weekly_report_open(first) == is_weekly_report_open(second)
+
+
+def test_explicit_first_working_week_overrides_two_week_formula() -> None:
+    try:
+        configure_challenge_calendar(
+            start_date=datetime(2026, 9, 9, tzinfo=YEKT).date(),
+            working_start_date=datetime(2026, 9, 21, tzinfo=YEKT).date(),
+        )
+
+        assert current_challenge_stage(datetime(2026, 9, 20, 23, 59, tzinfo=YEKT)) == (
+            "steps_setup"
+        )
+        assert closed_challenge_week_count(
+            datetime(2026, 9, 20, 23, 59, 1, tzinfo=YEKT)
+        ) == 0
+        assert current_challenge_stage(datetime(2026, 9, 21, 10, 0, tzinfo=YEKT)) == (
+            "week_01"
+        )
+        assert current_challenge_week_number(datetime(2026, 9, 21, 10, 0, tzinfo=YEKT)) == 1
+    finally:
+        configure_challenge_calendar(start_date=DEFAULT_CHALLENGE_START_DATE)

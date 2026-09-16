@@ -911,7 +911,22 @@ def _configure_challenge_calendar_from_sheets(
         start_date = date.fromisoformat(str(raw_start_date).strip())
     except ValueError as exc:
         raise ConfigurationError("Active ChallengeFlows.challenge_start_date must be YYYY-MM-DD") from exc
-    configure_challenge_calendar(start_date=start_date)
+    raw_working_start_date = flow.get("week_01_start_date")
+    if raw_working_start_date is None or str(raw_working_start_date).strip() == "":
+        raise ConfigurationError("Active ChallengeFlows.week_01_start_date is required")
+    try:
+        working_start_date = date.fromisoformat(str(raw_working_start_date).strip())
+    except ValueError as exc:
+        raise ConfigurationError(
+            "Active ChallengeFlows.week_01_start_date must be YYYY-MM-DD"
+        ) from exc
+    try:
+        configure_challenge_calendar(
+            start_date=start_date,
+            working_start_date=working_start_date,
+        )
+    except ValueError as exc:
+        raise ConfigurationError("Active challenge flow calendar is inconsistent") from exc
 
 
 def _required_token(value: str | None, key: str) -> str:

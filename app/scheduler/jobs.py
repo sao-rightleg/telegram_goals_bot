@@ -495,6 +495,9 @@ class SchedulerService:
         )
 
     def close_week(self, *, now: datetime) -> WeekCloseResult:
+        if not is_working_week(now):
+            return WeekCloseResult()
+
         week_number = current_challenge_week_number(now)
         gray_created_count = 0
         existing_count = 0
@@ -547,7 +550,7 @@ class SchedulerService:
                             full_name=_display_name(participant),
                         )
                     )
-            except Exception as exc:  # pragma: no cover - concrete exception type belongs to Sheets adapter
+            except Exception:  # pragma: no cover - concrete exception type belongs to Sheets adapter
                 failed_count += 1
                 self._notify_admin_error(
                     "week_close_gray_failed",
@@ -804,7 +807,7 @@ class SchedulerService:
                         recipients=(Recipient(recipient_type, chat_id),),
                     )
                     sent_for_team = True
-                except Exception as exc:  # pragma: no cover - concrete exception type belongs to bot adapter
+                except Exception:  # pragma: no cover - concrete exception type belongs to bot adapter
                     self._notify_admin_error(
                         error_label,
                         f"{error_label} team_id={team_id}",
