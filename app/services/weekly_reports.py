@@ -14,16 +14,21 @@ from app.bot.messages import (
     MISSING_DATA_TEXT,
     UNKNOWN_USER_TEXT,
     WEEKLY_REPORT_BLUE_STEP_REQUIRED_TEXT,
-    WEEKLY_REPORT_DUPLICATE_TEXT,
     WEEKLY_REPORT_EMPTY_TEXT,
     WEEKLY_REPORT_GREEN_STEP_REQUIRED_TEXT,
     WEEKLY_REPORT_LATE_TEXT,
     WEEKLY_REPORT_RECOVERY_TEXT,
     WEEKLY_REPORT_VOICE_NOT_AVAILABLE_TEXT,
     build_weekly_report_status_buttons,
+    format_weekly_report_not_open_text,
     get_weekly_report_success_text,
 )
-from app.scheduler.calendar import current_challenge_week_number, is_weekly_report_open
+from app.scheduler.calendar import (
+    current_challenge_stage,
+    current_challenge_week_number,
+    is_weekly_report_open,
+    working_weeks_start_date,
+)
 from app.services.notifications import NotificationCategory, NotificationRouter
 from app.services.participant_models import FlowResponse, TelegramUserContext
 from app.services.voice_messages import VoiceMessageInput, VoiceMessageService
@@ -412,6 +417,12 @@ class WeeklyReportService:
 
         if not _consent_is_given(participant):
             return self._send(user, text=CONSENT_TEXT, buttons=(CONSENT_ACCEPT_BUTTON, CONSENT_DECLINE_BUTTON))
+
+        if current_challenge_stage(now) in {"pre_start", "goal_setup", "steps_setup"}:
+            return self._send(
+                user,
+                text=format_weekly_report_not_open_text(working_weeks_start_date()),
+            )
 
         if not is_weekly_report_open(now):
             return self._send(user, text=WEEKLY_REPORT_LATE_TEXT)

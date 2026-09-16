@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date
 from html import escape
 
 from app.scheduler.calendar import WORKING_WEEK_COUNT
@@ -122,6 +123,13 @@ SCHEDULER_REMINDER_TEXTS = {
 
 def format_missing_data_message() -> str:
     return MISSING_DATA_TEXT
+
+
+def format_weekly_report_not_open_text(opens_on: date) -> str:
+    return (
+        f"Отчёты по шагам откроются {opens_on:%d.%m.%Y}, "
+        "когда начнётся первая рабочая неделя."
+    )
 
 
 def format_scheduler_reminder_text(reminder_type: str) -> str:

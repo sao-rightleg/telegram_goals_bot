@@ -166,6 +166,11 @@ Buttons:
 - `Шаг {number}. {step_title} - Отчитаться` for open steps
 - `Шаг {number}. {step_title} - Редактировать отчёт` for closed steps
 
+These report-action buttons are shown only during an open working week. During
+goal and steps setup, participants can view expandable step descriptions but do
+not see report buttons. A stale report button from an older message returns the
+first working-week opening date instead of claiming that a deadline has passed.
+
 ## Weekly Focus Flow
 
 At the beginning of each week, if participant has open planned steps and no focus for the current week, bot asks:

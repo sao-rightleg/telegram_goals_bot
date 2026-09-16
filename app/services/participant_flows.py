@@ -52,6 +52,7 @@ from app.scheduler.calendar import (
     challenge_week_date_range,
     closed_challenge_week_count,
     current_challenge_week_number,
+    is_weekly_report_open,
     is_working_week,
 )
 from app.services.notifications import NotificationCategory, NotificationRouter
@@ -672,6 +673,11 @@ class ParticipantFlowService:
             )
 
         if normalized_action is MenuAction.VIEW_STEPS:
+            report_buttons = (
+                _step_action_buttons(steps)
+                if is_weekly_report_open(datetime.fromisoformat(occurred_at))
+                else ()
+            )
             focus = self.sheets.find_weekly_focus(
                 participant_id,
                 week_number=current_challenge_week_number(datetime.fromisoformat(occurred_at)),
@@ -683,7 +689,7 @@ class ParticipantFlowService:
                 flow="view_steps",
                 step="render",
                 occurred_at=occurred_at,
-                buttons=_step_action_buttons(steps),
+                buttons=report_buttons,
                 parse_mode=TELEGRAM_HTML_PARSE_MODE,
             )
 
