@@ -197,6 +197,22 @@ Rules:
 - closing the focused step does not require selecting a new focus
 - focus does not prevent reporting another step in the same week
 
+Every Monday at 21:00 Asia/Yekaterinburg, the notification bot sends each
+captain an own-team summary:
+
+```text
+Фокусы команды «{team_name}» на {week_number}-ю неделю.
+
+Выбрали приоритетный шаг: {selected_count} из {active_count} ({selected_percent}%).
+✅ {participant_name} — «{step_title}»
+
+Не выбрали: {missing_count} из {active_count} ({missing_percent}%).
+❌ {participant_name}
+```
+
+This operational summary is captain-only. It is not sent to trackers, the
+administrator, or Alexander Sitnikov.
+
 ## View Progress
 
 Trigger:

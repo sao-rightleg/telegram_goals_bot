@@ -215,6 +215,11 @@ Weekly focus rules:
 - closing the focused step does not require selecting a new focus for the remaining week
 - focus does not prevent reporting another step in the same week
 - captains and trackers must see weekly focus in reports
+- every Monday at 21:00 Asia/Yekaterinburg, each captain receives an operational
+  summary of the focus selected by every active consenting participant in the
+  captain's own team and a list of those who have not selected one
+- the Monday focus summary is not sent to trackers, the administrator, or
+  Alexander Sitnikov; their ordinary weekly reports remain unchanged
 
 Participants report per planned step.
 

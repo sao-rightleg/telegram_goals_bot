@@ -444,7 +444,8 @@ class SchedulerService:
             participants = [
                 row
                 for row in self.sheets.list_participants_by_team(team_id)
-                if _normalized_string(row.get("status")) != "dropped"
+                if _normalized_string(row.get("status")) == "active"
+                and _normalized_string(row.get("role")) in {"participant", "captain"}
                 and _consent_is_given(row)
                 and (not team_flow_id or _string_value(row.get("flow_id")) == team_flow_id)
             ]
@@ -924,7 +925,7 @@ def _format_weekly_focus_summary(
     missing_text = "\n".join(missing_lines) if missing_lines else "Все участники выбрали фокус"
     return "\n".join(
         (
-            f"Итоги выбора цели на {week_number}-ю неделю по команде «{team_name}».",
+            f"Фокусы команды «{team_name}» на {week_number}-ю неделю.",
             "",
             f"Выбрали приоритетный шаг: {selected_count} из {active_count} ({_percentage(selected_count, active_count)}%).",
             selected_text,

@@ -406,6 +406,8 @@ def test_weekly_focus_summary_to_captain_contains_team_percentages_and_selected_
         _participant("P001", 1001, consent=True, full_name="Иван Иванов"),
         _participant("P002", 1002, consent=True, full_name="Анна Петрова"),
         _participant("P003", 1003, consent=True, full_name="Сергей Сидоров"),
+        _participant("P004", 1004, consent=True, status="inactive", full_name="Неактивный Участник"),
+        _participant("TR001", 8001, consent=True, role="tracker", full_name="Трекер Команды"),
     ]
     service, _gateway, _main_bot, _error_bot, notification_bot = _service_with_notification_bot(
         tmp_path,
@@ -440,12 +442,16 @@ def test_weekly_focus_summary_to_captain_contains_team_percentages_and_selected_
     assert len(notification_bot.sent_messages) == 1
     message = notification_bot.sent_messages[0]
     assert message.chat_id == "9001"
-    assert "команде «Достигаторы»" in message.text
+    assert message.text.startswith(
+        "Фокусы команды «Достигаторы» на 1-ю неделю."
+    )
     assert "3 из 4 (75%)" in message.text
     assert "1 из 4 (25%)" in message.text
     assert "Иван Иванов — «Провести 10 встреч»" in message.text
     assert "Анна Петрова — «Подготовить оффер»" in message.text
     assert "Сергей Сидоров" in message.text
+    assert "Неактивный Участник" not in message.text
+    assert "Трекер Команды" not in message.text
     assert message.buttons == ()
 
 
@@ -479,6 +485,62 @@ def test_weekly_focus_summary_does_not_mix_participants_from_another_flow(
     assert "0 из 2 (0%)" in text
     assert "Свой участник" in text
     assert "Чужой участник" not in text
+
+
+def test_weekly_focus_summaries_are_isolated_between_teams_in_same_flow(
+    tmp_path: Path,
+) -> None:
+    captain_a = _participant("C001", 9001, consent=True, role="captain", full_name="Капитан Альфа")
+    captain_b = _participant("C002", 9002, consent=True, role="captain", full_name="Капитан Бета")
+    member_a = _participant("P001", 1001, consent=True, full_name="Участник Альфа")
+    member_b = _participant("P002", 1002, consent=True, full_name="Участник Бета")
+    for row, team_id in (
+        (captain_a, "T001"),
+        (member_a, "T001"),
+        (captain_b, "T002"),
+        (member_b, "T002"),
+    ):
+        row["flow_id"] = "FLOW_1"
+        row["team_id"] = team_id
+
+    service, _gateway, _main_bot, _error_bot, notification_bot = _service_with_notification_bot(
+        tmp_path,
+        participants=[captain_a, member_a, captain_b, member_b],
+        teams=[
+            {"flow_id": "FLOW_1", "team_id": "T001", "team_name": "Альфа", "captain_id": "C001"},
+            {"flow_id": "FLOW_1", "team_id": "T002", "team_name": "Бета", "captain_id": "C002"},
+        ],
+        trackers=[],
+        planned_steps=[
+            _step("S001", "P001", "G001", 1, "Фокус Альфа", "open"),
+            _step("S002", "P002", "G002", 1, "Фокус Бета", "open"),
+        ],
+        weekly_focus=[
+            {"focus_id": "WF1", "participant_id": "P001", "goal_id": "G001", "step_id": "S001", "week_number": 1},
+            {"focus_id": "WF2", "participant_id": "P002", "goal_id": "G002", "step_id": "S002", "week_number": 1},
+        ],
+    )
+
+    first = service.send_weekly_focus_summary_to_captains(
+        now=MONDAY_START.replace(hour=21),
+        flow_id="FLOW_1",
+    )
+    second = service.send_weekly_focus_summary_to_captains(
+        now=MONDAY_START.replace(hour=21),
+        flow_id="FLOW_1",
+    )
+
+    assert first.sent_count == 2
+    assert second.sent_count == 0
+    assert second.skipped_count == 2
+    messages = {message.chat_id: message.text for message in notification_bot.sent_messages}
+    assert set(messages) == {"9001", "9002"}
+    assert "Фокусы команды «Альфа»" in messages["9001"]
+    assert "Участник Альфа — «Фокус Альфа»" in messages["9001"]
+    assert "Участник Бета" not in messages["9001"]
+    assert "Фокусы команды «Бета»" in messages["9002"]
+    assert "Участник Бета — «Фокус Бета»" in messages["9002"]
+    assert "Участник Альфа" not in messages["9002"]
 
 
 def test_reminder_skips_dropped_non_consenting_and_already_reported_participants(tmp_path: Path) -> None:
