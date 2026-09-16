@@ -311,8 +311,8 @@ Challenge route:
   active September 2026 test flow, goal entry remains open through `2026-09-16`
   while `steps_setup` remains `2026-09-14` through `2026-09-20`; working-week
   dates do not move.
-- Main route contains 6 planned steps
-- Main progress bar has 6 cells
+- Main route contains 8 planned steps
+- Main progress bar has 8 cells
 - Setup phases are not included in the main progress bar
 
 Planned-step progress scoring:
@@ -326,8 +326,8 @@ Progress percent:
 completed score / total planned steps * 100
 
 Examples:
-- 5 of 6 = 83.3%
-- 6 of 6 = 100%
+- 5 of 8 = 62.5%
+- 8 of 8 = 100%
 
 Weekly status history is stored separately from main step progress. UI may show both main progress bar and weekly history, but main progress percent is based only on planned steps.
 
@@ -486,7 +486,7 @@ Active: 8
 Dropped: 2
 Weekly victories: 62.5%
 
-Иванов Иван — 🟩🟦⬜⬜⬜⬜ 25%
+Иванов Иван — 🟩🟦⬜⬜⬜⬜⬜⬜ 19%
 Петров Сергей — 🟩🟥⬜⬜⬜⬜ 16.7%
 
 ## 22. PDF report

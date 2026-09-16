@@ -36,7 +36,7 @@ Product decisions in `docs/02_open_questions.md` are resolved and must be follow
 - Week close must be idempotent: reruns must not duplicate weekly reports and must continue after partial Google Sheets write failures.
 - After week close, participants are not notified about `⬛`; captains and trackers receive one team-scoped aggregated silent-participant notification with names only.
 - Insights are stored separately and do not replace weekly progress.
-- Main route has 6 planned steps and a 6-cell progress bar.
+- Main route has 8 planned steps and an 8-cell progress bar.
 - Main progress percentage is calculated only from planned steps.
 - `green` and `blue` reports require selected planned step IDs.
 - One weekly report can close or partially progress several steps.

@@ -1404,7 +1404,7 @@ def test_live_scheduler_routes_steps_messages_and_all_summary_roles(tmp_path: Pa
             "event_type": "participant_message",
             "recipient_role": "участник",
             "condition_code": "steps_missing",
-            "message_text": "Сформируй шесть шагов.",
+            "message_text": "Сформируй восемь шагов.",
             "is_enabled": True,
         },
         *[
@@ -1433,7 +1433,7 @@ def test_live_scheduler_routes_steps_messages_and_all_summary_roles(tmp_path: Pa
     )
 
     assert scheduler_service.participant_messages == [
-        ("Сформируй шесть шагов.", "steps_missing", datetime(2026, 9, 14, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME)))
+        ("Сформируй восемь шагов.", "steps_missing", datetime(2026, 9, 14, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME)))
     ]
     assert scheduler_service.steps_summary_calls == [
         (role, "FLOW_1", f"STEPS_SUMMARY_{role}")

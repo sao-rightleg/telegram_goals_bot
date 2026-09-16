@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from app.bot.clients import TelegramInlineButton
 from app.bot.menus import WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX
 from app.bot.messages import format_scheduler_reminder_text, format_silent_participants_notification
+from app.domain import PLANNED_STEP_COUNT
 from app.scheduler.calendar import (
     build_idempotency_key,
     challenge_week_date_range,
@@ -939,7 +940,9 @@ def _participant_has_complete_steps(sheets: SheetsGateway, participant_id: str) 
         _int_value(row.get("step_number"))
         for row in valid_rows
     }
-    return len(valid_rows) == 6 and numbers == set(range(1, 7))
+    return len(valid_rows) == PLANNED_STEP_COUNT and numbers == set(
+        range(1, PLANNED_STEP_COUNT + 1)
+    )
 
 
 def _steps_setup_completion(

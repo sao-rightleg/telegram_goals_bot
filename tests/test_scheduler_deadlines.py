@@ -164,7 +164,13 @@ def test_steps_stage_reminds_incomplete_participants_and_sends_scoped_role_summa
         {**_participant("C002", 2002, consent=True, role="captain", team_id="T002", full_name="Капитан Два"), "flow_id": "FLOW_1"},
     ]
     goals = [_goal("G001", "P001"), _goal("G002", "P002"), _goal("GC1", "C001"), _goal("GC2", "C002")]
-    steps = [_step(f"S00{number}", "P001", "G001", number, f"Шаг {number}", "open") for number in range(1, 7)]
+    steps = [
+        _step(f"S00{number}", "P001", "G001", number, f"Шаг {number}", "open")
+        for number in range(1, 9)
+    ] + [
+        _step(f"S1{number:02d}", "P002", "G002", number, f"Шаг {number}", "open")
+        for number in range(1, 8)
+    ]
     gateway = FakeSheetsGateway(
         participants=participants,
         teams=[
@@ -188,7 +194,7 @@ def test_steps_stage_reminds_incomplete_participants_and_sends_scoped_role_summa
     )
 
     result = service.send_scheduled_participant_message(
-        text="Сформируй шесть шагов.", condition="steps_missing", now=GOAL_SETUP_START,
+        text="Сформируй восемь шагов.", condition="steps_missing", now=GOAL_SETUP_START,
         flow_id="FLOW_1", event_id="STEPS_START_01",
     )
     for role, event_id in (("капитан", "CAP"), ("трекер", "TRACK"), ("администратор", "ADMIN"), ("ситников", "SIT")):

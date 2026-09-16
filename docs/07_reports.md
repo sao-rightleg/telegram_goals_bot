@@ -210,7 +210,7 @@ Unless this rule is explicitly changed later.
 ## Progress Bar
 
 Main progress bar:
-- shows completion of 6 planned steps
+- shows completion of 8 planned steps
 - has 6 cells
 - does not include weeks 1-2
 - is the source for main progress percent
@@ -228,7 +228,7 @@ In weekly history, `⬜` is reserved for current/future weeks. In the planned-st
 Example:
 
 ```text
-Иванов Иван — 🟩🟦⬜⬜⬜⬜ 25%
+Иванов Иван — 🟩🟦⬜⬜⬜⬜⬜⬜ 19%
 ```
 
 ## Data Sources

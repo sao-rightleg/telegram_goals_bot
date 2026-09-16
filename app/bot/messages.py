@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from datetime import date
 from html import escape
 
+from app.domain import PLANNED_STEP_COUNT
 from app.scheduler.calendar import WORKING_WEEK_COUNT
 from app.services.insight_models import InsightListItem, InsightPage
 from app.services.participant_models import Goal, PlannedStep, WeeklyStatus
@@ -313,18 +314,14 @@ def format_progress_view(
 
 
 def calculate_progress_percent(steps: Sequence[PlannedStep]) -> int:
-    if not steps:
-        return 0
     closed_count = sum(1 for step in steps if step.step_status == "closed")
-    return round(closed_count / len(steps) * 100)
+    return round(min(closed_count, PLANNED_STEP_COUNT) / PLANNED_STEP_COUNT * 100)
 
 
 def _format_progress_bar(steps: Sequence[PlannedStep]) -> str:
-    if not steps:
-        return "□□□□□□"
     closed_count = sum(1 for step in steps if step.step_status == "closed")
-    filled_cells = round(closed_count / len(steps) * 6)
-    return "■" * filled_cells + "□" * (6 - filled_cells)
+    filled_cells = min(closed_count, PLANNED_STEP_COUNT)
+    return "■" * filled_cells + "□" * (PLANNED_STEP_COUNT - filled_cells)
 
 
 def _format_goal_value(goal: Goal) -> str:

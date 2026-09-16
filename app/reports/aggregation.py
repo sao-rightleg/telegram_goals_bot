@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterable
 
+from app.domain import PLANNED_STEP_COUNT
 from app.reports.models import AllTeamsReportData, ParticipantReportSection, TeamReportData
 from app.sheets.gateway import SheetsGateway, SheetRow
 
@@ -212,12 +213,15 @@ def _progress_percent(steps: list[SheetRow]) -> int:
     if not steps:
         return 0
     score = sum(_step_score(step) for step in steps)
-    return round(score / 6 * 100)
+    return round(min(score, PLANNED_STEP_COUNT) / PLANNED_STEP_COUNT * 100)
 
 
 def _progress_bar(steps: list[SheetRow]) -> str:
-    symbols = [STEP_SYMBOLS.get(str(step.get("step_status")), "⬜") for step in steps[:6]]
-    return "".join(symbols + ["⬜"] * (6 - len(symbols)))
+    symbols = [
+        STEP_SYMBOLS.get(str(step.get("step_status")), "⬜")
+        for step in steps[:PLANNED_STEP_COUNT]
+    ]
+    return "".join(symbols + ["⬜"] * (PLANNED_STEP_COUNT - len(symbols)))
 
 
 def _step_score(step: SheetRow) -> float:

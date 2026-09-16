@@ -204,9 +204,9 @@ Trigger:
 
 Bot shows:
 - goal setup status: `🟩` when an active goal exists, `⬜` while the setup deadline is open, `⬛` after a missed deadline
-- planned-steps setup status: `🟩` when all six numbered steps are filled, `⬜` while the setup deadline is open, `⬛` after a missed deadline
+- planned-steps setup status: `🟩` when all eight numbered steps are filled, `⬜` while the setup deadline is open, `⬛` after a missed deadline
 - progress percent
-- main 6-cell planned-step progress bar
+- main 8-cell planned-step progress bar
 - weekly status history separately if useful
 - current week status if available
 

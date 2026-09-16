@@ -306,7 +306,7 @@ Allowed `step_status` values:
 Notes:
 - Steps are not tied to specific weeks.
 - Participants cannot add new steps in MVP.
-- Main route contains 6 planned steps.
+- Main route contains 8 planned steps.
 - One weekly report may close several steps.
 - Already closed steps cannot be closed again.
 - New/additional steps are formulated by participant with captain/tracker and added by admin in Google Sheets.

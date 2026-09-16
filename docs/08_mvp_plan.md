@@ -271,7 +271,7 @@ Resolved product decisions are recorded in `docs/02_open_questions.md`.
 
 Implementation must respect:
 - shared challenge calendar ending `2026-07-31`
-- 6 planned steps and 6-cell main progress bar
+- 8 planned steps and 8-cell main progress bar
 - mandatory step selection for `green` and `blue`
 - tracker/admin-only final goal achievement
 - three Telegram bots

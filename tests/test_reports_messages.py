@@ -38,7 +38,7 @@ def _participant_section(
         status=status,
         is_dropped=dropped,
         risk_state="ok",
-        progress_bar="■■■□□□",
+        progress_bar="■■■□□□□□",
         progress_percent=50,
         goal_title="Новый контракт",
         goal_description="Заключить контракт с клиентом",
@@ -85,8 +85,8 @@ def test_team_summary_text_contains_required_fields() -> None:
     assert "🟩 1" in text
     assert "🟦 1" in text
     assert "⬛ 0" in text
-    assert "Анна Иванова — ■■■□□□ 50%" in text
-    assert "Ольга Соколова — ■■■□□□ 50% · выбыл" in text
+    assert "Анна Иванова — ■■■□□□□□ 50%" in text
+    assert "Ольга Соколова — ■■■□□□□□ 50% · выбыл" in text
 
 
 def test_captain_summary_has_fixed_submission_logic_and_missing_names() -> None:
@@ -183,7 +183,7 @@ def test_participant_line_contains_progress_status_goal_and_report_text() -> Non
     assert "Анна Иванова" in text
     assert "@anna" in text
     assert "🟩" in text
-    assert "■■■□□□ 50%" in text
+    assert "■■■□□□□□ 50%" in text
     assert "Новый контракт" in text
     assert "Фокус недели: Провести встречу" in text
     assert "Провела встречу" in text

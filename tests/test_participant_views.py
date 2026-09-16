@@ -243,6 +243,8 @@ def test_progress_view_uses_planned_steps_as_primary_progress(tmp_path: Path) ->
             _step("S004", "P001", "G001", 4, "Шаг 4", "open"),
             _step("S005", "P001", "G001", 5, "Шаг 5", "open"),
             _step("S006", "P001", "G001", 6, "Шаг 6", "open"),
+            _step("S007", "P001", "G001", 7, "Шаг 7", "open"),
+            _step("S008", "P001", "G001", 8, "Шаг 8", "open"),
         ],
         weekly_reports=[
             {"weekly_report_id": "WR001", "participant_id": "P001", "week_number": 1, "status_symbol": "🟥", "status_code": "red"}
@@ -255,8 +257,8 @@ def test_progress_view_uses_planned_steps_as_primary_progress(tmp_path: Path) ->
         occurred_at=NOW,
     )
 
-    assert "50%" in response.text
-    assert "■■■□□□" in response.text
+    assert "38%" in response.text
+    assert "■■■□□□□□" in response.text
     assert "Цель: 🟩" in response.text
     assert "Шаги: 🟩" in response.text
 

@@ -9,6 +9,7 @@ from hashlib import sha256
 from uuid import uuid4
 
 from app.bot.clients import BotClient, TelegramInlineButton
+from app.domain import PLANNED_STEP_COUNT
 from app.bot.menus import (
     MenuAction,
     WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX,
@@ -1270,9 +1271,9 @@ def _has_complete_planned_steps(steps: list[PlannedStep]) -> bool:
     valid_numbers = {
         step.step_number
         for step in steps
-        if 1 <= step.step_number <= 6 and step.step_title.strip()
+        if 1 <= step.step_number <= PLANNED_STEP_COUNT and step.step_title.strip()
     }
-    return valid_numbers == set(range(1, 7)) and len(steps) == 6
+    return valid_numbers == set(range(1, PLANNED_STEP_COUNT + 1)) and len(steps) == PLANNED_STEP_COUNT
 
 
 def _normalized_positive_amount(value: str) -> str | None:

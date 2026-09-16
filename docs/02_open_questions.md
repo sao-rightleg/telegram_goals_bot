@@ -13,13 +13,13 @@ Codex must treat these decisions as current source of truth. If older documents 
   - `week_01` through `week_08`: planned step execution and reports.
   - After week 8: four days for final summary.
 - Working weeks: 8.
-- Main route planned steps: 6.
+- Main route planned steps: 8.
 - Setup phases do not count as working weeks.
 - An explicitly configured recovery extension may overlap `goal_setup` and
   `steps_setup` without shifting working weeks. For the active September 2026
   test flow, goal entry is extended through `2026-09-16`; steps setup remains
   `2026-09-14`–`2026-09-20`.
-- Main progress bar has 6 cells.
+- Main progress bar has 8 cells.
 - Active flow dates are configured in a separate Google Sheets document `ChallengeFlows`.
 - Timezone for all dates, deadlines, and reminders: `Asia/Yekaterinburg`.
 - If Google Sheets has no active flow, runtime falls back to `CHALLENGE_START_DATE`.
@@ -94,8 +94,8 @@ Codex must treat these decisions as current source of truth. If older documents 
 
 ## 7. Progress Bar
 
-- Main progress bar shows completion of 6 planned steps.
-- Main progress bar has 6 cells.
+- Main progress bar shows completion of 8 planned steps.
+- Main progress bar has 8 cells.
 - No separate 8-cell weekly progress bar is needed.
 - Weeks 1-2 do not appear in the main progress bar.
 - `🟩` = 1 closed step.

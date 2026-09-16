@@ -106,6 +106,6 @@ MVP does not need more branded wording for "Смерть иллюзий".
 
 ## Progress Display
 
-Main progress bar shows 6 planned steps. Weekly status history is separate.
+Main progress bar shows 8 planned steps. Weekly status history is separate.
 
 Use the main progress bar for main progress percentage. Show weekly history only as secondary context when needed.

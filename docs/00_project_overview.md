@@ -19,7 +19,7 @@ Each participant has:
 - a concrete goal
 - a goal value
 - a permission condition
-- predefined planned steps: 6 main route steps for working weeks
+- predefined planned steps: 8 main route steps for working weeks
 - weekly progress
 - insights
 
@@ -135,7 +135,7 @@ Late reports after Sunday 23:59 Yekaterinburg time do not change weekly status.
 
 Insights are stored separately and do not replace weekly progress.
 
-Main progress is calculated from the 6 planned steps. Weekly status history is stored separately.
+Main progress is calculated from the 8 planned steps. Weekly status history is stored separately.
 
 ## Development principle
 

@@ -22,8 +22,8 @@ def test_aggregation_builds_team_report_from_final_sheets_rows() -> None:
     assert team.weekly_victory_percent == 75
     assert anna.full_name == "Анна Иванова"
     assert anna.status == "🟩"
-    assert anna.progress_bar == "🟩🟦⬜⬜⬜⬜"
-    assert anna.progress_percent == 25
+    assert anna.progress_bar == "🟩🟦⬜⬜⬜⬜⬜⬜"
+    assert anna.progress_percent == 19
     assert anna.goal_title == "Новый контракт"
     assert anna.weekly_focus_step == "Провести встречу"
     assert anna.report_text == "Провела встречу."
@@ -140,7 +140,7 @@ def test_persisted_missing_closed_week_uses_black_square_but_open_steps_stay_whi
     participant = next(section for section in team.participants if section.participant_id == "P001")
 
     assert participant.status == "⬛"
-    assert participant.progress_bar == "🟩🟦⬜⬜⬜⬜"
+    assert participant.progress_bar == "🟩🟦⬜⬜⬜⬜⬜⬜"
 
 
 def test_missing_active_participant_final_report_is_rejected() -> None:

@@ -91,7 +91,7 @@ def test_goal_formatter_renders_goal_fields() -> None:
     )
 
 
-def test_progress_formatter_uses_six_cells_and_percent() -> None:
+def test_progress_formatter_uses_eight_cells_and_percent() -> None:
     steps = [
         PlannedStep(
             step_id=f"S00{index}",
@@ -102,7 +102,7 @@ def test_progress_formatter_uses_six_cells_and_percent() -> None:
             step_description="",
             step_status="closed" if index <= 3 else "open",
         )
-        for index in range(1, 7)
+        for index in range(1, 9)
     ]
     history = [WeeklyStatus(week_number=1, status_symbol="🟩", status_code="green")]
 
@@ -114,9 +114,9 @@ def test_progress_formatter_uses_six_cells_and_percent() -> None:
         closed_week_number=3,
     )
 
-    assert text.startswith("Мой прогресс\n\nЦель: 🟩\nШаги: 🟩\n\nВыполнение шагов\nПрогресс: 50%")
+    assert text.startswith("Мой прогресс\n\nЦель: 🟩\nШаги: 🟩\n\nВыполнение шагов\nПрогресс: 38%")
     assert text.count("■") == 3
-    assert text.count("□") == 3
+    assert text.count("□") == 5
     assert "🟩" in text
     assert "Неделя 2: ⬛" in text
     assert "Неделя 4: ⬜" in text
