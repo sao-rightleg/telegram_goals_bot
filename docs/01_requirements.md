@@ -95,6 +95,9 @@ Captain has additional responsibilities:
 - receives PDF report for own team
 - can request the current goal, route, weekly focus, and completed-step progress
   for every active consenting participant in own team from the captain menu
+- can select an active consenting participant from own team and view all fields
+  of that participant's active goal; the goal text is available only in a
+  private chat with the bot
 
 Captain cannot:
 - add reports for other teams

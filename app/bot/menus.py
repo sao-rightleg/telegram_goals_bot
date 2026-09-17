@@ -15,6 +15,7 @@ class MenuAction(str, Enum):
     VIEW_INSIGHTS = "view_insights"
     VIEW_TEAM = "view_team"
     VIEW_TEAM_PROGRESS = "view_team_progress"
+    VIEW_TEAM_GOALS = "view_team_goals"
     CAPTAIN_MANUAL_REPORT = "captain_manual_report"
     VIEW_TEAM_REPORT = "view_team_report"
 
@@ -43,6 +44,8 @@ INSIGHT_SKIP_TITLE_CALLBACK = "insight:skip_title"
 INSIGHT_CANCEL_CALLBACK = "insight:cancel"
 
 CAPTAIN_TEAM_CALLBACK = "captain:team"
+CAPTAIN_GOAL_CALLBACK_PREFIX = "captain:goal:"
+CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX = "captain:goals_page:"
 CAPTAIN_MANUAL_REPORT_CALLBACK_PREFIX = "captain:manual:"
 CAPTAIN_STATUS_CALLBACK_PREFIX = "captain:status:"
 CAPTAIN_STEPS_CALLBACK_PREFIX = "captain:steps:"
@@ -63,6 +66,7 @@ PARTICIPANT_MENU_ITEMS = (
 CAPTAIN_ONLY_MENU_ITEMS = (
     MenuItem(MenuAction.VIEW_TEAM, "👥 Моя команда"),
     MenuItem(MenuAction.VIEW_TEAM_PROGRESS, "📊 Прогресс команды"),
+    MenuItem(MenuAction.VIEW_TEAM_GOALS, "🎯 Цели команды"),
     MenuItem(MenuAction.CAPTAIN_MANUAL_REPORT, "➕ Внести отчёт за участника"),
     MenuItem(MenuAction.VIEW_TEAM_REPORT, "📄 Отчёт команды"),
 )

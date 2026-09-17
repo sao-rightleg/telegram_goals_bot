@@ -9,6 +9,8 @@ from zoneinfo import ZoneInfo
 
 from app.bot.menus import (
     CAPTAIN_DONE_CALLBACK,
+    CAPTAIN_GOAL_CALLBACK_PREFIX,
+    CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX,
     CAPTAIN_MANUAL_REPORT_CALLBACK_PREFIX,
     CAPTAIN_STATUS_CALLBACK_PREFIX,
     CAPTAIN_STEPS_CALLBACK_PREFIX,
@@ -305,6 +307,18 @@ class TelegramUpdateDispatcher:
 
         if data == CAPTAIN_TEAM_CALLBACK:
             return self.captain_service.show_team(user, occurred_at=now.isoformat())
+        if data.startswith(CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX):
+            return self.captain_service.show_team_goals(
+                user,
+                now=now,
+                page_index=_int_suffix(data, CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX),
+            )
+        if data.startswith(CAPTAIN_GOAL_CALLBACK_PREFIX):
+            return self.captain_service.show_participant_goal(
+                user,
+                participant_id=_required_suffix(data, CAPTAIN_GOAL_CALLBACK_PREFIX),
+                now=now,
+            )
         if data.startswith(CAPTAIN_MANUAL_REPORT_CALLBACK_PREFIX):
             return self.captain_service.start_manual_report(
                 user,
@@ -341,6 +355,8 @@ class TelegramUpdateDispatcher:
             return self.captain_service.show_team(user, occurred_at=now.isoformat())
         if action is MenuAction.VIEW_TEAM_PROGRESS:
             return self.captain_service.show_team_progress(user, now=now)
+        if action is MenuAction.VIEW_TEAM_GOALS:
+            return self.captain_service.show_team_goals(user, now=now)
         if action is MenuAction.CAPTAIN_MANUAL_REPORT:
             raise TelegramCallbackError("captain manual report callback requires participant id")
         return self.participant_service.handle_menu_action(user, action, occurred_at=now.isoformat())

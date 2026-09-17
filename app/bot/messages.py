@@ -81,6 +81,7 @@ WEEKLY_REPORT_RED_SUCCESS_TEXT = "Принято. Отчёт за неделю �
 CAPTAIN_TEAM_TITLE_TEXT = "Твоя команда:"
 CAPTAIN_ONLY_TEXT = "Этот раздел доступен только капитану."
 CAPTAIN_PRIVATE_CHAT_ONLY_TEXT = "Открой этот раздел в личном чате с ботом."
+CAPTAIN_GOAL_MISSING_TEXT = "У участника пока нет активной цели."
 CAPTAIN_NO_TEAM_MEMBERS_TEXT = "В твоей команде пока нет участников для отчёта."
 CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT = "Этот участник не из твоей команды."
 CAPTAIN_DROPPED_PARTICIPANT_TEXT = "За выбывшего участника нельзя внести отчёт."

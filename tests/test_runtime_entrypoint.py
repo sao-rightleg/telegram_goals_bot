@@ -12,6 +12,8 @@ from app.config import ConfigurationError, load_settings
 from app.bot.clients import BotPurpose, FakeBotClient, TelegramApiError
 from app.bot.messages import MESSAGE_WITHOUT_FLOW_TEXT
 from app.bot.menus import (
+    CAPTAIN_GOAL_CALLBACK_PREFIX,
+    CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX,
     CONSENT_ACCEPT_CALLBACK,
     CONSENT_DECLINE_CALLBACK,
     CONSENT_DECLINE_CONFIRM_CALLBACK,
@@ -820,6 +822,27 @@ def test_dispatcher_routes_team_progress_menu_action_to_captain_flow(tmp_path: P
     ]
 
 
+def test_dispatcher_routes_team_goals_menu_and_participant_selection(tmp_path: Path) -> None:
+    dispatcher, services, _error_bot = _dispatcher(tmp_path)
+
+    menu_response = dispatcher.dispatch_update(
+        _callback_update(data=f"{MENU_CALLBACK_PREFIX}{MenuAction.VIEW_TEAM_GOALS.value}")
+    )
+    goal_response = dispatcher.dispatch_update(
+        _callback_update(data=f"{CAPTAIN_GOAL_CALLBACK_PREFIX}P001")
+    )
+    page_response = dispatcher.dispatch_update(
+        _callback_update(data=f"{CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX}1")
+    )
+
+    user = TelegramUserContext(telegram_id=1001, chat_id="chat-1001", username="p001")
+    assert menu_response == FlowResponse(chat_id="chat-1001", text="team goals")
+    assert goal_response == FlowResponse(chat_id="chat-1001", text="participant goal")
+    assert page_response == FlowResponse(chat_id="chat-1001", text="team goals")
+    assert services.captains.goal_list_requests == [(user, NOW, 0), (user, NOW, 1)]
+    assert services.captains.goal_requests == [(user, "P001", NOW)]
+
+
 def test_dispatcher_routes_step_report_callback_to_weekly_flow(tmp_path: Path) -> None:
     dispatcher, services, _error_bot = _dispatcher(tmp_path)
 
@@ -1291,10 +1314,32 @@ class RecordingInsightService:
 class RecordingCaptainService:
     def __init__(self) -> None:
         self.progress_requests: list[tuple[TelegramUserContext, datetime]] = []
+        self.goal_list_requests: list[tuple[TelegramUserContext, datetime, int]] = []
+        self.goal_requests: list[tuple[TelegramUserContext, str, datetime]] = []
 
     def show_team_progress(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
         self.progress_requests.append((user, now))
         return FlowResponse(chat_id=user.chat_id, text="team progress")
+
+    def show_team_goals(
+        self,
+        user: TelegramUserContext,
+        *,
+        now: datetime,
+        page_index: int = 0,
+    ) -> FlowResponse:
+        self.goal_list_requests.append((user, now, page_index))
+        return FlowResponse(chat_id=user.chat_id, text="team goals")
+
+    def show_participant_goal(
+        self,
+        user: TelegramUserContext,
+        *,
+        participant_id: str,
+        now: datetime,
+    ) -> FlowResponse:
+        self.goal_requests.append((user, participant_id, now))
+        return FlowResponse(chat_id=user.chat_id, text="participant goal")
 
 
 def _router(*, error_bot: FakeBotClient) -> NotificationRouter:

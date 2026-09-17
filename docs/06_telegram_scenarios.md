@@ -235,6 +235,20 @@ contains only active consenting participants from the captain's own team:
 {eight_cell_progress_bar}
 ```
 
+## Captain Team Goals
+
+Captain menu button:
+
+```text
+🎯 Цели команды
+```
+
+The bot shows one participant-selection button per active consenting member of
+the captain's own team. Selecting a participant returns the active goal title,
+description, value, permission condition, and permission metric. Both the list
+and goal callback revalidate the active captain, exact active Teams assignment,
+flow, team, participant status, consent, and private chat.
+
 ## View Progress
 
 Trigger:
