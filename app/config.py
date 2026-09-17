@@ -49,6 +49,24 @@ class TelegramRuntimeSettings:
 
 
 @dataclass(frozen=True)
+class RuporSettings:
+    bot_token: str | None
+    allowed_telegram_ids: tuple[int, ...]
+    delivery_pause_seconds: float = 0.05
+
+    @property
+    def enabled(self) -> bool:
+        return self.bot_token is not None
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "RUPOR_TELEGRAM_BOT_TOKEN": self.bot_token,
+            "RUPOR_ALLOWED_TELEGRAM_IDS": self.allowed_telegram_ids,
+            "RUPOR_DELIVERY_PAUSE_SECONDS": self.delivery_pause_seconds,
+        }
+
+
+@dataclass(frozen=True)
 class GoogleSheetsSettings:
     sheet_id: str
     challenge_flows_sheet_id: str
@@ -146,6 +164,7 @@ class Settings:
     runtime: RuntimeSettings
     challenge: ChallengeSettings
     transcription: TranscriptionSettings
+    rupor: RuporSettings
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -157,6 +176,7 @@ class Settings:
             "runtime": self.runtime.as_dict(),
             "challenge": self.challenge.as_dict(),
             "transcription": self.transcription.as_dict(),
+            "rupor": self.rupor.as_dict(),
         }
 
 
@@ -177,6 +197,10 @@ def load_settings(
     if missing:
         raise ConfigurationError(f"Missing required settings: {', '.join(missing)}")
 
+    return _settings_from_values(values)
+
+
+def _settings_from_values(values: Mapping[str, str]) -> Settings:
     return Settings(
         telegram=TelegramSettings(
             main_bot_token=_optional_value(values, "MAIN_TELEGRAM_BOT_TOKEN"),
@@ -216,6 +240,41 @@ def load_settings(
         runtime=RuntimeSettings(log_level=values.get("LOG_LEVEL", "INFO").upper()),
         challenge=ChallengeSettings(start_date=_date_value(values, "CHALLENGE_START_DATE")),
         transcription=_load_transcription_settings(values),
+        rupor=_load_rupor_settings(values),
+    )
+
+
+def _load_rupor_settings(values: Mapping[str, str]) -> RuporSettings:
+    token = _optional_value(values, "RUPOR_TELEGRAM_BOT_TOKEN")
+    raw_ids = _optional_value(values, "RUPOR_ALLOWED_TELEGRAM_IDS")
+    if token is None and raw_ids is None:
+        return RuporSettings(
+            bot_token=None,
+            allowed_telegram_ids=(),
+            delivery_pause_seconds=_non_negative_float(
+                values, "RUPOR_DELIVERY_PAUSE_SECONDS", default=0.05
+            ),
+        )
+    if token is None or raw_ids is None:
+        raise ConfigurationError(
+            "RUPOR_TELEGRAM_BOT_TOKEN and RUPOR_ALLOWED_TELEGRAM_IDS must be configured together"
+        )
+    try:
+        parsed = tuple(int(item.strip()) for item in raw_ids.split(","))
+    except ValueError as exc:
+        raise ConfigurationError(
+            "RUPOR_ALLOWED_TELEGRAM_IDS must contain exactly three positive integer IDs"
+        ) from exc
+    if len(parsed) != 3 or len(set(parsed)) != 3 or any(item <= 0 for item in parsed):
+        raise ConfigurationError(
+            "RUPOR_ALLOWED_TELEGRAM_IDS must contain exactly three unique positive IDs"
+        )
+    return RuporSettings(
+        bot_token=token,
+        allowed_telegram_ids=parsed,
+        delivery_pause_seconds=_non_negative_float(
+            values, "RUPOR_DELIVERY_PAUSE_SECONDS", default=0.05
+        ),
     )
 
 
@@ -346,6 +405,19 @@ def _positive_float(values: Mapping[str, str], key: str, *, default: float) -> f
         raise ConfigurationError(f"Setting {key} must be a positive number") from exc
     if parsed <= 0:
         raise ConfigurationError(f"Setting {key} must be a positive number")
+    return parsed
+
+
+def _non_negative_float(values: Mapping[str, str], key: str, *, default: float) -> float:
+    value = _optional_value(values, key)
+    if value is None:
+        return default
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise ConfigurationError(f"Setting {key} must be a non-negative number") from exc
+    if parsed < 0:
+        raise ConfigurationError(f"Setting {key} must be a non-negative number")
     return parsed
 
 

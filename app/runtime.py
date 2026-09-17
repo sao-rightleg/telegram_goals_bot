@@ -19,6 +19,7 @@ import httpx
 from app.bot.clients import BotCommand, BotPurpose, LiveTelegramBotClient, LiveTelegramFileDownloader
 from app.logging import setup_logging
 from app.bot.dispatch import TelegramUpdateDispatcher
+from app.bot.rupor_dispatch import RuporUpdateDispatcher
 from app.config import ConfigurationError, Settings, load_settings
 from app.reports.delivery import ReportDeliveryService
 from app.reports.pdf import LocalPdfRenderer
@@ -36,6 +37,7 @@ from app.services.captains import CaptainService
 from app.services.insights import InsightService
 from app.services.notifications import NotificationCategory, NotificationRouter, Recipient, RecipientType
 from app.services.participant_flows import ParticipantFlowService
+from app.services.rupor import RuporService
 from app.services.voice_messages import VoiceMessageService
 from app.services.weekly_reports import WeeklyReportService
 from app.sheets.gateway import (
@@ -48,6 +50,7 @@ from app.sheets.gateway import (
 from app.speech.transcription import FakeSpeechTranscriber, YandexSpeechKitTranscriber
 from app.storage.dialog_state import DialogStateRepository
 from app.storage.registration import RegistrationDraftRepository
+from app.storage.rupor import RuporRepository
 from app.storage.insight_drafts import InsightDraftRepository
 from app.storage.goal_drafts import GoalDraftRepository
 from app.storage.paths import StoragePathPolicy
@@ -86,9 +89,19 @@ class RuntimeComponents:
     voice_service: VoiceMessageService
     scheduler_service: SchedulerService
     report_service: ReportService | None = None
+    rupor_bot: LiveTelegramBotClient | None = None
+    rupor_dispatcher: RuporUpdateDispatcher | None = None
 
     def with_replacements(self, **changes: object) -> "RuntimeComponents":
         return replace(self, **changes)
+
+
+@dataclass(frozen=True)
+class LiveBotSet:
+    main: LiveTelegramBotClient
+    error: LiveTelegramBotClient
+    notification: LiveTelegramBotClient
+    rupor: LiveTelegramBotClient | None
 
 
 @dataclass(frozen=True)
@@ -198,41 +211,16 @@ def compose_runtime(
     """Wire live adapters, repositories, services, and dispatcher."""
 
     selected_google_service_factory = google_service_factory or create_google_sheets_service
-    request_timeout = settings.telegram_runtime.request_timeout_seconds
-    main_http = httpx.Client(timeout=request_timeout)
-    error_http = httpx.Client(timeout=request_timeout)
-    notification_http = httpx.Client(timeout=request_timeout)
-    file_http = httpx.Client(timeout=request_timeout)
-    speech_http = httpx.Client()
-
-    main_bot = LiveTelegramBotClient(
-        purpose=BotPurpose.MAIN,
-        token=_required_token(settings.telegram.main_bot_token, "MAIN_TELEGRAM_BOT_TOKEN"),
-        http_client=main_http,
-    )
-    error_bot = LiveTelegramBotClient(
-        purpose=BotPurpose.ERROR,
-        token=_required_token(settings.telegram.error_bot_token, "ERROR_TELEGRAM_BOT_TOKEN"),
-        http_client=error_http,
-    )
-    notification_bot = LiveTelegramBotClient(
-        purpose=BotPurpose.NOTIFICATION,
-        token=_required_token(
-            settings.telegram.notification_bot_token,
-            "NOTIFICATION_TELEGRAM_BOT_TOKEN",
-        ),
-        http_client=notification_http,
-    )
+    bots = _build_live_bots(settings)
     notification_router = NotificationRouter(
-        main_bot=main_bot,
-        error_bot=error_bot,
-        notification_bot=notification_bot,
+        main_bot=bots.main,
+        error_bot=bots.error,
+        notification_bot=bots.notification,
         admin_error_recipient=Recipient(
             RecipientType.ADMIN_ERROR_CHAT,
             str(settings.admin.admin_error_chat_id),
         ),
     )
-
     db_path = settings.storage.sqlite_db_path
     dialog_states = DialogStateRepository(db_path)
     registration_drafts = RegistrationDraftRepository(db_path)
@@ -240,39 +228,17 @@ def compose_runtime(
     weekly_drafts = WeeklyReportDraftRepository(db_path)
     insight_drafts = InsightDraftRepository(db_path)
     scheduler_jobs = SchedulerJobRepository(db_path)
-    google_service = selected_google_service_factory(settings)
-    sheets_gateway = GoogleSheetsGateway(
-        service=google_service,
-        spreadsheet_id=settings.google_sheets.sheet_id,
-    )
-    challenge_flows_gateway = GoogleSheetsGateway(
-        service=google_service,
-        spreadsheet_id=settings.google_sheets.challenge_flows_sheet_id,
-    )
-    bound_flow = _bound_flow_for_spreadsheet(
-        challenge_flows_gateway, settings.google_sheets.sheet_id
+    sheets_gateway, bound_flow = _build_sheets_and_flow(
+        settings, selected_google_service_factory(settings)
     )
     bound_flow_gateway = BoundFlowGateway(bound_flow)
     _configure_challenge_calendar_from_sheets(settings, bound_flow_gateway)
-    voice_service = VoiceMessageService(
-        dialog_states=dialog_states,
-        weekly_report_drafts=weekly_drafts,
-        insight_drafts=insight_drafts,
-        path_policy=StoragePathPolicy(
-            audio_root=settings.storage.audio_storage_dir,
-            sqlite_root=settings.storage.sqlite_db_path.parent,
-            pdf_root=settings.storage.pdf_storage_dir,
-        ),
-        file_downloader=LiveTelegramFileDownloader(
-            token=_required_token(settings.telegram.main_bot_token, "MAIN_TELEGRAM_BOT_TOKEN"),
-            http_client=file_http,
-        ),
-        transcriber=_build_transcriber(settings, http_client=speech_http),
-        notification_router=notification_router,
+    voice_service = _build_voice_service(
+        settings, dialog_states, weekly_drafts, insight_drafts, notification_router
     )
     participant_service = ParticipantFlowService(
         sheets=sheets_gateway,
-        main_bot=main_bot,
+        main_bot=bots.main,
         notification_router=notification_router,
         dialog_states=dialog_states,
         registration_flows=bound_flow_gateway,
@@ -281,21 +247,21 @@ def compose_runtime(
     )
     weekly_report_service = WeeklyReportService(
         sheets=sheets_gateway,
-        main_bot=main_bot,
+        main_bot=bots.main,
         notification_router=notification_router,
         drafts=weekly_drafts,
         voice_messages=voice_service,
     )
     insight_service = InsightService(
         sheets=sheets_gateway,
-        main_bot=main_bot,
+        main_bot=bots.main,
         notification_router=notification_router,
         drafts=insight_drafts,
         voice_messages=voice_service,
     )
     captain_service = CaptainService(
         sheets=sheets_gateway,
-        main_bot=main_bot,
+        main_bot=bots.main,
         notification_router=notification_router,
         drafts=weekly_drafts,
     )
@@ -306,21 +272,8 @@ def compose_runtime(
         admin_telegram_id=settings.admin.admin_telegram_id,
         sitnikov_telegram_id=settings.admin.sitnikov_telegram_id,
     )
-    report_repository = ReportStateRepository(db_path)
-    report_service = ReportService(
-        sheets_gateway=sheets_gateway,
-        report_repository=report_repository,
-        pdf_renderer=LocalPdfRenderer(
-            StoragePathPolicy(pdf_root=settings.storage.pdf_storage_dir)
-        ),
-        delivery_service=ReportDeliveryService(
-            repository=report_repository,
-            notification_router=notification_router,
-        ),
-        flow_id=str(bound_flow.get("flow_id", "")).strip(),
-        flow_name=str(bound_flow.get("flow_name", "")).strip() or None,
-        admin_telegram_id=settings.admin.admin_telegram_id,
-        sitnikov_telegram_id=settings.admin.sitnikov_telegram_id,
+    report_service = _build_report_service(
+        settings, sheets_gateway, notification_router, bound_flow
     )
     dispatcher = TelegramUpdateDispatcher(
         participant_service=participant_service,
@@ -330,10 +283,13 @@ def compose_runtime(
         dialog_states=dialog_states,
         notification_router=notification_router,
     )
+    rupor_dispatcher = _build_rupor_dispatcher(
+        settings, sheets_gateway, bots, notification_router
+    )
     return RuntimeComponents(
-        main_bot=main_bot,
-        error_bot=error_bot,
-        notification_bot=notification_bot,
+        main_bot=bots.main,
+        error_bot=bots.error,
+        notification_bot=bots.notification,
         notification_router=notification_router,
         dispatcher=dispatcher,
         participant_service=participant_service,
@@ -344,7 +300,117 @@ def compose_runtime(
         voice_service=voice_service,
         scheduler_service=scheduler_service,
         report_service=report_service,
+        rupor_bot=bots.rupor,
+        rupor_dispatcher=rupor_dispatcher,
     )
+
+
+def _build_sheets_and_flow(
+    settings: Settings, google_service: object
+) -> tuple[GoogleSheetsGateway, SheetRow]:
+    sheets = GoogleSheetsGateway(
+        service=google_service, spreadsheet_id=settings.google_sheets.sheet_id
+    )
+    registry = GoogleSheetsGateway(
+        service=google_service,
+        spreadsheet_id=settings.google_sheets.challenge_flows_sheet_id,
+    )
+    return sheets, _bound_flow_for_spreadsheet(registry, settings.google_sheets.sheet_id)
+
+
+def _build_live_bots(settings: Settings) -> LiveBotSet:
+    timeout = settings.telegram_runtime.request_timeout_seconds
+    main = LiveTelegramBotClient(
+        purpose=BotPurpose.MAIN,
+        token=_required_token(settings.telegram.main_bot_token, "MAIN_TELEGRAM_BOT_TOKEN"),
+        http_client=httpx.Client(timeout=timeout),
+    )
+    error = LiveTelegramBotClient(
+        purpose=BotPurpose.ERROR,
+        token=_required_token(settings.telegram.error_bot_token, "ERROR_TELEGRAM_BOT_TOKEN"),
+        http_client=httpx.Client(timeout=timeout),
+    )
+    notification = LiveTelegramBotClient(
+        purpose=BotPurpose.NOTIFICATION,
+        token=_required_token(
+            settings.telegram.notification_bot_token, "NOTIFICATION_TELEGRAM_BOT_TOKEN"
+        ),
+        http_client=httpx.Client(timeout=timeout),
+    )
+    rupor = None
+    if settings.rupor.enabled:
+        rupor = LiveTelegramBotClient(
+            purpose=BotPurpose.RUPOR,
+            token=_required_token(settings.rupor.bot_token, "RUPOR_TELEGRAM_BOT_TOKEN"),
+            http_client=httpx.Client(timeout=timeout),
+        )
+    return LiveBotSet(main=main, error=error, notification=notification, rupor=rupor)
+
+
+def _build_voice_service(
+    settings: Settings,
+    dialog_states: DialogStateRepository,
+    weekly_drafts: WeeklyReportDraftRepository,
+    insight_drafts: InsightDraftRepository,
+    notification_router: NotificationRouter,
+) -> VoiceMessageService:
+    return VoiceMessageService(
+        dialog_states=dialog_states,
+        weekly_report_drafts=weekly_drafts,
+        insight_drafts=insight_drafts,
+        path_policy=StoragePathPolicy(
+            audio_root=settings.storage.audio_storage_dir,
+            sqlite_root=settings.storage.sqlite_db_path.parent,
+            pdf_root=settings.storage.pdf_storage_dir,
+        ),
+        file_downloader=LiveTelegramFileDownloader(
+            token=_required_token(settings.telegram.main_bot_token, "MAIN_TELEGRAM_BOT_TOKEN"),
+            http_client=httpx.Client(timeout=settings.telegram_runtime.request_timeout_seconds),
+        ),
+        transcriber=_build_transcriber(settings, http_client=httpx.Client()),
+        notification_router=notification_router,
+    )
+
+
+def _build_report_service(
+    settings: Settings,
+    sheets_gateway: GoogleSheetsGateway,
+    notification_router: NotificationRouter,
+    bound_flow: SheetRow,
+) -> ReportService:
+    repository = ReportStateRepository(settings.storage.sqlite_db_path)
+    return ReportService(
+        sheets_gateway=sheets_gateway,
+        report_repository=repository,
+        pdf_renderer=LocalPdfRenderer(StoragePathPolicy(pdf_root=settings.storage.pdf_storage_dir)),
+        delivery_service=ReportDeliveryService(
+            repository=repository, notification_router=notification_router
+        ),
+        flow_id=str(bound_flow.get("flow_id", "")).strip(),
+        flow_name=str(bound_flow.get("flow_name", "")).strip() or None,
+        admin_telegram_id=settings.admin.admin_telegram_id,
+        sitnikov_telegram_id=settings.admin.sitnikov_telegram_id,
+    )
+
+
+def _build_rupor_dispatcher(
+    settings: Settings,
+    sheets_gateway: GoogleSheetsGateway,
+    bots: LiveBotSet,
+    notification_router: NotificationRouter,
+) -> RuporUpdateDispatcher | None:
+    if bots.rupor is None:
+        return None
+    service = RuporService(
+        sheets=sheets_gateway,
+        rupor_bot=bots.rupor,
+        delivery_bot=bots.main,
+        notification_router=notification_router,
+        repository=RuporRepository(settings.storage.sqlite_db_path),
+        allowed_telegram_ids=frozenset(settings.rupor.allowed_telegram_ids),
+        delivery_pause_seconds=settings.rupor.delivery_pause_seconds,
+    )
+    return RuporUpdateDispatcher(service=service)
 
 
 @dataclass
@@ -455,6 +521,56 @@ class TelegramPollingRunner:
                 update_id=update_id,
             )
 
+
+@dataclass
+class RuporPollingRunner:
+    poll_timeout_seconds: int
+    poll_limit: int
+    stop_event: Event
+
+    def run(self, components: RuntimeComponents) -> None:
+        if components.rupor_bot is None or components.rupor_dispatcher is None:
+            return
+        try:
+            components.rupor_dispatcher.resume_incomplete()
+        except Exception as exc:
+            _notify_polling_error(
+                components.notification_router,
+                event="rupor_startup_recovery_failed",
+                error=exc,
+            )
+        offset: int | None = None
+        while not self.stop_event.is_set():
+            try:
+                updates = components.rupor_bot.get_updates(
+                    offset=offset,
+                    timeout_seconds=self.poll_timeout_seconds,
+                    limit=self.poll_limit,
+                )
+                for update in updates:
+                    update_id = update.get("update_id")
+                    callback_query_id, _chat_id = _callback_context(update)
+                    try:
+                        if callback_query_id is not None:
+                            components.rupor_bot.answer_callback_query(callback_query_id)
+                        components.rupor_dispatcher.dispatch_update(update)
+                    except Exception as exc:
+                        _notify_polling_error(
+                            components.notification_router,
+                            event="rupor_update_dispatch_failed",
+                            error=exc,
+                            update_id=update_id if isinstance(update_id, int) else None,
+                        )
+                    finally:
+                        if isinstance(update_id, int):
+                            offset = update_id + 1
+            except Exception as exc:
+                _notify_polling_error(
+                    components.notification_router,
+                    event="rupor_polling_failed",
+                    error=exc,
+                )
+                self.stop_event.wait(RUNTIME_RETRY_BASE_SECONDS)
 
 def _callback_context(update: dict[str, object]) -> tuple[str | None, str | None]:
     callback = update.get("callback_query")
@@ -801,16 +917,11 @@ def run_bot(
     components = components_factory(settings)
     register_main_bot_commands(components)
     scheduler_started = False
+    rupor_thread: Thread | None = None
     if polling_runner is None:
-        stop_event = Event()
-        _install_shutdown_handlers(stop_event)
-        polling_runner = TelegramPollingRunner(
-            poll_timeout_seconds=settings.telegram_runtime.poll_timeout_seconds,
-            poll_limit=settings.telegram_runtime.poll_limit,
-            stop_event=stop_event,
+        polling_runner, scheduler_runner, rupor_thread = _create_default_runners(
+            settings, components, scheduler_runner=scheduler_runner
         )
-        if scheduler_runner is None:
-            scheduler_runner = LiveSchedulerRunner(stop_event=stop_event)
 
     try:
         if scheduler_runner is not None:
@@ -820,6 +931,39 @@ def run_bot(
     finally:
         if scheduler_started:
             scheduler_runner.stop()
+        if rupor_thread is not None:
+            rupor_thread.join(timeout=settings.telegram_runtime.poll_timeout_seconds + 2)
+
+
+def _create_default_runners(
+    settings: Settings,
+    components: RuntimeComponents,
+    *,
+    scheduler_runner: SchedulerRunner | None,
+) -> tuple[PollingRunner, SchedulerRunner, Thread | None]:
+    stop_event = Event()
+    _install_shutdown_handlers(stop_event)
+    polling = TelegramPollingRunner(
+        poll_timeout_seconds=settings.telegram_runtime.poll_timeout_seconds,
+        poll_limit=settings.telegram_runtime.poll_limit,
+        stop_event=stop_event,
+    )
+    scheduler = scheduler_runner or LiveSchedulerRunner(stop_event=stop_event)
+    rupor_thread = None
+    if components.rupor_bot is not None and components.rupor_dispatcher is not None:
+        rupor = RuporPollingRunner(
+            poll_timeout_seconds=settings.telegram_runtime.poll_timeout_seconds,
+            poll_limit=settings.telegram_runtime.poll_limit,
+            stop_event=stop_event,
+        )
+        rupor_thread = Thread(
+            target=rupor.run,
+            args=(components,),
+            name="rupor-polling",
+            daemon=True,
+        )
+        rupor_thread.start()
+    return polling, scheduler, rupor_thread
 
 
 def register_main_bot_commands(components: RuntimeComponents) -> None:

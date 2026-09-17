@@ -22,6 +22,9 @@ REQUIRED_TECHNICAL_TABLES = {
     "error_events",
     "registration_drafts",
     "goal_drafts",
+    "rupor_drafts",
+    "rupor_deliveries",
+    "rupor_audit_log",
 }
 
 BUSINESS_PRIMARY_TABLES = {
@@ -39,6 +42,36 @@ BUSINESS_PRIMARY_TABLES = {
 
 
 SCHEMA_STATEMENTS = [
+    """
+    CREATE TABLE IF NOT EXISTS rupor_drafts (
+        operator_telegram_id INTEGER PRIMARY KEY,
+        broadcast_id TEXT NOT NULL UNIQUE,
+        message_text TEXT,
+        status TEXT NOT NULL CHECK (status IN ('draft', 'sending', 'sent', 'cancelled')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS rupor_deliveries (
+        broadcast_id TEXT NOT NULL,
+        participant_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'sent', 'failed', 'skipped', 'unknown')),
+        error_type TEXT,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (broadcast_id, participant_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS rupor_audit_log (
+        audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        operator_telegram_id INTEGER NOT NULL,
+        broadcast_id TEXT,
+        action TEXT NOT NULL,
+        details TEXT,
+        occurred_at TEXT NOT NULL
+    )
+    """,
     """
     CREATE TABLE IF NOT EXISTS goal_drafts (
         telegram_id INTEGER PRIMARY KEY,

@@ -51,6 +51,7 @@ class BotPurpose(str, Enum):
     MAIN = "main"
     ERROR = "error"
     NOTIFICATION = "notification"
+    RUPOR = "rupor"
 
 
 @dataclass(frozen=True)

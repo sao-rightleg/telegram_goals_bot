@@ -402,6 +402,11 @@ SQLite state belongs to main bot user flows. Error bot and notification bot shou
 
 Technical errors are routed to error bot. Operational reminders, PDFs, and summaries are routed to notification bot.
 
+RUPOR uses `rupor_drafts` and `rupor_deliveries` only as technical delivery state.
+Draft text is removed after confirmation completes or the operator cancels. Delivery
+rows retain stable participant IDs and delivery statuses for idempotency; they do not
+duplicate participant profiles or business content from Google Sheets.
+
 ## Open Implementation Questions
 
 - Exact draft expiration time.

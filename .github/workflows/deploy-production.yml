@@ -25,6 +25,8 @@ jobs:
       VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
       VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
       VPS_SERVICE_NAME: ${{ secrets.VPS_SERVICE_NAME }}
+      RUPOR_TELEGRAM_BOT_TOKEN: ${{ secrets.RUPOR_TELEGRAM_BOT_TOKEN }}
+      RUPOR_ALLOWED_TELEGRAM_IDS: ${{ secrets.RUPOR_ALLOWED_TELEGRAM_IDS }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,6 +49,10 @@ jobs:
           test -n "$VPS_SSH_KEY"
           test -n "$VPS_APP_DIR"
           test -n "$VPS_SERVICE_NAME"
+          if [[ -n "$RUPOR_TELEGRAM_BOT_TOKEN" || -n "$RUPOR_ALLOWED_TELEGRAM_IDS" ]]; then
+            [[ "$RUPOR_TELEGRAM_BOT_TOKEN" =~ ^[0-9]+:[A-Za-z0-9_-]+$ ]]
+            [[ "$RUPOR_ALLOWED_TELEGRAM_IDS" =~ ^[1-9][0-9]*,[1-9][0-9]*,[1-9][0-9]*$ ]]
+          fi
       - name: Create deployment archive
         run: |
           tar \
@@ -73,6 +79,23 @@ jobs:
           scp -i ~/.ssh/deploy_key -P "${VPS_PORT:-22}" \
             "/tmp/telegram-goals-bot-${DEPLOY_SHA}.tgz" \
             "$VPS_USER@$VPS_HOST:/tmp/telegram-goals-bot-${DEPLOY_SHA}.tgz"
+          if [[ -n "$RUPOR_TELEGRAM_BOT_TOKEN" ]]; then
+            trap 'rm -f /tmp/rupor-production-config.json' EXIT
+            umask 077
+            python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          Path("/tmp/rupor-production-config.json").write_text(json.dumps({
+              "token": os.environ["RUPOR_TELEGRAM_BOT_TOKEN"],
+              "allowed_ids": os.environ["RUPOR_ALLOWED_TELEGRAM_IDS"],
+          }), encoding="utf-8")
+          PY
+            scp -i ~/.ssh/deploy_key -P "${VPS_PORT:-22}" \
+              /tmp/rupor-production-config.json \
+              "$VPS_USER@$VPS_HOST:/tmp/rupor-production-config-${DEPLOY_SHA}.json"
+            rm -f /tmp/rupor-production-config.json
+          fi
       - name: Install release and restart service
         run: |
           ssh -i ~/.ssh/deploy_key -p "${VPS_PORT:-22}" "$VPS_USER@$VPS_HOST" \
@@ -82,6 +105,14 @@ jobs:
           RELEASE_DIR="$APP_DIR/releases/$DEPLOY_SHA"
           mkdir -p "$RELEASE_DIR" "$APP_DIR/shared"
           tar -xzf "/tmp/telegram-goals-bot-$DEPLOY_SHA.tgz" -C "$RELEASE_DIR"
+
+          RUPOR_CONFIG_PATH="/tmp/rupor-production-config-$DEPLOY_SHA.json"
+          trap 'rm -f "$RUPOR_CONFIG_PATH"' EXIT
+          if test -f "$RUPOR_CONFIG_PATH"; then
+            python3 "$RELEASE_DIR/scripts/upsert_rupor_env.py" \
+              "$APP_DIR/shared/.env" "$RUPOR_CONFIG_PATH"
+            rm -f "$RUPOR_CONFIG_PATH"
+          fi
 
           cd "$RELEASE_DIR"
           python3 -m venv .venv

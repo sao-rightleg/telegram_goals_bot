@@ -8,6 +8,16 @@ The bot is a digital interviewer, data collector, history keeper, reminder engin
 
 It is not a coach, therapist, motivator, or advice engine.
 
+## Manual RUPOR Broadcast
+
+1. One of exactly three configured operators sends text to RUPOR in a private chat.
+2. RUPOR selects active consenting rows with `role = participant` and a valid Telegram ID.
+3. RUPOR shows the exact text, recipient count, and `Отправить всем` / `Отмена` buttons.
+4. Confirmation atomically claims the broadcast and starts a rate-limited background send through Main bot.
+5. Successful recipients are not sent the same broadcast twice; one recipient failure does not stop others.
+6. RUPOR sends the operator a delivered/error summary and removes the draft text from SQLite.
+7. Unknown users and group chats cannot create or confirm broadcasts.
+
 ## Tone of Voice
 
 User-facing messages are in Russian.

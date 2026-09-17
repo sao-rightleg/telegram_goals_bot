@@ -407,3 +407,11 @@ However, architecture should avoid blocking a future channel or storage migratio
 ## Product Decisions
 
 Resolved product decisions are recorded in `docs/02_open_questions.md`.
+
+## RUPOR Manual Broadcast Bot
+
+RUPOR is a private manual-broadcast console for exactly three configured operators.
+It accepts and confirms broadcast text, while Main bot performs participant delivery
+because participants have already initiated Main bot. The audience is limited to
+active consenting rows with `role = participant` and a valid Telegram ID. RUPOR
+cannot read goals, reports, steps, or insights.

@@ -52,6 +52,8 @@ jobs:
       TEST_VPS_SSH_KEY: ${{ secrets.TEST_VPS_SSH_KEY }}
       TEST_VPS_APP_DIR: ${{ secrets.TEST_VPS_APP_DIR }}
       TEST_VPS_SERVICE_NAME: ${{ secrets.TEST_VPS_SERVICE_NAME }}
+      RUPOR_TELEGRAM_BOT_TOKEN: ${{ secrets.RUPOR_TELEGRAM_BOT_TOKEN }}
+      RUPOR_ALLOWED_TELEGRAM_IDS: ${{ secrets.RUPOR_ALLOWED_TELEGRAM_IDS }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -74,6 +76,10 @@ jobs:
           test -n "$TEST_VPS_SSH_KEY"
           test -n "$TEST_VPS_APP_DIR"
           test -n "$TEST_VPS_SERVICE_NAME"
+          if [[ -n "$RUPOR_TELEGRAM_BOT_TOKEN" || -n "$RUPOR_ALLOWED_TELEGRAM_IDS" ]]; then
+            [[ "$RUPOR_TELEGRAM_BOT_TOKEN" =~ ^[0-9]+:[A-Za-z0-9_-]+$ ]]
+            [[ "$RUPOR_ALLOWED_TELEGRAM_IDS" =~ ^[1-9][0-9]*,[1-9][0-9]*,[1-9][0-9]*$ ]]
+          fi
           test "$TEST_VPS_APP_DIR" = "/opt/telegram_goals_bot_test"
           test "$TEST_VPS_SERVICE_NAME" = "telegram-goals-bot-test.service"
       - name: Create deployment archive
@@ -102,6 +108,23 @@ jobs:
           scp -i ~/.ssh/deploy_key -P "${TEST_VPS_PORT:-22}" \
             "/tmp/telegram-goals-bot-test-${DEPLOY_SHA}.tgz" \
             "$TEST_VPS_USER@$TEST_VPS_HOST:/tmp/telegram-goals-bot-test-${DEPLOY_SHA}.tgz"
+          if [[ -n "$RUPOR_TELEGRAM_BOT_TOKEN" ]]; then
+            trap 'rm -f /tmp/rupor-test-config.json' EXIT
+            umask 077
+            python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          Path("/tmp/rupor-test-config.json").write_text(json.dumps({
+              "token": os.environ["RUPOR_TELEGRAM_BOT_TOKEN"],
+              "allowed_ids": os.environ["RUPOR_ALLOWED_TELEGRAM_IDS"],
+          }), encoding="utf-8")
+          PY
+            scp -i ~/.ssh/deploy_key -P "${TEST_VPS_PORT:-22}" \
+              /tmp/rupor-test-config.json \
+              "$TEST_VPS_USER@$TEST_VPS_HOST:/tmp/rupor-test-config-${DEPLOY_SHA}.json"
+            rm -f /tmp/rupor-test-config.json
+          fi
       - name: Install test release and restart test service
         run: |
           ssh -i ~/.ssh/deploy_key -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_USER@$TEST_VPS_HOST" \
@@ -116,6 +139,14 @@ jobs:
           RELEASE_DIR="$TEST_APP_DIR/releases/$DEPLOY_SHA"
           mkdir -p "$RELEASE_DIR" "$TEST_APP_DIR/shared"
           tar -xzf "/tmp/telegram-goals-bot-test-$DEPLOY_SHA.tgz" -C "$RELEASE_DIR"
+
+          RUPOR_CONFIG_PATH="/tmp/rupor-test-config-$DEPLOY_SHA.json"
+          trap 'rm -f "$RUPOR_CONFIG_PATH"' EXIT
+          if test -f "$RUPOR_CONFIG_PATH"; then
+            python3 "$RELEASE_DIR/scripts/upsert_rupor_env.py" \
+              "$TEST_APP_DIR/shared/.env" "$RUPOR_CONFIG_PATH"
+            rm -f "$RUPOR_CONFIG_PATH"
+          fi
 
           cd "$RELEASE_DIR"
           python3 -m venv .venv
