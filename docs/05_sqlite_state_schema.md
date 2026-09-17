@@ -360,6 +360,8 @@ Before final save:
 
 Scheduler uses `Asia/Yekaterinburg`.
 
+Business schedule definitions belong to `FlowSchedule` in Google Sheets. SQLite stores only execution state, including `flow_id`, `event_id`, resolved scheduled timestamp, recipient ID, attempt status, and idempotency key. The idempotency boundary is one `event_id` per recipient within one flow.
+
 Fixed reminder schedule:
 - Monday 10:00 start-of-week reminder
 - Wednesday 10:00 soft check-in
@@ -372,7 +374,8 @@ Challenge calendar:
 - all teams use one shared calendar
 - challenge end date is `2026-07-31`
 - weeks 1-2 are goal/route setup
-- weeks 3-8 are six working execution weeks
+- setup phases are `goal_setup` and `steps_setup`
+- working phases are `week_01` through `week_08`
 - after week 8 there are four days for final summary
 
 ## Cleanup and Backup Jobs

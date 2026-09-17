@@ -65,7 +65,7 @@ Out of MVP:
 - Week 2: route / planned steps.
 - Weeks 3-8: six working execution weeks.
 - After week 8: four days for final summary.
-- Main route has 6 planned steps and a 6-cell progress bar.
+- Main route has 8 planned steps and an 8-cell progress bar.
 - Timezone: `Asia/Yekaterinburg`.
 
 ## Source Documents

@@ -30,7 +30,7 @@ Avoid:
 ## Common Rules
 
 - Identify user by Telegram ID.
-- If user is unknown, show approved not-in-base message and notify admin.
+- Unknown users may self-register only during the active flow's registration window.
 - Require consent before continuing.
 - Generate menu by role.
 - Captains see only own team.
@@ -70,19 +70,25 @@ After click:
 
 If user does not consent, bot must not continue.
 
-### Unknown User
+### New User During Registration Window
+
+1. User sends `/start` between `registration_opens_at` and `registration_closes_at`.
+2. Bot shows the project welcome and personal-data consent.
+3. After consent, bot asks for first name and surname in separate steps.
+4. Bot shows both values for confirmation and allows either value to be corrected.
+5. Bot creates one participant record identified by `flow_id + telegram_id`.
+
+Before the deadline, repeated `/start` resumes an unfinished registration draft or opens the menu for an already registered participant; it never creates a duplicate.
+
+### New User After Registration Window
 
 Message:
 
 ```text
-Извините, вас нет в базе участников. Свяжитесь со своим капитаном.
+Данный поток уже набран
 ```
 
-Admin notification:
-- error type: unknown Telegram user
-- Telegram ID
-- username if available
-- date/time
+This rejection applies when the Telegram ID has no participant record for the active flow. Existing registered participants continue normally; an unfinished registration draft does not reserve a place after the deadline.
 
 ## Participant Menu
 
@@ -116,7 +122,19 @@ Bot shows:
 - goal value
 - permission condition
 
-No editing in MVP.
+If no active goal exists, the same button starts goal creation:
+
+1. Enter a short goal title.
+2. Describe the concrete result.
+3. Enter the measurable value/amount.
+4. Enter the unit or currency.
+5. Describe the achievement condition.
+6. Review and confirm the complete goal.
+
+The draft is technical state in SQLite. Only the confirmed active goal is appended to the
+current flow's `Goals` tab. A participant cannot create a second active goal.
+
+Editing a confirmed goal is not available in MVP.
 
 ## View Planned Steps
 
@@ -141,11 +159,17 @@ Example:
 ⬜ Шаг 5. Подписать договор
 ```
 
-Step description is shown under the title with the first 15 characters visible and the remaining text hidden in a Telegram spoiler.
+Step description is shown under the title as a native expandable Telegram blockquote,
+the same way full insight text is displayed. It must not use spoiler blur.
 
 Buttons:
 - `Шаг {number}. {step_title} - Отчитаться` for open steps
 - `Шаг {number}. {step_title} - Редактировать отчёт` for closed steps
+
+These report-action buttons are shown only during an open working week. During
+goal and steps setup, participants can view expandable step descriptions but do
+not see report buttons. A stale report button from an older message returns the
+first working-week opening date instead of claiming that a deadline has passed.
 
 ## Weekly Focus Flow
 
@@ -173,16 +197,90 @@ Rules:
 - closing the focused step does not require selecting a new focus
 - focus does not prevent reporting another step in the same week
 
+Every Monday at 21:00 Asia/Yekaterinburg, the notification bot sends each
+captain an own-team summary:
+
+```text
+Фокусы команды «{team_name}» на {week_number}-ю неделю.
+
+Выбрали приоритетный шаг: {selected_count} из {active_count} ({selected_percent}%).
+✅ {participant_name} — «{step_title}»
+
+Не выбрали: {missing_count} из {active_count} ({missing_percent}%).
+❌ {participant_name}
+```
+
+This operational summary is captain-only. It is not sent to trackers, the
+administrator, or Alexander Sitnikov.
+
+## Captain Team Progress
+
+Captain menu button:
+
+```text
+📊 Прогресс команды
+```
+
+The response is calculated from current Google Sheets data on every press and
+contains only active consenting participants from the captain's own team:
+
+```text
+Прогресс команды на текущий момент
+
+{participant_name}
+Цель: {goal_symbol}
+Шаги: {steps_symbol} {configured_steps} из 8
+Фокус недели: {focus_step_or_state}
+Выполнено: {closed_steps} из 8 — {progress_percent}%
+{eight_cell_progress_bar}
+```
+
+## Captain Team Goals
+
+Captain menu button:
+
+```text
+🎯 Цели команды
+```
+
+The bot shows one participant-selection button per active consenting member of
+the captain's own team. Selecting a participant returns the active goal title,
+description, value, permission condition, and permission metric. Both the list
+and goal callback revalidate the active captain, exact active Teams assignment,
+flow, team, participant status, consent, and private chat.
+
+## Captain Team Steps
+
+Captain menu button:
+
+```text
+📍 Шаги команды
+```
+
+The bot shows a paginated participant-selection list containing only active
+consenting members of the captain's own team. Selecting a participant returns
+the numbered planned steps of that participant's active goal in number order.
+Open steps use `⬜`; closed steps use `🟩`. Both the list and detail callback
+repeat the same captain, active Teams assignment, flow, team, participant,
+consent, and private-chat authorization checks used by team goals.
+
 ## View Progress
 
 Trigger:
 - `📊 Мой прогресс`
 
 Bot shows:
+- goal setup status: `🟩` when an active goal exists, `⬜` while the setup deadline is open, `⬛` after a missed deadline
+- planned-steps setup status: `🟩` when all eight numbered steps are filled, `⬜` while the setup deadline is open, `⬛` after a missed deadline
 - progress percent
-- main 6-cell planned-step progress bar
+- main 8-cell planned-step progress bar
 - weekly status history separately if useful
 - current week status if available
+
+The progress view remains available when the goal or planned steps are missing so
+that the participant can see the corresponding setup status. Setup deadlines are
+read from the bound active flow (`goal_setup_end_date` and
+`steps_setup_end_date`) and are inclusive through the configured date.
 
 ## Step Report Flow
 
@@ -248,7 +346,7 @@ Confirmation:
 ### No Answer
 
 If participant does not submit any step report before Sunday 23:59 Yekaterinburg time:
-- system creates or records status `gray` / `⬜`
+- system creates or records status `gray` / `⬛`
 - score is `0`
 - no yellow late status is created
 
@@ -388,6 +486,8 @@ Saved data:
 
 ## Reminders
 
+Scheduled messages are selected from the active flow's materialized `FlowSchedule`. The table shows the exact date, calculated weekday, week number, week position, local time, role, and message for every event. The examples below form the default weekly template. Administrators may adjust a planned flow's schedule, enabled state, and Russian message text without changing recipient permissions or system behavior.
+
 ### Monday 10:00
 
 If the participant has open planned steps and no focus for the current week, bot sends the weekly focus prompt with step selection buttons.
@@ -428,7 +528,7 @@ Otherwise bot sends:
 ```text
 Последнее напоминание.
 
-Если отчёт не будет отправлен до 23:59 по Екатеринбургу, неделя будет отмечена как ⬜ нет ответа.
+Если отчёт не будет отправлен до 23:59 по Екатеринбургу, неделя будет отмечена как ⬛ нет отчёта в срок.
 ```
 
 If weekly report already exists, do not send more reminders that week.

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date
 from html import escape
 
+from app.domain import PLANNED_STEP_COUNT
+from app.scheduler.calendar import WORKING_WEEK_COUNT
 from app.services.insight_models import InsightListItem, InsightPage
 from app.services.participant_models import Goal, PlannedStep, WeeklyStatus
 from app.services.weekly_report_models import WeeklyReportStatus
@@ -12,10 +15,41 @@ from app.services.weekly_report_models import WeeklyReportStatus
 
 UNKNOWN_USER_TEXT = "Извините, вас нет в базе участников. Свяжитесь со своим капитаном."
 CONSENT_TEXT = (
-    "Я понимаю, что мои ответы будут сохранены и доступны трекеру, администратору "
-    "и Александру Ситникову в рамках челленджа."
+    "Дай согласие на обработку персональных данных. Бот сохранит твоё имя, фамилию, "
+    "Telegram ID и ответы в рамках проекта «Смерть иллюзий». Данные будут доступны "
+    "твоему капитану и трекеру, администратору и Александру Ситникову в пределах их ролей."
 )
 CONSENT_ACCEPT_BUTTON = "✅ Согласен"
+CONSENT_DECLINE_BUTTON = "Нет"
+CONSENT_DECLINE_RECONSIDER_BUTTON = "Да, разрешаю"
+CONSENT_DECLINE_CONFIRM_BUTTON = "Нет, не готов"
+CONSENT_DECLINE_CONFIRM_TEXT = (
+    "На «нет» и суда нет, и туда нет. Участие в челлендже подразумевает сбор и обработку "
+    "некоторых Ваших личных данных, Вы точно не готовы разрешить их использование ?"
+)
+CONSENT_DECLINED_TEXT = "Понял. Без согласия на обработку данных участие в челлендже невозможно."
+CONSENT_ACCEPTED_INTRO_TEXT = "Прекрасно, тогда продолжаем!"
+CHALLENGE_STAGES_TEXT = (
+    "Этапы челленджа:\n\n"
+    "1. Установочная неделя цели: формулируешь цель и уточняешь личные данные.\n"
+    "2. Установочная неделя шагов: кристаллизуешь шаги достижения цели.\n"
+    "3. Рабочие недели week_01-week_08: выбираешь фокус недели, двигаешь шаги и сдаёшь отчёты.\n"
+    "4. Финальное окно: собираем итоги и финальные выводы."
+)
+GOAL_SETUP_INTRO_TEXT = (
+    "Постановка цели: цель должна быть конкретной, измеримой и личной. "
+    "Сформулируй её так, чтобы через 8 рабочих недель было понятно, достигнута она или нет."
+)
+GOAL_TITLE_PROMPT_TEXT = "Кратко напиши цель одним предложением."
+GOAL_DESCRIPTION_PROMPT_TEXT = "Опиши конкретный результат, который должен быть получен."
+GOAL_VALUE_PROMPT_TEXT = "Укажи измеримое значение цели — число или сумму."
+GOAL_UNIT_PROMPT_TEXT = "Укажи единицу измерения или валюту, например: клиентов, рублей, кг."
+GOAL_CONDITION_PROMPT_TEXT = "По какому точному условию будет понятно, что цель достигнута?"
+GOAL_CONFIRM_BUTTON = "✅ Сохранить цель"
+GOAL_CANCEL_BUTTON = "Отмена"
+GOAL_SAVED_TEXT = "Цель сохранена."
+GOAL_ALREADY_EXISTS_TEXT = "Активная цель уже сохранена."
+GOAL_DRAFT_CANCELLED_TEXT = "Создание цели отменено."
 MISSING_DATA_TEXT = "Данные пока не заполнены. Свяжитесь со своим капитаном."
 NOT_AVAILABLE_TEXT = "Раздел будет доступен позже."
 MESSAGE_WITHOUT_FLOW_TEXT = "Сейчас сообщение не относится ни к одному разделу. Открой меню: /menu"
@@ -46,6 +80,9 @@ WEEKLY_REPORT_RED_SUCCESS_TEXT = "Принято. Отчёт за неделю �
 
 CAPTAIN_TEAM_TITLE_TEXT = "Твоя команда:"
 CAPTAIN_ONLY_TEXT = "Этот раздел доступен только капитану."
+CAPTAIN_PRIVATE_CHAT_ONLY_TEXT = "Открой этот раздел в личном чате с ботом."
+CAPTAIN_GOAL_MISSING_TEXT = "У участника пока нет активной цели."
+CAPTAIN_STEPS_MISSING_TEXT = "У участника пока нет прописанных шагов."
 CAPTAIN_NO_TEAM_MEMBERS_TEXT = "В твоей команде пока нет участников для отчёта."
 CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT = "Этот участник не из твоей команды."
 CAPTAIN_DROPPED_PARTICIPANT_TEXT = "За выбывшего участника нельзя внести отчёт."
@@ -83,13 +120,20 @@ SCHEDULER_REMINDER_TEXTS = {
     "sunday_2300_reminder": (
         "Последнее напоминание.\n\n"
         "Если отчёт не будет отправлен до 23:59 по Екатеринбургу, "
-        "неделя будет отмечена как ⬜ нет ответа."
+        "неделя будет отмечена как ⬛ нет отчёта в срок."
     ),
 }
 
 
 def format_missing_data_message() -> str:
     return MISSING_DATA_TEXT
+
+
+def format_weekly_report_not_open_text(opens_on: date) -> str:
+    return (
+        f"Отчёты по шагам откроются {opens_on:%d.%m.%Y}, "
+        "когда начнётся первая рабочая неделя."
+    )
 
 
 def format_scheduler_reminder_text(reminder_type: str) -> str:
@@ -216,7 +260,7 @@ def format_full_insight_text(item: InsightListItem) -> str:
 
 
 def format_goal_view(goal: Goal) -> str:
-    return "\n".join(
+    return "\n\n".join(
         (
             f"Цель: {goal.goal_title}",
             f"Описание: {goal.goal_description}",
@@ -243,37 +287,44 @@ def format_planned_steps_view(steps: Sequence[PlannedStep], *, focus_step_id: st
 def format_progress_view(
     *,
     steps: Sequence[PlannedStep],
+    goal_status_symbol: str,
+    steps_status_symbol: str,
     weekly_history: Sequence[WeeklyStatus] = (),
+    closed_week_number: int = 0,
 ) -> str:
     percent = calculate_progress_percent(steps)
     lines = [
+        "Мой прогресс",
+        "",
+        f"Цель: {goal_status_symbol}",
+        f"Шаги: {steps_status_symbol}",
+        "",
+        "Выполнение шагов",
         f"Прогресс: {percent}%",
-        f"Шаги: {_format_progress_bar(steps)}",
+        _format_progress_bar(steps),
+        "",
     ]
 
-    if weekly_history:
-        lines.append("История недель:")
-        lines.extend(
-            f"Неделя {item.week_number}: {item.status_symbol}"
-            for item in sorted(weekly_history, key=lambda status: status.week_number)
-        )
+    history_by_week = {item.week_number: item.status_symbol for item in weekly_history}
+    lines.append("История недель:")
+    lines.extend(
+        f"Неделя {week_number}: "
+        f"{history_by_week.get(week_number, '⬛' if week_number <= closed_week_number else '⬜')}"
+        for week_number in range(1, WORKING_WEEK_COUNT + 1)
+    )
 
     return "\n".join(lines)
 
 
 def calculate_progress_percent(steps: Sequence[PlannedStep]) -> int:
-    if not steps:
-        return 0
     closed_count = sum(1 for step in steps if step.step_status == "closed")
-    return round(closed_count / len(steps) * 100)
+    return round(min(closed_count, PLANNED_STEP_COUNT) / PLANNED_STEP_COUNT * 100)
 
 
 def _format_progress_bar(steps: Sequence[PlannedStep]) -> str:
-    if not steps:
-        return "□□□□□□"
     closed_count = sum(1 for step in steps if step.step_status == "closed")
-    filled_cells = round(closed_count / len(steps) * 6)
-    return "■" * filled_cells + "□" * (6 - filled_cells)
+    filled_cells = min(closed_count, PLANNED_STEP_COUNT)
+    return "■" * filled_cells + "□" * (PLANNED_STEP_COUNT - filled_cells)
 
 
 def _format_goal_value(goal: Goal) -> str:
@@ -325,8 +376,4 @@ def _format_step_lines(steps: Sequence[PlannedStep], *, focus_step_id: str | Non
 
 def _format_step_description(text: str) -> str:
     normalized = " ".join(text.split())
-    visible = normalized[:15]
-    hidden = normalized[15:]
-    if not hidden:
-        return escape(visible)
-    return f"{escape(visible)}<tg-spoiler>{escape(hidden)}</tg-spoiler>"
+    return _format_expandable_blockquote(normalized)

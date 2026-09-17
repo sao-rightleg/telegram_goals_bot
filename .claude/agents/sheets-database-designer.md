@@ -207,7 +207,7 @@ Allowed status_symbol:
 - 🟩
 - 🟦
 - 🟥
-- ⬜
+- ⬛
 
 Allowed submitted_by_role:
 - participant

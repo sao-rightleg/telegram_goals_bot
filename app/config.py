@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 import os
 from pathlib import Path
 from typing import Mapping
+
+from app.scheduler.calendar import DEFAULT_CHALLENGE_START_DATE
 
 
 class ConfigurationError(ValueError):
@@ -48,11 +51,13 @@ class TelegramRuntimeSettings:
 @dataclass(frozen=True)
 class GoogleSheetsSettings:
     sheet_id: str
+    challenge_flows_sheet_id: str
     application_credentials: Path
 
     def as_dict(self) -> dict[str, str]:
         return {
             "GOOGLE_SHEETS_ID": self.sheet_id,
+            "CHALLENGE_FLOWS_SHEETS_ID": self.challenge_flows_sheet_id,
             "GOOGLE_APPLICATION_CREDENTIALS": str(self.application_credentials),
         }
 
@@ -98,6 +103,14 @@ class RuntimeSettings:
 
 
 @dataclass(frozen=True)
+class ChallengeSettings:
+    start_date: date
+
+    def as_dict(self) -> dict[str, str]:
+        return {"CHALLENGE_START_DATE": self.start_date.isoformat()}
+
+
+@dataclass(frozen=True)
 class TranscriptionSettings:
     provider: str
     api_key: str | None = None
@@ -131,6 +144,7 @@ class Settings:
     admin: AdminSettings
     storage: StorageSettings
     runtime: RuntimeSettings
+    challenge: ChallengeSettings
     transcription: TranscriptionSettings
 
     def as_dict(self) -> dict[str, object]:
@@ -141,6 +155,7 @@ class Settings:
             "admin": self.admin.as_dict(),
             "storage": self.storage.as_dict(),
             "runtime": self.runtime.as_dict(),
+            "challenge": self.challenge.as_dict(),
             "transcription": self.transcription.as_dict(),
         }
 
@@ -183,6 +198,7 @@ def load_settings(
         ),
         google_sheets=GoogleSheetsSettings(
             sheet_id=_required_value(values, "GOOGLE_SHEETS_ID"),
+            challenge_flows_sheet_id=_required_value(values, "CHALLENGE_FLOWS_SHEETS_ID"),
             application_credentials=Path(_required_value(values, "GOOGLE_APPLICATION_CREDENTIALS")),
         ),
         admin=AdminSettings(
@@ -198,6 +214,7 @@ def load_settings(
             pdf_storage_dir=Path(_required_value(values, "PDF_STORAGE_DIR")),
         ),
         runtime=RuntimeSettings(log_level=values.get("LOG_LEVEL", "INFO").upper()),
+        challenge=ChallengeSettings(start_date=_date_value(values, "CHALLENGE_START_DATE")),
         transcription=_load_transcription_settings(values),
     )
 
@@ -245,6 +262,7 @@ def _read_env_file(path: Path) -> dict[str, str]:
 def _missing_required_values(values: Mapping[str, str], *, strict: bool) -> list[str]:
     required = [
         "GOOGLE_SHEETS_ID",
+        "CHALLENGE_FLOWS_SHEETS_ID",
         "GOOGLE_APPLICATION_CREDENTIALS",
         "ADMIN_TELEGRAM_ID",
         "ADMIN_ERROR_CHAT_ID",
@@ -268,6 +286,16 @@ def _optional_value(values: Mapping[str, str], key: str) -> str | None:
     if value is None or value == "":
         return None
     return value
+
+
+def _date_value(values: Mapping[str, str], key: str) -> date:
+    value = _optional_value(values, key)
+    if value is None:
+        return DEFAULT_CHALLENGE_START_DATE
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise ConfigurationError(f"{key} must be an ISO date YYYY-MM-DD") from exc
 
 
 def _required_value(values: Mapping[str, str], key: str) -> str:

@@ -108,6 +108,9 @@ def test_feature_does_not_introduce_out_of_scope_dependencies_or_artifacts(tmp_p
 
     for action in (
         MenuAction.VIEW_TEAM,
+        MenuAction.VIEW_TEAM_PROGRESS,
+        MenuAction.VIEW_TEAM_GOALS,
+        MenuAction.VIEW_TEAM_STEPS,
         MenuAction.CAPTAIN_MANUAL_REPORT,
         MenuAction.VIEW_TEAM_REPORT,
     ):
@@ -118,7 +121,7 @@ def test_feature_does_not_introduce_out_of_scope_dependencies_or_artifacts(tmp_p
         )
         assert response.text == NOT_AVAILABLE_TEXT
 
-    assert len(main_bot.sent_messages) == 4
+    assert len(main_bot.sent_messages) == 7
     assert error_bot.sent_messages == []
     assert notification_bot.sent_messages == []
     assert gateway.list_weekly_reports() == [{"weekly_report_id": "WR001", "participant_id": "P001"}]

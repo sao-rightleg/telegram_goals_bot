@@ -7,6 +7,7 @@ import pytest
 from app.bot.clients import (
     BotCommand,
     BotPurpose,
+    CALLBACK_ACK_TIMEOUT_SECONDS,
     FakeBotClient,
     FakeTelegramFileDownloader,
     LiveTelegramBotClient,
@@ -231,6 +232,26 @@ def test_live_telegram_client_sets_bot_commands() -> None:
     assert "%22description%22%3A%22%D0%9F%D0%BE%D0%BA%D0%B0%D0%B7%D0%B0%D1%82%D1%8C+%D0%BC%D0%B5%D0%BD%D1%8E%22" in body
 
 
+def test_live_telegram_client_acknowledges_callback_query() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"ok": True, "result": True})
+
+    client = LiveTelegramBotClient(
+        purpose=BotPurpose.MAIN,
+        token="secret-token-123",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    client.answer_callback_query("callback-1")
+
+    assert requests[0].url.path == "/botsecret-token-123/answerCallbackQuery"
+    assert requests[0].read().decode("utf-8") == "callback_query_id=callback-1"
+    assert CALLBACK_ACK_TIMEOUT_SECONDS == 3.0
+
+
 def test_fake_telegram_client_records_menu_item_callback_markup() -> None:
     bot = FakeBotClient(BotPurpose.MAIN)
 
@@ -274,6 +295,38 @@ def test_live_telegram_client_sends_document_request(tmp_path: Path) -> None:
     assert document.file_path == document_path
     assert document.caption == "Report"
     assert requests[0].url.path == "/botdocument-token-123/sendDocument"
+
+
+def test_live_telegram_client_sends_only_approved_drive_download_url() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 79}})
+
+    client = LiveTelegramBotClient(
+        purpose=BotPurpose.MAIN,
+        token="document-token-123",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    url = "https://drive.google.com/uc?export=download&id=107MJKyevSQ_AbxbymvLd9WSq6sIOKeAM"
+
+    document = client.send_document_url(chat_id="1001", file_url=url, caption="Инструкция")
+
+    assert document.file_url == url
+    assert requests[0].url.path == "/botdocument-token-123/sendDocument"
+    assert requests[0].read().decode() == (
+        "chat_id=1001&document=https%3A%2F%2Fdrive.google.com%2Fuc%3Fexport%3Ddownload%26id%3D107MJKyevSQ_AbxbymvLd9WSq6sIOKeAM&caption=%D0%98%D0%BD%D1%81%D1%82%D1%80%D1%83%D0%BA%D1%86%D0%B8%D1%8F"
+    )
+
+    for unsafe in (
+        "https://evil.example/file.pdf",
+        "https://drive.google.com.evil.example/uc?export=download&id=1234567890",
+        "https://user@drive.google.com/uc?export=download&id=1234567890",
+        "https://drive.google.com/uc?export=download&id=1234567890&extra=1",
+    ):
+        with pytest.raises(TelegramApiError, match="invalid document URL"):
+            client.send_document_url(chat_id="1001", file_url=unsafe)
 
 
 def test_live_telegram_file_downloader_writes_requested_path(tmp_path: Path) -> None:

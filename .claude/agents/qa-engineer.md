@@ -54,7 +54,7 @@ Allowed statuses only:
 - 🟩 green / victory / completed step
 - 🟦 blue / partial victory
 - 🟥 red / no victory
-- ⬜ gray / no answer
+- ⬛ gray / no report after deadline; ⬜ current/future before deadline
 
 There is no yellow late status.
 
@@ -77,7 +77,7 @@ Week deadline:
 - Sunday 23:59
 
 After deadline:
-- unanswered participant becomes ⬜
+- unanswered participant becomes ⬛ after deadline
 - captain cannot add status-changing report
 - participant cannot edit past week status
 

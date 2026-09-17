@@ -9,7 +9,12 @@ from pathlib import Path
 
 class ReportType(str, Enum):
     TELEGRAM_TEAM_SUMMARY = "telegram_team_summary"
+    TELEGRAM_TRACKER_SUMMARY = "telegram_tracker_summary"
+    TELEGRAM_ADMIN_SUMMARY = "telegram_admin_summary"
+    TELEGRAM_SITNIKOV_SUMMARY = "telegram_sitnikov_summary"
     PDF_TEAM_REPORT = "pdf_team_report"
+    PDF_TRACKER_REPORT = "pdf_tracker_report"
+    PDF_FULL_REPORT = "pdf_full_report"
     FULL_SUMMARY = "full_summary"
     GROUP_COMPARISON = "group_comparison"
 

@@ -188,6 +188,111 @@ class SchedulerJobRepository:
                 ),
             )
 
+    def has_successful_event_delivery(
+        self,
+        event_id: str,
+        recipient_id: str,
+        *,
+        week_number: int | None,
+    ) -> bool:
+        with sqlite3.connect(self._db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT 1
+                FROM scheduled_event_deliveries
+                WHERE event_id = ?
+                    AND recipient_id = ?
+                    AND week_number IS ?
+                    AND status = 'sent'
+                """,
+                (event_id, recipient_id, week_number),
+            ).fetchone()
+        return row is not None
+
+    def claim_event_delivery(
+        self,
+        *,
+        event_id: str,
+        recipient_id: str,
+        week_number: int | None,
+        scheduled_for: str,
+        updated_at: str,
+        stale_before: str | None = None,
+    ) -> bool:
+        """Atomically reserve one event/recipient delivery, including failed retries."""
+
+        with sqlite3.connect(self._db_path) as connection:
+            inserted = connection.execute(
+                """
+                INSERT OR IGNORE INTO scheduled_event_deliveries (
+                    event_id, recipient_id, week_number, scheduled_for, status,
+                    attempt_count, updated_at
+                )
+                VALUES (?, ?, ?, ?, 'pending', 1, ?)
+                """,
+                (event_id, recipient_id, week_number, scheduled_for, updated_at),
+            )
+            if inserted.rowcount == 1:
+                return True
+            retried = connection.execute(
+                """
+                UPDATE scheduled_event_deliveries
+                SET status = 'pending', scheduled_for = ?,
+                    attempt_count = attempt_count + 1, error_message = NULL, updated_at = ?
+                WHERE event_id = ? AND recipient_id = ? AND week_number IS ?
+                    AND (
+                        status = 'failed'
+                        OR (status = 'pending' AND ? IS NOT NULL AND updated_at < ?)
+                    )
+                """,
+                (
+                    scheduled_for,
+                    updated_at,
+                    event_id,
+                    recipient_id,
+                    week_number,
+                    stale_before,
+                    stale_before,
+                ),
+            )
+            return retried.rowcount == 1
+
+    def record_event_delivery(
+        self,
+        *,
+        event_id: str,
+        recipient_id: str,
+        week_number: int | None,
+        scheduled_for: str,
+        status: str,
+        updated_at: str,
+        error_message: str | None = None,
+    ) -> None:
+        with sqlite3.connect(self._db_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO scheduled_event_deliveries (
+                    event_id, recipient_id, week_number, scheduled_for, status,
+                    attempt_count, error_message, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+                ON CONFLICT(event_id, recipient_id, week_number) DO UPDATE SET
+                    scheduled_for = excluded.scheduled_for,
+                    status = excluded.status,
+                    error_message = excluded.error_message,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    event_id,
+                    recipient_id,
+                    week_number,
+                    scheduled_for,
+                    status,
+                    error_message,
+                    updated_at,
+                ),
+            )
+
 
 def _job_id(job_type: str, week_number: int | None, scheduled_for: str) -> str:
     week_part = "none" if week_number is None else f"week-{week_number:02d}"

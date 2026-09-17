@@ -21,6 +21,11 @@ The first MVP channel is Telegram.
 
 Web form is not part of the first MVP, but the architecture must allow adding it later.
 
+Each deployed participant bot instance serves exactly one configured challenge
+flow. The flow registry may be read during startup, but `/start`, `/menu`, and
+other participant actions must not scan it. A new flow receives separate Main
+and Notification bot instances; the administrator may keep one shared Error bot.
+
 ## 3. Storage
 
 ### 3.1 Business storage
@@ -88,6 +93,13 @@ Captain has additional responsibilities:
 - receives notifications about silent participants in own team
 - manually adds reports for participants in own team
 - receives PDF report for own team
+- can request the current goal, route, weekly focus, and completed-step progress
+  for every active consenting participant in own team from the captain menu
+- can select an active consenting participant from own team and view all fields
+  of that participant's active goal; the goal text is available only in a
+  private chat with the bot
+- can select an active consenting participant from own team and view the
+  numbered planned steps of that participant's active goal in a private chat
 
 Captain cannot:
 - add reports for other teams
@@ -210,6 +222,11 @@ Weekly focus rules:
 - closing the focused step does not require selecting a new focus for the remaining week
 - focus does not prevent reporting another step in the same week
 - captains and trackers must see weekly focus in reports
+- every Monday at 21:00 Asia/Yekaterinburg, each captain receives an operational
+  summary of the focus selected by every active consenting participant in the
+  captain's own team and a list of those who have not selected one
+- the Monday focus summary is not sent to trackers, the administrator, or
+  Alexander Sitnikov; their ordinary weekly reports remain unchanged
 
 Participants report per planned step.
 
@@ -245,37 +262,73 @@ After deadline:
 - no late yellow status
 - no status change from participant
 - no late captain manual report
-- missing report becomes ⬜
+- missing report becomes `gray` / ⬛
 - late report text may be saved, but it must not change the closed week's status
 
-## 11. Weekly schedule
+## 11. Flow-driven schedule
 
-Schedule in `Asia/Yekaterinburg`:
+All schedule times use `Asia/Yekaterinburg`.
 
-- Monday 10:00: start of week reminder
-- Wednesday 10:00: soft check-in
-- Sunday 18:00: final check-in
-- Sunday 22:30: reminder if no weekly report
-- Sunday 23:00: last reminder if no weekly report
-- Sunday 23:59: deadline
-- Monday 00:00-00:20: close week and generate reports
-- Monday 00:20-01:00: send reports
+### Participant registration window
 
-If participant already submitted weekly report, no more reminders that week.
+- Self-registration opens at `kickoff_meeting_at`. The default window is seven days, and the administrator may explicitly extend `registration_closes_at` by up to ten additional days for late participants without changing the challenge calendar.
+- `registration_opens_at` equals `kickoff_meeting_at`; `registration_closes_at` must be later than `registration_opens_at`.
+- During this window, an unknown Telegram ID may start the consent and registration scenario for the active flow.
+- After `registration_closes_at`, `/start` from a Telegram ID that has no participant record for this flow receives: `Данный поток уже набран`.
+- A participant already registered in the flow continues to use the bot after the window closes.
+- An unfinished registration draft does not reserve a place after the deadline.
+- Readiness validation must fail when the kickoff timestamp or either registration-window boundary is missing or inconsistent.
+- The challenge-flow registry is writable only by the administrator and the bot service account; trackers receive access to their allowed per-flow business sheets, not to the registry.
+
+Each challenge flow has an explicit day-by-day schedule in the separate challenge-flows spreadsheet. The administrator sets the flow start date in `ChallengeFlows`; the system materializes concrete calendar dates for every phase, week, deadline, notification, report generation, and report delivery event in `FlowSchedule`.
+
+Each schedule row contains the exact `scheduled_date`, `scheduled_time`, calculated weekday, challenge phase, and week position. `day_offset` remains as a stable relative reference so a schedule can be regenerated when the flow start date changes before activation.
+
+Example: if a flow starts on `2026-09-01`, `day_offset = 1` materializes as `2026-09-02`, Wednesday. The table must show both the exact date and the calculated weekday.
+
+The schedule must support:
+- participant onboarding and stage messages;
+- participant weekly focus, check-in, and missing-report reminders;
+- captain and tracker operational notifications;
+- week closing;
+- Telegram/PDF report generation and delivery to authorized roles;
+- final-summary events.
+
+Recipient roles are resolved from participants, teams, and trackers belonging to the same `flow_id`. A schedule row must never send data from another flow.
+
+Message text may be edited in Google Sheets. System behavior is selected only from an approved `event_type`; free-form text must not trigger arbitrary code or bypass role visibility rules.
+
+The runtime executes the materialized `scheduled_date` and `scheduled_time`; it must not infer a different date from the VPS weekday at send time.
+
+The initial schedule template preserves the approved weekly cadence:
+- Monday 10:00: start-of-week reminder;
+- Wednesday 10:00: soft check-in;
+- Sunday 18:00: final check-in;
+- Sunday 22:30: reminder if no weekly report;
+- Sunday 23:00: last reminder if no weekly report;
+- Sunday 23:59: deadline and week closing;
+- Monday 00:00-00:20: generate reports;
+- Monday 00:20-01:00: send reports.
+
+If a participant already submitted the required report, later missing-report reminders for that participant and week are skipped.
 
 ## 12. Progress calculation
 
 Progress is calculated based on planned steps.
 
 Challenge route:
-- Week 1: goal formulation
-- Week 2: route / planned steps
-- Weeks 3-8: six working weeks for step execution
-- Main route contains 6 planned steps
-- Main progress bar has 6 cells
-- Weeks 1-2 are not included in the main progress bar
+- Setup phase `goal_setup`: goal formulation
+- Setup phase `steps_setup`: route / planned steps
+- Working phases `week_01` through `week_08`: planned step execution
+- Setup phases may overlap for an explicitly configured recovery window. In the
+  active September 2026 test flow, goal entry remains open through `2026-09-16`
+  while `steps_setup` remains `2026-09-14` through `2026-09-20`; working-week
+  dates do not move.
+- Main route contains 8 planned steps
+- Main progress bar has 8 cells
+- Setup phases are not included in the main progress bar
 
-Scoring:
+Planned-step progress scoring:
 - 🟩 = 1
 - 🟦 = 0.5
 - 🟥 = 0
@@ -286,10 +339,14 @@ Progress percent:
 completed score / total planned steps * 100
 
 Examples:
-- 5 of 6 = 83.3%
-- 6 of 6 = 100%
+- 5 of 8 = 62.5%
+- 8 of 8 = 100%
 
 Weekly status history is stored separately from main step progress. UI may show both main progress bar and weekly history, but main progress percent is based only on planned steps.
+
+Weekly status history uses 🟩 for a submitted victory report, 🟦 for a submitted partial-victory report, 🟥 for a submitted no-victory report, ⬛ after the deadline when no report was submitted, and ⬜ only while the week is not yet closed. A future/current white cell is not counted as a missed report.
+
+If a past week has no stored final status because week closing failed, participant history still displays ⬛ from the calendar boundary. Management report generation must stop on the missing final fact and notify the administrator rather than infer an overdue result silently.
 
 ## 13. Insights
 
@@ -298,7 +355,7 @@ Insights are separate from progress.
 Insight does not count as victory.
 
 If participant did nothing but had an insight:
-- weekly status remains 🟥 or ⬜ depending on report state
+- weekly status remains 🟥 when a no-victory report was submitted, or ⬛ when the closed week has no report
 - insight is stored separately
 
 Participant can add insights through menu.
@@ -442,7 +499,7 @@ Active: 8
 Dropped: 2
 Weekly victories: 62.5%
 
-Иванов Иван — 🟩🟦⬜⬜⬜⬜ 25%
+Иванов Иван — 🟩🟦⬜⬜⬜⬜⬜⬜ 19%
 Петров Сергей — 🟩🟥⬜⬜⬜⬜ 16.7%
 
 ## 22. PDF report

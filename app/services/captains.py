@@ -4,19 +4,31 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import re
 
-from app.bot.clients import BotClient
+from app.bot.clients import BotClient, TelegramInlineButton
+from app.bot.menus import (
+    CAPTAIN_GOAL_CALLBACK_PREFIX,
+    CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX,
+    CAPTAIN_STEP_CALLBACK_PREFIX,
+    CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX,
+)
+from app.domain import PLANNED_STEP_COUNT
 from app.bot.messages import (
     CAPTAIN_DROPPED_PARTICIPANT_TEXT,
     CAPTAIN_EMPTY_REPORT_TEXT,
     CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT,
+    CAPTAIN_GOAL_MISSING_TEXT,
     CAPTAIN_MANUAL_REPORT_DUPLICATE_TEXT,
     CAPTAIN_MANUAL_REPORT_LATE_TEXT,
     CAPTAIN_MANUAL_REPORT_SUCCESS_TEXT,
     CAPTAIN_NO_TEAM_MEMBERS_TEXT,
     CAPTAIN_ONLY_TEXT,
+    CAPTAIN_PRIVATE_CHAT_ONLY_TEXT,
+    CAPTAIN_STEPS_MISSING_TEXT,
     CAPTAIN_TEAM_TITLE_TEXT,
     CONSENT_ACCEPT_BUTTON,
+    CONSENT_DECLINE_BUTTON,
     CONSENT_TEXT,
     MISSING_DATA_TEXT,
     UNKNOWN_USER_TEXT,
@@ -25,7 +37,7 @@ from app.bot.messages import (
     build_weekly_report_status_buttons,
     format_captain_team_member_line,
 )
-from app.scheduler.calendar import current_challenge_week_number, is_weekly_report_open
+from app.scheduler.calendar import current_challenge_week_number, is_weekly_report_open, is_working_week
 from app.services.notifications import NotificationCategory, NotificationRouter
 from app.services.participant_models import FlowResponse, TelegramUserContext
 from app.services.weekly_report_models import WeeklyReportStatus
@@ -49,7 +61,7 @@ class CaptainService:
             response = FlowResponse(
                 chat_id=user.chat_id,
                 text=CONSENT_TEXT,
-                buttons=(CONSENT_ACCEPT_BUTTON,),
+                buttons=(CONSENT_ACCEPT_BUTTON, CONSENT_DECLINE_BUTTON),
             )
             self.main_bot.send_message(
                 chat_id=user.chat_id,
@@ -72,6 +84,192 @@ class CaptainService:
 
         team_members = self.sheets.list_participants_by_team(team_id)
         return self._send_response(user, text=_format_team_view(team_members))
+
+    def show_team_progress(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
+        captain_context = self._resolve_team_data_captain(user, occurred_at=_occurred_at(now))
+        if isinstance(captain_context, FlowResponse):
+            return captain_context
+
+        captain, _captain_id, team_id = captain_context
+        flow_id = _optional_string_value(captain.get("flow_id"))
+        participants = _eligible_team_participants(
+            self.sheets.list_participants_by_team(team_id),
+            flow_id=flow_id,
+        )
+        if not participants:
+            return self._send_response(user, text=CAPTAIN_NO_TEAM_MEMBERS_TEXT)
+
+        participant_ids = {_string_value(row.get("participant_id")) for row in participants}
+        active_goals = {
+            _string_value(row.get("participant_id")): row
+            for row in self.sheets.list_goals()
+            if _string_value(row.get("participant_id")) in participant_ids
+            and _normalized_string(row.get("goal_status")) == "active"
+        }
+        steps_by_participant = _team_steps_by_participant(
+            self.sheets.list_planned_steps_all(),
+            active_goals=active_goals,
+        )
+        focuses = _current_focus_by_participant(self.sheets, now=now)
+        text = _format_team_progress(
+            participants=participants,
+            active_goals=active_goals,
+            steps_by_participant=steps_by_participant,
+            focuses=focuses,
+            working_week=is_working_week(now),
+        )
+        return self._send_sectioned_response(
+            user,
+            text=text,
+            continuation_header="Прогресс команды — продолжение",
+        )
+
+    def show_team_goals(
+        self,
+        user: TelegramUserContext,
+        *,
+        now: datetime,
+        page_index: int = 0,
+    ) -> FlowResponse:
+        return self._show_team_participant_selector(
+            user,
+            now=now,
+            page_index=page_index,
+            item_prefix=CAPTAIN_GOAL_CALLBACK_PREFIX,
+            page_prefix=CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX,
+            prompt="Выбери участника, чтобы посмотреть его цель.",
+        )
+
+    def show_participant_goal(
+        self,
+        user: TelegramUserContext,
+        *,
+        participant_id: str,
+        now: datetime,
+    ) -> FlowResponse:
+        context = self._resolve_team_data_captain(user, occurred_at=_occurred_at(now))
+        if isinstance(context, FlowResponse):
+            return context
+        captain, _captain_id, team_id = context
+        flow_id = _string_value(captain.get("flow_id"))
+        if not _valid_callback_participant_id(
+            participant_id,
+            prefix=CAPTAIN_GOAL_CALLBACK_PREFIX,
+        ):
+            return self._send_response(user, text=CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT)
+        participant = self.sheets.get_participant(participant_id)
+        if participant is None or not _participant_is_in_authorized_team(
+            participant,
+            team_id=team_id,
+            flow_id=flow_id,
+        ):
+            return self._send_response(user, text=CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT)
+        goal = self.sheets.get_active_goal(participant_id)
+        if goal is None:
+            return self._send_response(user, text=CAPTAIN_GOAL_MISSING_TEXT)
+        return self._send_sectioned_response(
+            user,
+            text=_format_captain_goal(participant, goal),
+            continuation_header="Цель участника — продолжение",
+        )
+
+    def show_team_steps(
+        self,
+        user: TelegramUserContext,
+        *,
+        now: datetime,
+        page_index: int = 0,
+    ) -> FlowResponse:
+        return self._show_team_participant_selector(
+            user,
+            now=now,
+            page_index=page_index,
+            item_prefix=CAPTAIN_STEP_CALLBACK_PREFIX,
+            page_prefix=CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX,
+            prompt="Выбери участника, чтобы посмотреть его шаги.",
+        )
+
+    def _show_team_participant_selector(
+        self,
+        user: TelegramUserContext,
+        *,
+        now: datetime,
+        page_index: int,
+        item_prefix: str,
+        page_prefix: str,
+        prompt: str,
+    ) -> FlowResponse:
+        context = self._resolve_team_data_captain(user, occurred_at=_occurred_at(now))
+        if isinstance(context, FlowResponse):
+            return context
+        captain, _captain_id, team_id = context
+        participants = _eligible_team_participants(
+            self.sheets.list_participants_by_team(team_id),
+            flow_id=_string_value(captain.get("flow_id")),
+        )
+        if not participants:
+            return self._send_response(user, text=CAPTAIN_NO_TEAM_MEMBERS_TEXT)
+        eligible_buttons = [
+            TelegramInlineButton(text=_button_display_name(participant), callback_data=callback_data)
+            for participant in sorted(participants, key=_team_member_sort_key)
+            if (
+                callback_data := _participant_callback_data(
+                    participant,
+                    prefix=item_prefix,
+                )
+            )
+            is not None
+        ]
+        buttons = _participant_page_buttons(
+            eligible_buttons,
+            page_index=page_index,
+            page_prefix=page_prefix,
+        )
+        return self._send_response(
+            user,
+            text=prompt,
+            buttons=buttons,
+        )
+
+    def show_participant_steps(
+        self,
+        user: TelegramUserContext,
+        *,
+        participant_id: str,
+        now: datetime,
+    ) -> FlowResponse:
+        context = self._resolve_team_data_captain(user, occurred_at=_occurred_at(now))
+        if isinstance(context, FlowResponse):
+            return context
+        captain, _captain_id, team_id = context
+        flow_id = _string_value(captain.get("flow_id"))
+        if not _valid_callback_participant_id(
+            participant_id,
+            prefix=CAPTAIN_STEP_CALLBACK_PREFIX,
+        ):
+            return self._send_response(user, text=CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT)
+        participant = self.sheets.get_participant(participant_id)
+        if participant is None or not _participant_is_in_authorized_team(
+            participant,
+            team_id=team_id,
+            flow_id=flow_id,
+        ):
+            return self._send_response(user, text=CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT)
+        goal = self.sheets.get_active_goal(participant_id)
+        if goal is None:
+            return self._send_response(user, text=CAPTAIN_STEPS_MISSING_TEXT)
+        steps = self.sheets.list_planned_steps(
+            participant_id,
+            _string_value(goal.get("goal_id")),
+        )
+        valid_steps = _valid_numbered_steps(steps)
+        if not valid_steps:
+            return self._send_response(user, text=CAPTAIN_STEPS_MISSING_TEXT)
+        return self._send_sectioned_response(
+            user,
+            text=_format_captain_steps(participant, valid_steps),
+            continuation_header="Шаги участника — продолжение",
+        )
 
     def start_manual_report(
         self,
@@ -258,11 +456,49 @@ class CaptainService:
         user: TelegramUserContext,
         *,
         text: str,
-        buttons: tuple[str, ...] = (),
+        buttons: tuple[object, ...] = (),
     ) -> FlowResponse:
         response = FlowResponse(chat_id=user.chat_id, text=text, buttons=buttons)
         self.main_bot.send_message(chat_id=user.chat_id, text=text, buttons=buttons)
         return response
+
+    def _send_sectioned_response(
+        self,
+        user: TelegramUserContext,
+        *,
+        text: str,
+        continuation_header: str,
+    ) -> FlowResponse:
+        response = FlowResponse(chat_id=user.chat_id, text=text)
+        for chunk in _split_sectioned_text(text, continuation_header=continuation_header):
+            self.main_bot.send_message(chat_id=user.chat_id, text=chunk)
+        return response
+
+    def _resolve_team_data_captain(
+        self,
+        user: TelegramUserContext,
+        *,
+        occurred_at: str,
+    ) -> tuple[SheetRow, str, str] | FlowResponse:
+        if user.chat_id != str(user.telegram_id):
+            return self._send_response(user, text=CAPTAIN_PRIVATE_CHAT_ONLY_TEXT)
+        context = self._resolve_captain(user, occurred_at=occurred_at)
+        if isinstance(context, FlowResponse):
+            return context
+        captain, captain_id, team_id = context
+        flow_id = _optional_string_value(captain.get("flow_id"))
+        if _normalized_string(captain.get("status")) != "active" or not captain_id or not flow_id:
+            return self._send_response(user, text=CAPTAIN_ONLY_TEXT)
+        has_active_assignment = any(
+            team.get("is_active") is True
+            and _string_value(team.get("team_id")) == team_id
+            and _string_value(team.get("captain_id")) == captain_id
+            and _string_value(team.get("flow_id")) == flow_id
+            for team in self.sheets.list_teams()
+        )
+        if not has_active_assignment:
+            return self._send_response(user, text=CAPTAIN_ONLY_TEXT)
+        return captain, captain_id, team_id
 
     def _resolve_manual_context(
         self,
@@ -315,7 +551,11 @@ class CaptainService:
         if captain is None:
             return self._handle_unknown_user(user, occurred_at=occurred_at)
         if not _consent_is_given(captain):
-            return self._send_response(user, text=CONSENT_TEXT, buttons=(CONSENT_ACCEPT_BUTTON,))
+            return self._send_response(
+                user,
+                text=CONSENT_TEXT,
+                buttons=(CONSENT_ACCEPT_BUTTON, CONSENT_DECLINE_BUTTON),
+            )
         if _role(captain) != "captain":
             return self._send_response(user, text=CAPTAIN_ONLY_TEXT)
 
@@ -393,6 +633,281 @@ def _format_team_view(team_members: list[SheetRow]) -> str:
         [CAPTAIN_TEAM_TITLE_TEXT]
         + [format_captain_team_member_line(member) for member in sorted_members]
     )
+
+
+def _team_steps_by_participant(
+    rows: list[SheetRow],
+    *,
+    active_goals: dict[str, SheetRow],
+) -> dict[str, list[SheetRow]]:
+    result: dict[str, list[SheetRow]] = {}
+    for row in rows:
+        participant_id = _string_value(row.get("participant_id"))
+        goal = active_goals.get(participant_id)
+        if goal is None or _string_value(row.get("goal_id")) != _string_value(goal.get("goal_id")):
+            continue
+        result.setdefault(participant_id, []).append(row)
+    return result
+
+
+def _eligible_team_participants(
+    rows: list[SheetRow],
+    *,
+    flow_id: str | None,
+) -> list[SheetRow]:
+    return [
+        row
+        for row in rows
+        if _role(row) in {"participant", "captain"}
+        and _normalized_string(row.get("status")) == "active"
+        and _consent_is_given(row)
+        and flow_id is not None
+        and _optional_string_value(row.get("flow_id")) == flow_id
+    ]
+
+
+def _participant_is_in_authorized_team(
+    participant: SheetRow,
+    *,
+    team_id: str,
+    flow_id: str,
+) -> bool:
+    return (
+        _role(participant) in {"participant", "captain"}
+        and _normalized_string(participant.get("status")) == "active"
+        and _consent_is_given(participant)
+        and _optional_string_value(participant.get("team_id")) == team_id
+        and _optional_string_value(participant.get("flow_id")) == flow_id
+    )
+
+
+def _current_focus_by_participant(
+    sheets: SheetsGateway,
+    *,
+    now: datetime,
+) -> dict[str, SheetRow]:
+    if not is_working_week(now):
+        return {}
+    return {
+        _string_value(row.get("participant_id")): row
+        for row in sheets.list_weekly_focus_for_week(current_challenge_week_number(now))
+        if _normalized_string(row.get("focus_status")) in {"", "active"}
+    }
+
+
+def _format_team_progress(
+    *,
+    participants: list[SheetRow],
+    active_goals: dict[str, SheetRow],
+    steps_by_participant: dict[str, list[SheetRow]],
+    focuses: dict[str, SheetRow],
+    working_week: bool,
+) -> str:
+    sections = ["Прогресс команды на текущий момент"]
+    for participant in sorted(participants, key=_team_member_sort_key):
+        participant_id = _string_value(participant.get("participant_id"))
+        steps = steps_by_participant.get(participant_id, [])
+        valid_steps = _valid_numbered_steps(steps)
+        configured_count = len(valid_steps)
+        closed_count = sum(
+            1 for row in valid_steps.values() if _normalized_string(row.get("step_status")) == "closed"
+        )
+        percent = round(closed_count / PLANNED_STEP_COUNT * 100)
+        focus_text = _team_focus_text(
+            focuses.get(participant_id),
+            steps=valid_steps,
+            working_week=working_week,
+        )
+        sections.append(
+            "\n".join(
+                (
+                    _progress_display_name(participant),
+                    f"Цель: {'🟩' if participant_id in active_goals else '⬜'}",
+                    f"Шаги: {_steps_setup_symbol(configured_count)} {configured_count} из {PLANNED_STEP_COUNT}",
+                    f"Фокус недели: {focus_text}",
+                    f"Выполнено: {closed_count} из {PLANNED_STEP_COUNT} — {percent}%",
+                    "■" * closed_count + "□" * (PLANNED_STEP_COUNT - closed_count),
+                )
+            )
+        )
+    return "\n\n".join(sections)
+
+
+def _valid_numbered_steps(rows: list[SheetRow]) -> dict[int, SheetRow]:
+    result: dict[int, SheetRow] = {}
+    duplicate_numbers: set[int] = set()
+    for row in rows:
+        number = _int_value(row.get("step_number"))
+        if 1 <= number <= PLANNED_STEP_COUNT and _optional_string_value(row.get("step_title")):
+            if number in result:
+                duplicate_numbers.add(number)
+            result[number] = row
+    for number in duplicate_numbers:
+        result.pop(number, None)
+    return result
+
+
+def _steps_setup_symbol(configured_count: int) -> str:
+    if configured_count == PLANNED_STEP_COUNT:
+        return "🟩"
+    if configured_count:
+        return "🟦"
+    return "⬜"
+
+
+def _progress_display_name(participant: SheetRow) -> str:
+    name = _display_name(participant)
+    return name if len(name) <= 100 else name[:97].rstrip() + "..."
+
+
+def _button_display_name(participant: SheetRow) -> str:
+    name = _display_name(participant)
+    return name if len(name) <= 64 else name[:61].rstrip() + "..."
+
+
+def _participant_callback_data(
+    participant: SheetRow,
+    *,
+    prefix: str,
+) -> str | None:
+    participant_id = _optional_string_value(participant.get("participant_id"))
+    if participant_id is None or not _valid_callback_participant_id(
+        participant_id,
+        prefix=prefix,
+    ):
+        return None
+    return f"{prefix}{participant_id}"
+
+
+def _valid_callback_participant_id(participant_id: str, *, prefix: str) -> bool:
+    callback_data = f"{prefix}{participant_id}"
+    return bool(re.fullmatch(r"[A-Za-z0-9:_-]+", participant_id)) and len(
+        callback_data.encode("utf-8")
+    ) <= 64
+
+
+def _participant_page_buttons(
+    participant_buttons: list[TelegramInlineButton],
+    *,
+    page_index: int,
+    page_prefix: str,
+    page_size: int = 20,
+) -> tuple[TelegramInlineButton, ...]:
+    max_page = max(0, (len(participant_buttons) - 1) // page_size)
+    safe_page = min(max(page_index, 0), max_page)
+    start = safe_page * page_size
+    buttons = participant_buttons[start : start + page_size]
+    if safe_page > 0:
+        buttons.insert(
+            0,
+            TelegramInlineButton(
+                text="← Назад",
+                callback_data=f"{page_prefix}{safe_page - 1}",
+            ),
+        )
+    if safe_page < max_page:
+        buttons.append(
+            TelegramInlineButton(
+                text="Далее →",
+                callback_data=f"{page_prefix}{safe_page + 1}",
+            )
+        )
+    return tuple(buttons)
+
+
+def _format_captain_goal(participant: SheetRow, goal: SheetRow) -> str:
+    return "\n\n".join(
+        (
+            f"Цель участника: {_safe_goal_field(_display_name(participant), fallback='Участник без имени')}",
+            f"Цель: {_safe_goal_field(goal.get('goal_title'))}",
+            f"Описание: {_safe_goal_field(goal.get('goal_description'))}",
+            f"Ценность: {_goal_value_text(goal)}",
+            f"Условие разрешения: {_safe_goal_field(goal.get('permission_condition'))}",
+            f"Показатель выполнения: {_permission_metric_text(goal)}",
+        )
+    )
+
+
+def _format_captain_steps(
+    participant: SheetRow,
+    steps: dict[int, SheetRow],
+) -> str:
+    sections = [f"Шаги участника: {_safe_step_title(_display_name(participant))}"]
+    sections.extend(
+        f"{number}. {_step_status_symbol(step)} {_safe_step_title(step.get('step_title'))}"
+        for number, step in sorted(steps.items())
+    )
+    return "\n\n".join(sections)
+
+
+def _step_status_symbol(step: SheetRow) -> str:
+    return "🟩" if _normalized_string(step.get("step_status")) == "closed" else "⬜"
+
+
+def _safe_step_title(value: object) -> str:
+    text = str(value or "").strip() or "Шаг без названия"
+    return text if len(text) <= 1000 else text[:997].rstrip() + "..."
+
+
+def _goal_value_text(goal: SheetRow) -> str:
+    amount = _safe_goal_field(goal.get("goal_value_amount"), fallback="")
+    currency = _safe_goal_field(goal.get("goal_value_currency"), fallback="")
+    return " ".join(value for value in (amount, currency) if value) or "не указана"
+
+
+def _permission_metric_text(goal: SheetRow) -> str:
+    amount = _safe_goal_field(goal.get("permission_metric_amount"), fallback="")
+    unit = _safe_goal_field(goal.get("permission_metric_unit"), fallback="")
+    return " ".join(value for value in (amount, unit) if value) or "не указан"
+
+
+def _safe_goal_field(value: object, *, fallback: str = "не указано") -> str:
+    text = str(value or "").strip()
+    if not text:
+        return fallback
+    return text if len(text) <= 1000 else text[:997].rstrip() + "..."
+
+
+def _team_focus_text(
+    focus: SheetRow | None,
+    *,
+    steps: dict[int, SheetRow],
+    working_week: bool,
+) -> str:
+    if not working_week:
+        return "выбор ещё не открыт"
+    if focus is None:
+        return "не выбран"
+    focus_step_id = _string_value(focus.get("step_id"))
+    for row in steps.values():
+        if _string_value(row.get("step_id")) == focus_step_id:
+            title = _string_value(row.get("step_title")).strip()
+            if len(title) > 80:
+                title = title[:77].rstrip() + "..."
+            return f"«{title}»"
+    return "не выбран"
+
+
+def _split_sectioned_text(
+    text: str,
+    *,
+    continuation_header: str,
+    limit: int = 3900,
+) -> list[str]:
+    if len(text) <= limit:
+        return [text]
+    sections = text.split("\n\n")
+    chunks: list[str] = []
+    current = sections[0]
+    for section in sections[1:]:
+        candidate = f"{current}\n\n{section}"
+        if len(candidate) <= limit:
+            current = candidate
+            continue
+        chunks.append(current)
+        current = f"{continuation_header}\n\n{section}"
+    chunks.append(current)
+    return chunks
 
 
 def _format_manual_start_text(target: SheetRow, open_steps: list[SheetRow]) -> str:
@@ -491,7 +1006,11 @@ def _consent_is_given(participant: SheetRow) -> bool:
 
 def _role(participant: SheetRow) -> str:
     value = participant.get("role")
-    return value if isinstance(value, str) else "participant"
+    return value.strip().lower() if isinstance(value, str) else "participant"
+
+
+def _normalized_string(value: object) -> str:
+    return str(value or "").strip().lower()
 
 
 def _is_dropped(participant: SheetRow) -> bool:

@@ -15,6 +15,7 @@ from app.storage.weekly_report_drafts import WeeklyReportDraftRepository
 
 
 NOW = datetime(2026, 7, 2, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME))
+SETUP_NOW = datetime(2026, 6, 2, 10, 0, tzinfo=ZoneInfo(TIMEZONE_NAME))
 LATE = datetime(2026, 7, 5, 23, 59, 1, tzinfo=ZoneInfo(TIMEZONE_NAME))
 
 
@@ -58,6 +59,18 @@ def test_start_report_for_step_preselects_open_step(tmp_path: Path) -> None:
 
     assert status_response.text == "Что именно ты сделал?"
     assert drafts.get_active_draft(1001).selected_step_ids == ("S001",)
+
+
+def test_start_report_for_step_before_working_weeks_explains_opening_date(tmp_path: Path) -> None:
+    service, _gateway, drafts, main_bot, _error_bot = _service(tmp_path)
+
+    response = service.start_report_for_step(_user(), step_id="S001", now=SETUP_NOW)
+
+    assert response.text == (
+        "Отчёты по шагам откроются 08.06.2026, когда начнётся первая рабочая неделя."
+    )
+    assert main_bot.sent_messages[-1].text == response.text
+    assert drafts.get_active_draft(1001) is None
 
 
 def test_start_report_for_step_rejects_closed_step(tmp_path: Path) -> None:

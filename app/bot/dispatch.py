@@ -9,11 +9,20 @@ from zoneinfo import ZoneInfo
 
 from app.bot.menus import (
     CAPTAIN_DONE_CALLBACK,
+    CAPTAIN_CALLBACK_PREFIX,
+    CAPTAIN_GOAL_CALLBACK_PREFIX,
+    CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX,
+    CAPTAIN_STEP_CALLBACK_PREFIX,
+    CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX,
     CAPTAIN_MANUAL_REPORT_CALLBACK_PREFIX,
     CAPTAIN_STATUS_CALLBACK_PREFIX,
     CAPTAIN_STEPS_CALLBACK_PREFIX,
     CAPTAIN_TEAM_CALLBACK,
     CONSENT_ACCEPT_CALLBACK,
+    CONSENT_DECLINE_CALLBACK,
+    CONSENT_DECLINE_CONFIRM_CALLBACK,
+    GOAL_CANCEL_CALLBACK,
+    GOAL_CONFIRM_CALLBACK,
     INSIGHT_ADD_CALLBACK,
     INSIGHT_CANCEL_CALLBACK,
     INSIGHT_DONE_CALLBACK,
@@ -35,6 +44,7 @@ from app.bot.messages import MESSAGE_WITHOUT_FLOW_TEXT, NOT_AVAILABLE_TEXT
 from app.scheduler.calendar import TIMEZONE_NAME
 from app.services.notifications import NotificationCategory, NotificationRouter
 from app.services.participant_models import FlowResponse, TelegramUserContext
+from app.services.participant_flows import RegistrationClosedError
 from app.services.weekly_report_models import WeeklyReportStatus
 from app.storage.dialog_state import DialogStateRepository
 
@@ -57,6 +67,8 @@ class TelegramMessage:
     chat_id: str
     telegram_id: int
     username: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
     text: str | None = None
     command: str | None = None
     voice_file_id: str | None = None
@@ -94,12 +106,18 @@ class TelegramUpdateDispatcher:
         update = parse_telegram_update(payload)
         now = self.now_provider()
 
-        if update.message is not None:
-            return self._dispatch_message(update.message, now=now)
-        if update.callback is not None:
-            try:
+        try:
+            if update.message is not None:
+                return self._dispatch_message(update.message, now=now)
+            if update.callback is not None:
                 return self._dispatch_callback(update.callback, now=now)
-            except TelegramCallbackError as exc:
+        except RegistrationClosedError:
+            chat_id = update.message.chat_id if update.message is not None else update.callback.chat_id
+            response = FlowResponse(chat_id=chat_id, text="Данный поток уже набран")
+            self.notification_router.main_bot.send_message(chat_id=chat_id, text=response.text)
+            return response
+        except TelegramCallbackError as exc:
+            if update.callback is not None:
                 self._notify_malformed_callback(update.callback, now=now, error=exc)
                 return FlowResponse(chat_id=update.callback.chat_id, text=NOT_AVAILABLE_TEXT)
         return None
@@ -155,6 +173,18 @@ class TelegramUpdateDispatcher:
                 now=now,
                 telegram_message_id=message.message_id,
             )
+        if state.flow == "registration":
+            return self.participant_service.handle_registration_text(
+                user,
+                message.text or "",
+                occurred_at=now.isoformat(),
+            )
+        if state.flow == "goal_setup":
+            return self.participant_service.handle_goal_text(
+                user,
+                message.text or "",
+                occurred_at=now.isoformat(),
+            )
 
         return None
 
@@ -199,6 +229,30 @@ class TelegramUpdateDispatcher:
 
         if data == CONSENT_ACCEPT_CALLBACK:
             return self.participant_service.accept_consent(user, consent_given_at=now.isoformat())
+        if data == CONSENT_DECLINE_CALLBACK:
+            return self.participant_service.decline_consent(user, occurred_at=now.isoformat())
+        if data == CONSENT_DECLINE_CONFIRM_CALLBACK:
+            return self.participant_service.confirm_consent_decline(user, occurred_at=now.isoformat())
+        if data == GOAL_CONFIRM_CALLBACK:
+            return self.participant_service.confirm_goal(user, occurred_at=now.isoformat())
+        if data == GOAL_CANCEL_CALLBACK:
+            return self.participant_service.cancel_goal(user, occurred_at=now.isoformat())
+        if data.startswith("registration:captain:"):
+            return self.participant_service.select_registration_captain(
+                user,
+                captain_id=_required_suffix(data, "registration:captain:"),
+                occurred_at=now.isoformat(),
+            )
+        if data == "registration:confirm":
+            return self.participant_service.confirm_registration(user, occurred_at=now.isoformat())
+        if data == "registration:edit_first_name":
+            return self.participant_service.edit_registration_name(
+                user, field="first_name", occurred_at=now.isoformat()
+            )
+        if data == "registration:edit_last_name":
+            return self.participant_service.edit_registration_name(
+                user, field="last_name", occurred_at=now.isoformat()
+            )
         if data.startswith(WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX):
             return self.participant_service.select_weekly_focus(
                 user,
@@ -208,6 +262,22 @@ class TelegramUpdateDispatcher:
         if data.startswith(MENU_CALLBACK_PREFIX):
             return self._dispatch_menu_callback(user, data, now=now)
 
+        if data.startswith("weekly:"):
+            return self._dispatch_weekly_report_callback(user, data, now=now)
+        if data.startswith("insight:"):
+            return self._dispatch_insight_callback(user, data, now=now)
+        if data.startswith(CAPTAIN_CALLBACK_PREFIX):
+            return self._dispatch_captain_callback(user, data, now=now)
+
+        raise TelegramCallbackError("unknown callback prefix")
+
+    def _dispatch_weekly_report_callback(
+        self,
+        user: TelegramUserContext,
+        data: str,
+        *,
+        now: datetime,
+    ) -> FlowResponse:
         if data == WEEKLY_REPORT_START_CALLBACK:
             return self.weekly_report_service.start_report(user, now=now)
         if data.startswith(WEEKLY_REPORT_EDIT_STEP_CALLBACK_PREFIX):
@@ -230,7 +300,15 @@ class TelegramUpdateDispatcher:
             return self.weekly_report_service.select_steps(user, step_ids, now=now)
         if data == WEEKLY_REPORT_DONE_CALLBACK:
             return self.weekly_report_service.finalize_report(user, now=now)
+        raise TelegramCallbackError("unknown weekly report callback prefix")
 
+    def _dispatch_insight_callback(
+        self,
+        user: TelegramUserContext,
+        data: str,
+        *,
+        now: datetime,
+    ) -> FlowResponse:
         if data == INSIGHT_MENU_CALLBACK:
             return self.insight_service.show_menu(user, now=now)
         if data == INSIGHT_ADD_CALLBACK:
@@ -253,9 +331,50 @@ class TelegramUpdateDispatcher:
             return self.insight_service.skip_title_and_save(user, now=now)
         if data == INSIGHT_CANCEL_CALLBACK:
             return self.insight_service.cancel(user, now=now)
+        raise TelegramCallbackError("unknown insight callback prefix")
 
+    def _dispatch_captain_callback(
+        self,
+        user: TelegramUserContext,
+        data: str,
+        *,
+        now: datetime,
+    ) -> FlowResponse:
         if data == CAPTAIN_TEAM_CALLBACK:
             return self.captain_service.show_team(user, occurred_at=now.isoformat())
+        if data.startswith(CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX):
+            return self.captain_service.show_team_goals(
+                user,
+                now=now,
+                page_index=_int_suffix(data, CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX),
+            )
+        if data.startswith(CAPTAIN_GOAL_CALLBACK_PREFIX):
+            return self.captain_service.show_participant_goal(
+                user,
+                participant_id=_required_suffix(data, CAPTAIN_GOAL_CALLBACK_PREFIX),
+                now=now,
+            )
+        if data.startswith(CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX):
+            return self.captain_service.show_team_steps(
+                user,
+                now=now,
+                page_index=_int_suffix(data, CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX),
+            )
+        if data.startswith(CAPTAIN_STEP_CALLBACK_PREFIX):
+            return self.captain_service.show_participant_steps(
+                user,
+                participant_id=_required_suffix(data, CAPTAIN_STEP_CALLBACK_PREFIX),
+                now=now,
+            )
+        return self._dispatch_captain_report_callback(user, data, now=now)
+
+    def _dispatch_captain_report_callback(
+        self,
+        user: TelegramUserContext,
+        data: str,
+        *,
+        now: datetime,
+    ) -> FlowResponse:
         if data.startswith(CAPTAIN_MANUAL_REPORT_CALLBACK_PREFIX):
             return self.captain_service.start_manual_report(
                 user,
@@ -271,7 +390,7 @@ class TelegramUpdateDispatcher:
         if data == CAPTAIN_DONE_CALLBACK:
             return self.captain_service.finalize_manual_report(user, now=now)
 
-        raise TelegramCallbackError("unknown callback prefix")
+        raise TelegramCallbackError("unknown captain callback prefix")
 
     def _dispatch_menu_callback(
         self,
@@ -290,6 +409,12 @@ class TelegramUpdateDispatcher:
             return self.weekly_report_service.start_report(user, now=now)
         if action is MenuAction.VIEW_TEAM:
             return self.captain_service.show_team(user, occurred_at=now.isoformat())
+        if action is MenuAction.VIEW_TEAM_PROGRESS:
+            return self.captain_service.show_team_progress(user, now=now)
+        if action is MenuAction.VIEW_TEAM_GOALS:
+            return self.captain_service.show_team_goals(user, now=now)
+        if action is MenuAction.VIEW_TEAM_STEPS:
+            return self.captain_service.show_team_steps(user, now=now)
         if action is MenuAction.CAPTAIN_MANUAL_REPORT:
             raise TelegramCallbackError("captain manual report callback requires participant id")
         return self.participant_service.handle_menu_action(user, action, occurred_at=now.isoformat())
@@ -348,6 +473,8 @@ def _parse_message(payload: Mapping[str, object]) -> TelegramMessage:
         chat_id=str(_required_scalar(chat_payload.get("id"), field_name="message.chat.id")),
         telegram_id=_required_int(user_payload.get("id"), field_name="message.from.id"),
         username=_optional_string(user_payload.get("username")),
+        first_name=_optional_string(user_payload.get("first_name")),
+        last_name=_optional_string(user_payload.get("last_name")),
         text=text,
         command=command,
         voice_file_id=voice_file_id,
@@ -385,6 +512,8 @@ def _user_from_message(message: TelegramMessage) -> TelegramUserContext:
         telegram_id=message.telegram_id,
         chat_id=message.chat_id,
         username=message.username,
+        first_name=message.first_name,
+        last_name=message.last_name,
     )
 
 

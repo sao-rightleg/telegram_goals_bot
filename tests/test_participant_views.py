@@ -12,6 +12,7 @@ from app.storage.sqlite import initialize_schema
 
 
 NOW = "2026-07-02T10:00:00+05:00"
+SETUP_NOW = "2026-06-02T10:00:00+05:00"
 
 
 def test_goal_view_shows_current_participant_goal_only(tmp_path: Path) -> None:
@@ -68,8 +69,11 @@ def test_steps_view_shows_current_participant_steps_only(tmp_path: Path) -> None
     assert "Чужой шаг" not in response.text
     assert "⬜ Шаг 1. Мой открытый шаг" in response.text
     assert "🟩 Шаг 2. Мой закрытый шаг" in response.text
-    assert "Подробное описа<tg-spoiler>ние открытого шага</tg-spoiler>" in response.text
-    assert "<blockquote expandable>" not in response.text
+    assert (
+        "<blockquote expandable>Подробное описание открытого шага</blockquote>"
+        in response.text
+    )
+    assert "<tg-spoiler>" not in response.text
     assert response.parse_mode == TELEGRAM_HTML_PARSE_MODE
     assert [button.text for button in response.buttons] == [
         "Шаг 1. Мой открытый шаг - Отчитаться",
@@ -82,6 +86,25 @@ def test_steps_view_shows_current_participant_steps_only(tmp_path: Path) -> None
     assert main_bot.sent_messages[-1].buttons == response.buttons
     assert main_bot.sent_messages[-1].parse_mode == TELEGRAM_HTML_PARSE_MODE
     assert gateway.list_planned_steps("P001", "G001") == before
+
+
+def test_steps_view_hides_report_buttons_before_working_weeks(tmp_path: Path) -> None:
+    service, _gateway, main_bot, _error_bot, _notification_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        goals=[_goal("G001", "P001", "Моя цель")],
+        planned_steps=[_step("S001", "P001", "G001", 1, "Первый шаг", "open")],
+    )
+
+    response = service.handle_menu_action(
+        TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+        MenuAction.VIEW_STEPS,
+        occurred_at=SETUP_NOW,
+    )
+
+    assert "⬜ Шаг 1. Первый шаг" in response.text
+    assert response.buttons == ()
+    assert main_bot.sent_messages[-1].buttons == ()
 
 
 def test_start_prompts_required_weekly_focus_before_menu(tmp_path: Path) -> None:
@@ -220,6 +243,8 @@ def test_progress_view_uses_planned_steps_as_primary_progress(tmp_path: Path) ->
             _step("S004", "P001", "G001", 4, "Шаг 4", "open"),
             _step("S005", "P001", "G001", 5, "Шаг 5", "open"),
             _step("S006", "P001", "G001", 6, "Шаг 6", "open"),
+            _step("S007", "P001", "G001", 7, "Шаг 7", "open"),
+            _step("S008", "P001", "G001", 8, "Шаг 8", "open"),
         ],
         weekly_reports=[
             {"weekly_report_id": "WR001", "participant_id": "P001", "week_number": 1, "status_symbol": "🟥", "status_code": "red"}
@@ -232,8 +257,99 @@ def test_progress_view_uses_planned_steps_as_primary_progress(tmp_path: Path) ->
         occurred_at=NOW,
     )
 
-    assert "50%" in response.text
-    assert "■■■□□□" in response.text
+    assert "38%" in response.text
+    assert "■■■□□□□□" in response.text
+    assert "Цель: 🟩" in response.text
+    assert "Шаги: 🟩" in response.text
+
+
+def test_progress_view_shows_open_setup_statuses_without_goal_or_steps(tmp_path: Path) -> None:
+    service, _gateway, _main_bot, error_bot, _notification_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+    )
+
+    response = service.handle_menu_action(
+        TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+        MenuAction.VIEW_PROGRESS,
+        occurred_at="2026-05-30T10:00:00+05:00",
+    )
+
+    assert "Цель: ⬜" in response.text
+    assert "Шаги: ⬜" in response.text
+    assert "Прогресс: 0%" in response.text
+    assert error_bot.sent_messages == []
+
+
+def test_progress_view_shows_missed_setup_statuses_after_deadlines(tmp_path: Path) -> None:
+    service, _gateway, _main_bot, error_bot, _notification_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+    )
+
+    response = service.handle_menu_action(
+        TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+        MenuAction.VIEW_PROGRESS,
+        occurred_at=NOW,
+    )
+
+    assert "Цель: ⬛" in response.text
+    assert "Шаги: ⬛" in response.text
+    assert error_bot.sent_messages == []
+
+
+def test_progress_view_keeps_incomplete_steps_white_before_steps_deadline(tmp_path: Path) -> None:
+    service, _gateway, _main_bot, _error_bot, _notification_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        goals=[_goal("G001", "P001", "Моя цель")],
+        planned_steps=[_step("S001", "P001", "G001", 1, "Шаг 1", "open")],
+    )
+
+    response = service.handle_menu_action(
+        TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+        MenuAction.VIEW_PROGRESS,
+        occurred_at=SETUP_NOW,
+    )
+
+    assert "Цель: 🟩" in response.text
+    assert "Шаги: ⬜" in response.text
+
+
+def test_progress_view_uses_flow_setup_deadlines_inclusively(tmp_path: Path) -> None:
+    flow = {
+        "flow_id": "FLOW_1",
+        "flow_status": "active",
+        "goal_setup_end_date": "2026-09-16",
+        "steps_setup_end_date": "2026-09-20",
+    }
+    service, _gateway, _main_bot, _error_bot, _notification_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        challenge_flows=[flow],
+    )
+    user = TelegramUserContext(telegram_id=1001, chat_id="chat-1001")
+
+    on_goal_deadline = service.handle_menu_action(
+        user,
+        MenuAction.VIEW_PROGRESS,
+        occurred_at="2026-09-16T23:59:00+05:00",
+    )
+    after_goal_deadline = service.handle_menu_action(
+        user,
+        MenuAction.VIEW_PROGRESS,
+        occurred_at="2026-09-17T00:00:00+05:00",
+    )
+    after_steps_deadline = service.handle_menu_action(
+        user,
+        MenuAction.VIEW_PROGRESS,
+        occurred_at="2026-09-21T00:00:00+05:00",
+    )
+
+    assert "Цель: ⬜" in on_goal_deadline.text
+    assert "Цель: ⬛" in after_goal_deadline.text
+    assert "Шаги: ⬜" in after_goal_deadline.text
+    assert "Шаги: ⬛" in after_steps_deadline.text
 
 
 def test_weekly_history_is_secondary_when_available(tmp_path: Path) -> None:
@@ -255,6 +371,30 @@ def test_weekly_history_is_secondary_when_available(tmp_path: Path) -> None:
 
     assert "История недель:" in response.text
     assert "Неделя 1: 🟩" in response.text
+    assert "Неделя 2: ⬛" in response.text
+    assert "Неделя 4: ⬜" in response.text
+    assert "Неделя 8: ⬜" in response.text
+
+
+def test_legacy_gray_week_is_rendered_as_black_square(tmp_path: Path) -> None:
+    service, _gateway, _main_bot, _error_bot, _notification_bot = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        goals=[_goal("G001", "P001", "Моя цель")],
+        planned_steps=[_step("S001", "P001", "G001", 1, "Шаг 1", "open")],
+        weekly_reports=[
+            {"weekly_report_id": "WR001", "participant_id": "P001", "week_number": 1,
+             "status_symbol": "⬜", "status_code": "gray"}
+        ],
+    )
+
+    response = service.handle_menu_action(
+        TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+        MenuAction.VIEW_PROGRESS,
+        occurred_at=NOW,
+    )
+
+    assert "Неделя 1: ⬛" in response.text
 
 
 def test_view_requires_consent_before_data(tmp_path: Path) -> None:
@@ -305,6 +445,9 @@ def test_out_of_scope_actions_are_inert(tmp_path: Path) -> None:
 
     for action in (
         MenuAction.VIEW_TEAM,
+        MenuAction.VIEW_TEAM_PROGRESS,
+        MenuAction.VIEW_TEAM_GOALS,
+        MenuAction.VIEW_TEAM_STEPS,
         MenuAction.CAPTAIN_MANUAL_REPORT,
         MenuAction.VIEW_TEAM_REPORT,
     ):
@@ -315,7 +458,7 @@ def test_out_of_scope_actions_are_inert(tmp_path: Path) -> None:
         )
         assert response.text == NOT_AVAILABLE_TEXT
 
-    assert len(main_bot.sent_messages) == 3
+    assert len(main_bot.sent_messages) == 6
     assert error_bot.sent_messages == []
     assert gateway.list_weekly_reports() == [{"weekly_report_id": "WR001", "participant_id": "P001"}]
     assert gateway.list_insights() == []
@@ -329,6 +472,7 @@ def _build_service(
     planned_steps: list[dict[str, object]] | None = None,
     weekly_reports: list[dict[str, object]] | None = None,
     weekly_focus: list[dict[str, object]] | None = None,
+    challenge_flows: list[dict[str, object]] | None = None,
 ) -> tuple[ParticipantFlowService, FakeSheetsGateway, FakeBotClient, FakeBotClient, FakeBotClient]:
     db_path = tmp_path / "state.sqlite3"
     initialize_schema(db_path)
@@ -338,6 +482,7 @@ def _build_service(
         planned_steps=planned_steps or [],
         weekly_reports=weekly_reports or [],
         weekly_focus=weekly_focus or [],
+        challenge_flows=challenge_flows or [],
     )
     main_bot = FakeBotClient(BotPurpose.MAIN)
     error_bot = FakeBotClient(BotPurpose.ERROR)

@@ -14,11 +14,16 @@ class MenuAction(str, Enum):
     START_WEEKLY_REPORT = "start_weekly_report"
     VIEW_INSIGHTS = "view_insights"
     VIEW_TEAM = "view_team"
+    VIEW_TEAM_PROGRESS = "view_team_progress"
+    VIEW_TEAM_GOALS = "view_team_goals"
+    VIEW_TEAM_STEPS = "view_team_steps"
     CAPTAIN_MANUAL_REPORT = "captain_manual_report"
     VIEW_TEAM_REPORT = "view_team_report"
 
 
 CONSENT_ACCEPT_CALLBACK = "consent:accept"
+CONSENT_DECLINE_CALLBACK = "consent:decline"
+CONSENT_DECLINE_CONFIRM_CALLBACK = "consent:decline_confirm"
 
 MENU_CALLBACK_PREFIX = "menu:"
 
@@ -40,10 +45,18 @@ INSIGHT_SKIP_TITLE_CALLBACK = "insight:skip_title"
 INSIGHT_CANCEL_CALLBACK = "insight:cancel"
 
 CAPTAIN_TEAM_CALLBACK = "captain:team"
+CAPTAIN_CALLBACK_PREFIX = "captain:"
+CAPTAIN_GOAL_CALLBACK_PREFIX = "captain:goal:"
+CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX = "captain:goals_page:"
+CAPTAIN_STEP_CALLBACK_PREFIX = "captain:step:"
+CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX = "captain:steps_page:"
 CAPTAIN_MANUAL_REPORT_CALLBACK_PREFIX = "captain:manual:"
 CAPTAIN_STATUS_CALLBACK_PREFIX = "captain:status:"
 CAPTAIN_STEPS_CALLBACK_PREFIX = "captain:steps:"
 CAPTAIN_DONE_CALLBACK = "captain:done"
+
+GOAL_CONFIRM_CALLBACK = "goal:confirm"
+GOAL_CANCEL_CALLBACK = "goal:cancel"
 
 
 PARTICIPANT_MENU_ITEMS = (
@@ -56,6 +69,9 @@ PARTICIPANT_MENU_ITEMS = (
 
 CAPTAIN_ONLY_MENU_ITEMS = (
     MenuItem(MenuAction.VIEW_TEAM, "👥 Моя команда"),
+    MenuItem(MenuAction.VIEW_TEAM_PROGRESS, "📊 Прогресс команды"),
+    MenuItem(MenuAction.VIEW_TEAM_GOALS, "🎯 Цели команды"),
+    MenuItem(MenuAction.VIEW_TEAM_STEPS, "📍 Шаги команды"),
     MenuItem(MenuAction.CAPTAIN_MANUAL_REPORT, "➕ Внести отчёт за участника"),
     MenuItem(MenuAction.VIEW_TEAM_REPORT, "📄 Отчёт команды"),
 )

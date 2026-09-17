@@ -32,7 +32,7 @@ def test_unknown_user_message_matches_approved_copy() -> None:
 def test_consent_message_matches_approved_copy() -> None:
     assert (
         CONSENT_TEXT
-        == "Я понимаю, что мои ответы будут сохранены и доступны трекеру, администратору и Александру Ситникову в рамках челленджа."
+        == "Дай согласие на обработку персональных данных. Бот сохранит твоё имя, фамилию, Telegram ID и ответы в рамках проекта «Смерть иллюзий». Данные будут доступны твоему капитану и трекеру, администратору и Александру Ситникову в пределах их ролей."
     )
     assert CONSENT_ACCEPT_BUTTON == "✅ Согласен"
 
@@ -55,8 +55,11 @@ def test_captain_menu_extends_participant_menu() -> None:
 
     assert [item.label for item in menu] == CAPTAIN_MENU_LABELS
     assert CAPTAIN_MENU_LABELS[: len(PARTICIPANT_MENU_LABELS)] == PARTICIPANT_MENU_LABELS
-    assert [item.action for item in menu][-3:] == [
+    assert [item.action for item in menu][-6:] == [
         MenuAction.VIEW_TEAM,
+        MenuAction.VIEW_TEAM_PROGRESS,
+        MenuAction.VIEW_TEAM_GOALS,
+        MenuAction.VIEW_TEAM_STEPS,
         MenuAction.CAPTAIN_MANUAL_REPORT,
         MenuAction.VIEW_TEAM_REPORT,
     ]
@@ -83,13 +86,15 @@ def test_goal_formatter_renders_goal_fields() -> None:
 
     text = format_goal_view(goal)
 
-    assert "Новый контракт" in text
-    assert "Заключить контракт с клиентом" in text
-    assert "100000 RUB" in text
-    assert "Оплата получена" in text
+    assert text == (
+        "Цель: Новый контракт\n\n"
+        "Описание: Заключить контракт с клиентом\n\n"
+        "Ценность: 100000 RUB\n\n"
+        "Условие разрешения: Оплата получена"
+    )
 
 
-def test_progress_formatter_uses_six_cells_and_percent() -> None:
+def test_progress_formatter_uses_eight_cells_and_percent() -> None:
     steps = [
         PlannedStep(
             step_id=f"S00{index}",
@@ -100,19 +105,28 @@ def test_progress_formatter_uses_six_cells_and_percent() -> None:
             step_description="",
             step_status="closed" if index <= 3 else "open",
         )
-        for index in range(1, 7)
+        for index in range(1, 9)
     ]
     history = [WeeklyStatus(week_number=1, status_symbol="🟩", status_code="green")]
 
-    text = format_progress_view(steps=steps, weekly_history=history)
+    text = format_progress_view(
+        steps=steps,
+        goal_status_symbol="🟩",
+        steps_status_symbol="🟩",
+        weekly_history=history,
+        closed_week_number=3,
+    )
 
-    assert "50%" in text
+    assert text.startswith("Мой прогресс\n\nЦель: 🟩\nШаги: 🟩\n\nВыполнение шагов\nПрогресс: 38%")
     assert text.count("■") == 3
-    assert text.count("□") == 3
+    assert text.count("□") == 5
     assert "🟩" in text
+    assert "Неделя 2: ⬛" in text
+    assert "Неделя 4: ⬜" in text
+    assert "Неделя 8: ⬜" in text
 
 
-def test_steps_formatter_renders_focus_and_spoiler_description_after_15_chars() -> None:
+def test_steps_formatter_renders_focus_and_expandable_description() -> None:
     steps = [
         PlannedStep(
             step_id="S001",
@@ -128,8 +142,11 @@ def test_steps_formatter_renders_focus_and_spoiler_description_after_15_chars() 
     text = format_planned_steps_view(steps, focus_step_id="S001")
 
     assert "⬜ Шаг 2. 🎯 Созвон с клиентом" in text
-    assert "Подробно описат<tg-spoiler>ь следующий шаг и критерий готовности</tg-spoiler>" in text
-    assert "<blockquote expandable>" not in text
+    assert (
+        "<blockquote expandable>Подробно описать следующий шаг и критерий "
+        "готовности</blockquote>"
+    ) in text
+    assert "<tg-spoiler>" not in text
 
 
 def test_missing_data_message_hides_internal_fields() -> None:

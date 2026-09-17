@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.bot.clients import TelegramInlineButton
 from app.bot.menus import WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX
 from app.bot.messages import format_scheduler_reminder_text, format_silent_participants_notification
+from app.domain import PLANNED_STEP_COUNT
 from app.scheduler.calendar import (
     build_idempotency_key,
     challenge_week_date_range,
     current_challenge_week_number,
+    is_working_week,
 )
 from app.services.notifications import NotificationCategory, NotificationRouter, Recipient, RecipientType
 from app.sheets.gateway import SheetsGateway
@@ -46,37 +48,283 @@ class SchedulerService:
     notification_router: NotificationRouter
     repository: SchedulerJobRepository
     max_reminder_attempts: int = 3
+    admin_telegram_id: int | None = None
+    sitnikov_telegram_id: int | None = None
 
-    def run_reminder(self, reminder_type: str, *, now: datetime) -> ReminderJobResult:
+    def send_scheduled_participant_message(
+        self,
+        *,
+        text: str,
+        condition: str,
+        attachment_url: str | None = None,
+        now: datetime,
+        flow_id: str,
+        event_id: str,
+    ) -> ReminderJobResult:
+        """Send an idempotent setup-stage message to eligible flow participants."""
+
+        sent_count = 0
+        skipped_count = 0
+        failed_count = 0
+        # SQLite composite keys treat NULL values as distinct. Setup events use
+        # the bounded calendar week value so the delivery claim stays unique.
+        delivery_week_number = current_challenge_week_number(now)
+        for participant in self.sheets.list_participants():
+            if _string_value(participant.get("flow_id")) != flow_id:
+                continue
+            participant_id = _string_value(participant.get("participant_id"))
+            if not self._is_setup_message_eligible(
+                participant,
+                participant_id=participant_id,
+                condition=condition,
+            ):
+                skipped_count += 1
+                continue
+            outcome = self._deliver_setup_message(
+                participant,
+                participant_id=participant_id,
+                text=text,
+                attachment_url=attachment_url,
+                event_id=event_id,
+                week_number=delivery_week_number,
+                now=now,
+            )
+            if outcome == "sent":
+                sent_count += 1
+            elif outcome == "failed":
+                failed_count += 1
+            else:
+                skipped_count += 1
+
+        return ReminderJobResult(
+            sent_count=sent_count,
+            skipped_count=skipped_count,
+            failed_count=failed_count,
+        )
+
+    def send_steps_setup_summary(
+        self,
+        *,
+        template: str,
+        recipient_role: str,
+        now: datetime,
+        flow_id: str,
+        event_id: str,
+    ) -> ReminderJobResult:
+        """Send the fixed steps-setup completion summary to one operational role."""
+
+        participants = [
+            row
+            for row in self.sheets.list_participants()
+            if _string_value(row.get("flow_id")) == flow_id
+            and _normalized_string(row.get("status")) == "active"
+            and _normalized_string(row.get("role")) in {"participant", "captain"}
+            and _consent_is_given(row)
+            and _string_value(row.get("participant_id"))
+        ]
+        teams = [
+            row
+            for row in self.sheets.list_teams()
+            if _string_value(row.get("flow_id")) == flow_id and row.get("is_active") is True
+        ]
+        completion = _steps_setup_completion(self.sheets, participants)
+        recipients = _steps_summary_recipients(
+            role=recipient_role,
+            participants=participants,
+            teams=teams,
+            trackers=self.sheets.list_trackers(),
+            admin_telegram_id=self.admin_telegram_id,
+            sitnikov_telegram_id=self.sitnikov_telegram_id,
+        )
+        sent_count = skipped_count = failed_count = 0
+        delivery_week_number = current_challenge_week_number(now)
+        for recipient_id, chat_id, scoped_teams, recipient_type in recipients:
+            scoped_participants = [
+                row for row in participants if _string_value(row.get("team_id")) in scoped_teams
+            ]
+            delivery_event_id = f"{flow_id}:{event_id}"
+            if not self.repository.claim_event_delivery(
+                event_id=delivery_event_id,
+                recipient_id=recipient_id,
+                week_number=delivery_week_number,
+                scheduled_for=now.isoformat(),
+                updated_at=now.isoformat(),
+                stale_before=(now - timedelta(minutes=10)).isoformat(),
+            ):
+                skipped_count += 1
+                continue
+            text = _format_steps_setup_summary(
+                template=template,
+                role=recipient_role,
+                participants=scoped_participants,
+                teams=teams,
+                completion=completion,
+            )
+            try:
+                self.notification_router.send(
+                    category=NotificationCategory.OPERATIONAL_NOTIFICATION,
+                    text=text,
+                    recipients=(Recipient(recipient_type, chat_id),),
+                )
+                self.repository.record_event_delivery(
+                    event_id=delivery_event_id,
+                    recipient_id=recipient_id,
+                    week_number=delivery_week_number,
+                    scheduled_for=now.isoformat(),
+                    status="sent",
+                    updated_at=now.isoformat(),
+                )
+                sent_count += 1
+            except Exception as exc:  # pragma: no cover - adapter-specific failure
+                self.repository.record_event_delivery(
+                    event_id=delivery_event_id,
+                    recipient_id=recipient_id,
+                    week_number=delivery_week_number,
+                    scheduled_for=now.isoformat(),
+                    status="failed",
+                    updated_at=now.isoformat(),
+                    error_message=type(exc).__name__,
+                )
+                failed_count += 1
+        return ReminderJobResult(sent_count, skipped_count, failed_count)
+
+    def _deliver_setup_message(
+        self,
+        participant: dict[str, object],
+        *,
+        participant_id: str,
+        text: str,
+        attachment_url: str | None,
+        event_id: str,
+        week_number: int,
+        now: datetime,
+    ) -> str:
+        team_id = _string_value(participant.get("team_id"))
+        chat_id = _chat_id(participant)
+        if chat_id is None:
+            self._notify_admin_error(
+                "scheduled_message_missing_chat_id",
+                f"scheduled_message_missing_chat_id participant_id={participant_id}",
+                participant_id=participant_id,
+                team_id=team_id,
+                now=now,
+            )
+            return "skipped"
+
+        scoped_event_id = _scoped_event_id(event_id, participant)
+        if not self.repository.claim_event_delivery(
+            event_id=scoped_event_id,
+            recipient_id=participant_id,
+            week_number=week_number,
+            scheduled_for=now.isoformat(),
+            updated_at=now.isoformat(),
+            stale_before=(now - timedelta(minutes=10)).isoformat(),
+        ):
+            return "skipped"
+
+        # Delivery is intentionally at-least-once: after an ambiguous Telegram
+        # timeout a later scheduler tick may duplicate the message rather than
+        # silently omit this launch-critical instruction.
+        if attachment_url:
+            try:
+                self.notification_router.send_document_url(
+                    category=NotificationCategory.PARTICIPANT_MESSAGE,
+                    file_url=attachment_url,
+                    caption=text,
+                    recipients=(Recipient(RecipientType.PARTICIPANT, chat_id),),
+                )
+                self.repository.record_event_delivery(
+                    event_id=scoped_event_id,
+                    recipient_id=participant_id,
+                    week_number=week_number,
+                    scheduled_for=now.isoformat(),
+                    status="sent",
+                    updated_at=now.isoformat(),
+                )
+                return "sent"
+            except Exception as exc:  # pragma: no cover - adapter-specific failure
+                self.repository.record_event_delivery(
+                    event_id=scoped_event_id,
+                    recipient_id=participant_id,
+                    week_number=week_number,
+                    scheduled_for=now.isoformat(),
+                    status="failed",
+                    updated_at=now.isoformat(),
+                    error_message=type(exc).__name__,
+                )
+                self._notify_admin_error(
+                    "scheduled_attachment_send_failed",
+                    f"scheduled_attachment_send_failed participant_id={participant_id}",
+                    participant_id=participant_id,
+                    team_id=team_id,
+                    now=now,
+                )
+                return "failed"
+
+        sent = self._send_reminder_with_retry(
+            chat_id=chat_id,
+            text=text,
+            participant_id=participant_id,
+            team_id=team_id,
+            week_number=week_number,
+            reminder_type="scheduled_participant_message",
+            delivery_event_id=scoped_event_id,
+            now=now,
+            max_attempts=1,
+        )
+        return "sent" if sent else "failed"
+
+    def run_reminder(
+        self,
+        reminder_type: str,
+        *,
+        now: datetime,
+        flow_id: str | None = None,
+        event_id: str | None = None,
+    ) -> ReminderJobResult:
+        if reminder_type in {"monday_reminder", "monday_focus_1300", "monday_focus_1900"}:
+            if not is_working_week(now):
+                return ReminderJobResult()
         week_number = current_challenge_week_number(now)
         sent_count = 0
         skipped_count = 0
         failed_count = 0
         scheduled_for = now.isoformat()
         job_run_id = self.repository.start_job_run(
-            job_type=reminder_type,
+            job_type=_stored_job_type(reminder_type),
             week_number=week_number,
             scheduled_for=scheduled_for,
-            idempotency_key=build_idempotency_key(reminder_type, week_number=week_number),
+            idempotency_key=(
+                f"{flow_id or 'flow'}:{event_id or reminder_type}:"
+                f"{build_idempotency_key(reminder_type, week_number=week_number)}"
+            ),
             started_at=scheduled_for,
         )
         reminder_log_type = _reminder_log_type(reminder_type)
+        delivery_event_id = (
+            event_id or reminder_type
+            if reminder_type in {"monday_reminder", "monday_focus_1300", "monday_focus_1900"}
+            else event_id
+        )
 
         for participant in self.sheets.list_participants():
+            if flow_id and _string_value(participant.get("flow_id")) != flow_id:
+                continue
             participant_id = _string_value(participant.get("participant_id"))
             team_id = _string_value(participant.get("team_id"))
-            if not self._is_reminder_eligible(participant, week_number=week_number):
-                skipped_count += 1
-                continue
-
-            if self.repository.has_successful_reminder(
-                participant_id,
+            if not self._is_reminder_eligible(
+                participant,
                 week_number=week_number,
-                reminder_type=reminder_log_type,
+                reminder_type=reminder_type,
             ):
                 skipped_count += 1
                 continue
 
+            scoped_event_id = (
+                _scoped_event_id(delivery_event_id, participant)
+                if delivery_event_id is not None
+                else None
+            )
             chat_id = _chat_id(participant)
             if chat_id is None:
                 skipped_count += 1
@@ -87,6 +335,25 @@ class SchedulerService:
                     team_id=team_id,
                     now=now,
                 )
+                continue
+            already_sent = (
+                not self.repository.claim_event_delivery(
+                    event_id=scoped_event_id,
+                    recipient_id=participant_id,
+                    week_number=week_number,
+                    scheduled_for=now.isoformat(),
+                    updated_at=now.isoformat(),
+                    stale_before=(now - timedelta(minutes=10)).isoformat(),
+                )
+                if scoped_event_id is not None
+                else self.repository.has_successful_reminder(
+                    participant_id,
+                    week_number=week_number,
+                    reminder_type=reminder_log_type,
+                )
+            )
+            if already_sent:
+                skipped_count += 1
                 continue
 
             text, buttons = self._reminder_message(
@@ -103,6 +370,7 @@ class SchedulerService:
                 team_id=team_id,
                 week_number=week_number,
                 reminder_type=reminder_log_type,
+                delivery_event_id=scoped_event_id,
                 now=now,
             ):
                 sent_count += 1
@@ -122,7 +390,116 @@ class SchedulerService:
             failed_count=failed_count,
         )
 
+    def send_weekly_focus_summary_to_captains(
+        self,
+        *,
+        now: datetime,
+        flow_id: str | None = None,
+        event_id: str | None = None,
+    ) -> ReminderJobResult:
+        if not is_working_week(now):
+            return ReminderJobResult()
+        week_number = current_challenge_week_number(now)
+        sent_count = 0
+        skipped_count = 0
+        failed_count = 0
+        focuses = {
+            _string_value(row.get("participant_id")): row
+            for row in self.sheets.list_weekly_focus_for_week(week_number)
+        }
+        steps = {
+            _string_value(row.get("step_id")): row
+            for row in self.sheets.list_planned_steps_all()
+        }
+
+        for team in self.sheets.list_teams():
+            if flow_id and _string_value(team.get("flow_id")) != flow_id:
+                continue
+            if team.get("is_active") is False:
+                continue
+            team_id = _string_value(team.get("team_id"))
+            captain_id = _string_value(team.get("captain_id"))
+            captain = self.sheets.get_participant(captain_id) if captain_id else None
+            chat_id = _chat_id(captain or {})
+            team_flow_id = _string_value(team.get("flow_id"))
+            if not _captain_is_eligible(captain, team_id=team_id, flow_id=team_flow_id) or chat_id is None:
+                skipped_count += 1
+                continue
+            delivery_event_id = (
+                f"{team_flow_id or flow_id or 'flow'}:{event_id}"
+                if event_id
+                else f"{team_flow_id or 'flow'}:W{week_number:02d}_FOCUS_SUMMARY_CAPTAIN"
+            )
+            if not self.repository.claim_event_delivery(
+                event_id=delivery_event_id,
+                recipient_id=captain_id,
+                week_number=week_number,
+                scheduled_for=now.isoformat(),
+                updated_at=now.isoformat(),
+                stale_before=(now - timedelta(minutes=10)).isoformat(),
+            ):
+                skipped_count += 1
+                continue
+
+            participants = [
+                row
+                for row in self.sheets.list_participants_by_team(team_id)
+                if _normalized_string(row.get("status")) == "active"
+                and _normalized_string(row.get("role")) in {"participant", "captain"}
+                and _consent_is_given(row)
+                and (not team_flow_id or _string_value(row.get("flow_id")) == team_flow_id)
+            ]
+            text = _format_weekly_focus_summary(
+                team_name=_string_value(team.get("team_name")) or team_id,
+                week_number=week_number,
+                participants=participants,
+                focuses=focuses,
+                steps=steps,
+            )
+            try:
+                self.notification_router.send(
+                    category=NotificationCategory.OPERATIONAL_NOTIFICATION,
+                    text=text,
+                    recipients=(Recipient(RecipientType.CAPTAIN, chat_id),),
+                )
+                self.repository.record_event_delivery(
+                    event_id=delivery_event_id,
+                    recipient_id=captain_id,
+                    week_number=week_number,
+                    scheduled_for=now.isoformat(),
+                    status="sent",
+                    updated_at=now.isoformat(),
+                )
+                sent_count += 1
+            except Exception as exc:  # pragma: no cover - concrete bot exception belongs to adapter
+                self.repository.record_event_delivery(
+                    event_id=delivery_event_id,
+                    recipient_id=captain_id,
+                    week_number=week_number,
+                    scheduled_for=now.isoformat(),
+                    status="failed",
+                    updated_at=now.isoformat(),
+                    error_message=type(exc).__name__,
+                )
+                failed_count += 1
+                self._notify_admin_error(
+                    "weekly_focus_summary_send_failed",
+                    f"weekly_focus_summary_send_failed team_id={team_id}",
+                    participant_id=captain_id,
+                    team_id=team_id,
+                    now=now,
+                )
+
+        return ReminderJobResult(
+            sent_count=sent_count,
+            skipped_count=skipped_count,
+            failed_count=failed_count,
+        )
+
     def close_week(self, *, now: datetime) -> WeekCloseResult:
+        if not is_working_week(now):
+            return WeekCloseResult()
+
         week_number = current_challenge_week_number(now)
         gray_created_count = 0
         existing_count = 0
@@ -175,7 +552,7 @@ class SchedulerService:
                             full_name=_display_name(participant),
                         )
                     )
-            except Exception as exc:  # pragma: no cover - concrete exception type belongs to Sheets adapter
+            except Exception:  # pragma: no cover - concrete exception type belongs to Sheets adapter
                 failed_count += 1
                 self._notify_admin_error(
                     "week_close_gray_failed",
@@ -204,7 +581,13 @@ class SchedulerService:
             notified_team_count=notified_team_count,
         )
 
-    def _is_reminder_eligible(self, participant: dict[str, object], *, week_number: int) -> bool:
+    def _is_reminder_eligible(
+        self,
+        participant: dict[str, object],
+        *,
+        week_number: int,
+        reminder_type: str,
+    ) -> bool:
         if _normalized_string(participant.get("status")) == "dropped":
             return False
         if not _consent_is_given(participant):
@@ -213,7 +596,29 @@ class SchedulerService:
         participant_id = _string_value(participant.get("participant_id"))
         if not participant_id:
             return False
+        if reminder_type in {"monday_focus_1300", "monday_focus_1900"}:
+            return self.sheets.find_weekly_focus(
+                participant_id,
+                week_number=week_number,
+            ) is None
         return self.sheets.find_weekly_report(participant_id, week_number=week_number) is None
+
+    def _is_setup_message_eligible(
+        self,
+        participant: dict[str, object],
+        *,
+        participant_id: str,
+        condition: str,
+    ) -> bool:
+        if _normalized_string(participant.get("status")) != "active":
+            return False
+        if not _consent_is_given(participant) or not participant_id:
+            return False
+        if condition == "goal_missing":
+            return self.sheets.get_active_goal(participant_id) is None
+        if condition == "steps_missing":
+            return not _participant_has_complete_steps(self.sheets, participant_id)
+        return False
 
     def _reminder_message(
         self,
@@ -223,7 +628,22 @@ class SchedulerService:
         week_number: int,
         now: datetime,
     ) -> tuple[str, tuple[TelegramInlineButton, ...]]:
-        if reminder_type != "monday_reminder":
+        if reminder_type == "wednesday_checkin":
+            focus_title = _weekly_focus_step_title(
+                self.sheets,
+                participant_id=_string_value(participant.get("participant_id")),
+                week_number=week_number,
+            )
+            if focus_title:
+                return (
+                    f"Твой фокус недели — «{focus_title}».\n\n"
+                    "Как продвигается выполнение?",
+                    (),
+                )
+        focus_reminders = {"monday_reminder", "monday_focus_1300", "monday_focus_1900"}
+        if reminder_type not in focus_reminders:
+            return format_scheduler_reminder_text(reminder_type), ()
+        if not is_working_week(now):
             return format_scheduler_reminder_text(reminder_type), ()
 
         participant_id = _string_value(participant.get("participant_id"))
@@ -242,13 +662,18 @@ class SchedulerService:
             return format_scheduler_reminder_text(reminder_type), ()
 
         start_date, end_date = challenge_week_date_range(now)
-        text = "\n".join(
-            (
-                f"Неделя {week_number}: с {_format_date(start_date)} по {_format_date(end_date)}.",
-                "",
-                "Выбери обязательный фокус недели.",
+        if reminder_type == "monday_focus_1300":
+            text = "Ты ещё не выбрал цель на эту неделю.\n\nВыбери один приоритетный шаг, на котором сосредоточишься."
+        elif reminder_type == "monday_focus_1900":
+            text = "Ты ещё не определил цель недели.\n\nВыбери приоритетный шаг сегодня, чтобы зафиксировать фокус на неделю."
+        else:
+            text = "\n".join(
+                (
+                    f"Неделя {week_number}: с {_format_date(start_date)} по {_format_date(end_date)}.",
+                    "",
+                    "Выбери обязательный фокус недели.",
+                )
             )
-        )
         return text, _weekly_focus_buttons(open_steps)
 
     def _send_reminder_with_retry(
@@ -259,11 +684,14 @@ class SchedulerService:
         buttons: tuple[TelegramInlineButton, ...] = (),
         participant_id: str,
         team_id: str,
-        week_number: int,
+        week_number: int | None,
         reminder_type: str,
+        delivery_event_id: str | None,
         now: datetime,
+        max_attempts: int | None = None,
     ) -> bool:
-        for _attempt in range(self.max_reminder_attempts):
+        attempt_limit = self.max_reminder_attempts if max_attempts is None else max_attempts
+        for _attempt in range(attempt_limit):
             try:
                 message = self.notification_router.main_bot.send_message(
                     chat_id=chat_id,
@@ -271,26 +699,50 @@ class SchedulerService:
                     buttons=buttons,
                 )
                 telegram_message_id = _telegram_message_id(message)
-                self.repository.record_reminder_attempt(
-                    participant_id=participant_id,
-                    team_id=team_id,
-                    week_number=week_number,
-                    reminder_type=reminder_type,
-                    sent_at=now.isoformat(),
-                    status="sent",
-                    telegram_message_id=telegram_message_id,
-                )
+                if delivery_event_id is None:
+                    self.repository.record_reminder_attempt(
+                        participant_id=participant_id,
+                        team_id=team_id,
+                        week_number=week_number,
+                        reminder_type=reminder_type,
+                        sent_at=now.isoformat(),
+                        status="sent",
+                        telegram_message_id=telegram_message_id,
+                    )
+                else:
+                    self.repository.record_event_delivery(
+                        event_id=delivery_event_id,
+                        recipient_id=participant_id,
+                        week_number=week_number,
+                        scheduled_for=now.isoformat(),
+                        status="sent",
+                        updated_at=now.isoformat(),
+                    )
                 return True
             except Exception as exc:  # pragma: no cover - concrete exception type belongs to bot adapter
-                self.repository.record_reminder_attempt(
-                    participant_id=participant_id,
-                    team_id=team_id,
-                    week_number=week_number,
-                    reminder_type=reminder_type,
-                    sent_at=now.isoformat(),
-                    status="failed",
-                    error_message=type(exc).__name__,
-                )
+                if delivery_event_id is None:
+                    self.repository.record_reminder_attempt(
+                        participant_id=participant_id,
+                        team_id=team_id,
+                        week_number=week_number,
+                        reminder_type=reminder_type,
+                        sent_at=now.isoformat(),
+                        status="failed",
+                        error_message=type(exc).__name__,
+                    )
+                else:
+                    pass
+
+        if delivery_event_id is not None:
+            self.repository.record_event_delivery(
+                event_id=delivery_event_id,
+                recipient_id=participant_id,
+                week_number=week_number,
+                scheduled_for=now.isoformat(),
+                status="failed",
+                updated_at=now.isoformat(),
+                error_message="send_failed",
+            )
 
         self._notify_admin_error(
             "reminder_send_failed",
@@ -369,7 +821,7 @@ class SchedulerService:
                         recipients=(Recipient(recipient_type, chat_id),),
                     )
                     sent_for_team = True
-                except Exception as exc:  # pragma: no cover - concrete exception type belongs to bot adapter
+                except Exception:  # pragma: no cover - concrete exception type belongs to bot adapter
                     self._notify_admin_error(
                         error_label,
                         f"{error_label} team_id={team_id}",
@@ -407,11 +859,230 @@ class SchedulerService:
 def _reminder_log_type(reminder_type: str) -> str:
     return {
         "monday_reminder": "monday_start",
+        "monday_focus_1300": "monday_start",
+        "monday_focus_1900": "monday_start",
         "wednesday_checkin": "wednesday_checkin",
         "sunday_1800_checkin": "sunday_1800",
         "sunday_2230_reminder": "sunday_2230",
         "sunday_2300_reminder": "sunday_2300",
     }[reminder_type]
+
+
+def _stored_job_type(reminder_type: str) -> str:
+    if reminder_type in {"monday_focus_1300", "monday_focus_1900"}:
+        return "monday_reminder"
+    return reminder_type
+
+
+def _scoped_event_id(event_id: str, participant: dict[str, object]) -> str:
+    flow_id = _string_value(participant.get("flow_id")).strip() or "flow"
+    return f"{flow_id}:{event_id}"
+
+
+def _captain_is_eligible(
+    captain: dict[str, object] | None,
+    *,
+    team_id: str,
+    flow_id: str,
+) -> bool:
+    if captain is None or not team_id:
+        return False
+    if _normalized_string(captain.get("role")) != "captain":
+        return False
+    if _normalized_string(captain.get("status")) != "active":
+        return False
+    if not _consent_is_given(captain):
+        return False
+    if _string_value(captain.get("team_id")) != team_id:
+        return False
+    return not flow_id or _string_value(captain.get("flow_id")) == flow_id
+
+
+def _format_weekly_focus_summary(
+    *,
+    team_name: str,
+    week_number: int,
+    participants: list[dict[str, object]],
+    focuses: dict[str, dict[str, object]],
+    steps: dict[str, dict[str, object]],
+) -> str:
+    selected_lines: list[str] = []
+    missing_lines: list[str] = []
+    for participant in participants:
+        participant_id = _string_value(participant.get("participant_id"))
+        focus = focuses.get(participant_id)
+        if focus is None:
+            missing_lines.append(f"❌ {_display_name(participant)}")
+            continue
+        step = steps.get(_string_value(focus.get("step_id")), {})
+        title = _string_value(step.get("step_title")).strip() or "Шаг без названия"
+        selected_lines.append(f"✅ {_display_name(participant)} — «{title}»")
+
+    active_count = len(participants)
+    selected_count = len(selected_lines)
+    missing_count = len(missing_lines)
+    selected_text = "\n".join(selected_lines) if selected_lines else "Никто не выбрал"
+    missing_text = "\n".join(missing_lines) if missing_lines else "Все участники выбрали фокус"
+    return "\n".join(
+        (
+            f"Фокусы команды «{team_name}» на {week_number}-ю неделю.",
+            "",
+            f"Выбрали приоритетный шаг: {selected_count} из {active_count} ({_percentage(selected_count, active_count)}%).",
+            selected_text,
+            "",
+            f"Не выбрали: {missing_count} из {active_count} ({_percentage(missing_count, active_count)}%).",
+            missing_text,
+        )
+    )
+
+
+def _percentage(value: int, total: int) -> str:
+    if total == 0:
+        return "0"
+    result = round(value * 100 / total, 1)
+    return str(int(result)) if result.is_integer() else str(result).replace(".", ",")
+
+
+def _participant_has_complete_steps(sheets: SheetsGateway, participant_id: str) -> bool:
+    goal = sheets.get_active_goal(participant_id)
+    if goal is None:
+        return False
+    rows = sheets.list_planned_steps(participant_id, _string_value(goal.get("goal_id")))
+    valid_rows = [row for row in rows if _string_value(row.get("step_title")).strip()]
+    numbers = {
+        _int_value(row.get("step_number"))
+        for row in valid_rows
+    }
+    return len(valid_rows) == PLANNED_STEP_COUNT and numbers == set(
+        range(1, PLANNED_STEP_COUNT + 1)
+    )
+
+
+def _steps_setup_completion(
+    sheets: SheetsGateway,
+    participants: list[dict[str, object]],
+) -> dict[str, bool]:
+    return {
+        _string_value(row.get("participant_id")): _participant_has_complete_steps(
+            sheets, _string_value(row.get("participant_id"))
+        )
+        for row in participants
+    }
+
+
+def _steps_summary_recipients(
+    *,
+    role: str,
+    participants: list[dict[str, object]],
+    teams: list[dict[str, object]],
+    trackers: list[dict[str, object]],
+    admin_telegram_id: int | None,
+    sitnikov_telegram_id: int | None,
+) -> list[tuple[str, str, set[str], RecipientType]]:
+    team_ids = {_string_value(row.get("team_id")) for row in teams}
+    normalized_role = role.strip().lower()
+    if normalized_role in {"капитан", "captain"}:
+        participants_by_id = {
+            _string_value(row.get("participant_id")): row for row in participants
+        }
+        result = []
+        for team in teams:
+            captain_id = _string_value(team.get("captain_id"))
+            captain = participants_by_id.get(captain_id)
+            chat_id = _chat_id(captain or {})
+            if captain and chat_id and _captain_is_eligible(
+                captain,
+                team_id=_string_value(team.get("team_id")),
+                flow_id=_string_value(team.get("flow_id")),
+            ):
+                result.append((captain_id, chat_id, {_string_value(team.get("team_id"))}, RecipientType.CAPTAIN))
+        return result
+    if normalized_role in {"трекер", "tracker"}:
+        eligible_trackers = [
+            row
+            for row in trackers
+            if row.get("is_active") is True
+            and _normalized_string(row.get("role")) == "tracker"
+            and _string_value(row.get("tracker_id"))
+        ]
+        tracker_id_counts: dict[str, int] = {}
+        for row in eligible_trackers:
+            tracker_id = _string_value(row.get("tracker_id"))
+            tracker_id_counts[tracker_id] = tracker_id_counts.get(tracker_id, 0) + 1
+        active_trackers = {
+            _string_value(row.get("tracker_id")): row
+            for row in eligible_trackers
+            if tracker_id_counts[_string_value(row.get("tracker_id"))] == 1
+        }
+        result = []
+        for tracker_id, tracker in active_trackers.items():
+            chat_id = _chat_id(tracker)
+            assigned = {
+                _string_value(team.get("team_id"))
+                for team in teams
+                if _string_value(team.get("tracker_id")) == tracker_id
+            }
+            if chat_id and assigned:
+                result.append((tracker_id, chat_id, assigned, RecipientType.TRACKER))
+        return result
+    if normalized_role in {"администратор", "admin"} and admin_telegram_id:
+        return [("admin", str(admin_telegram_id), team_ids, RecipientType.ADMIN)]
+    if normalized_role in {"ситников", "sitnikov"} and sitnikov_telegram_id:
+        return [("sitnikov", str(sitnikov_telegram_id), team_ids, RecipientType.SITNIKOV)]
+    return []
+
+
+def _format_steps_setup_summary(
+    *,
+    template: str,
+    role: str,
+    participants: list[dict[str, object]],
+    teams: list[dict[str, object]],
+    completion: dict[str, bool],
+) -> str:
+    team_name_by_id = {
+        _string_value(row.get("team_id")): _string_value(row.get("team_name"))
+        or _string_value(row.get("team_id"))
+        for row in teams
+    }
+    sections: list[str] = []
+    for team_id in sorted({_string_value(row.get("team_id")) for row in participants}):
+        members = [row for row in participants if _string_value(row.get("team_id")) == team_id]
+        completed = [row for row in members if completion.get(_string_value(row.get("participant_id")), False)]
+        missing = [row for row in members if row not in completed]
+        sections.append(
+            "\n".join(
+                (
+                    f"Команда «{team_name_by_id.get(team_id, team_id)}»",
+                    f"Заполнили: {len(completed)} из {len(members)} ({_percentage(len(completed), len(members))}%).",
+                    f"Не заполнили: {len(missing)} из {len(members)} ({_percentage(len(missing), len(members))}%).",
+                    "Не заполнили: " + (", ".join(_display_name(row) for row in missing) or "нет"),
+                )
+            )
+        )
+    completed_rows = [
+        row for row in participants if completion.get(_string_value(row.get("participant_id")), False)
+    ]
+    missing_rows = [row for row in participants if row not in completed_rows]
+    completed_count = len(completed_rows)
+    total = len(participants)
+    values = {
+        "team_name": team_name_by_id.get(
+            _string_value(participants[0].get("team_id")), "Команда без названия"
+        ) if participants else "Команда без названия",
+        "active_count": str(total),
+        "completed_count": str(completed_count),
+        "missing_count": str(total - completed_count),
+        "completed_percent": _percentage(completed_count, total),
+        "missing_percent": _percentage(total - completed_count, total),
+        "completed_participants": "\n✅ ".join(_display_name(row) for row in completed_rows) or "нет",
+        "missing_participants": "\n❌ ".join(_display_name(row) for row in missing_rows) or "нет",
+        "team_breakdown": "\n\n".join(sections) or "Нет активных участников.",
+    }
+    rendered = template
+    for key, value in values.items():
+        rendered = rendered.replace("{" + key + "}", value)
+    return rendered
 
 
 def _chat_id(participant: dict[str, object]) -> str | None:
@@ -451,6 +1122,27 @@ def _weekly_focus_buttons(steps: list[dict[str, object]]) -> tuple[TelegramInlin
         )
         for step in sorted(steps, key=lambda row: _int_value(row.get("step_number")))
     )
+
+
+def _weekly_focus_step_title(
+    sheets: SheetsGateway,
+    *,
+    participant_id: str,
+    week_number: int,
+) -> str | None:
+    if not participant_id:
+        return None
+    focus = sheets.find_weekly_focus(participant_id, week_number=week_number)
+    if focus is None:
+        return None
+    focus_step_id = _string_value(focus.get("step_id"))
+    goal_id = _active_goal_id(sheets, participant_id)
+    if not focus_step_id or not goal_id:
+        return None
+    for step in sheets.list_planned_steps(participant_id, goal_id):
+        if _string_value(step.get("step_id")) == focus_step_id:
+            return _string_value(step.get("step_title")).strip() or None
+    return None
 
 
 def _short_step_title(title: str, *, limit: int = 42) -> str:
@@ -501,7 +1193,7 @@ def _gray_weekly_report_row(
         "goal_id": goal_id,
         "week_number": week_number,
         "status_code": "gray",
-        "status_symbol": "⬜",
+        "status_symbol": "⬛",
         "score": 0,
         "status_score": 0,
         "report_text": "",
