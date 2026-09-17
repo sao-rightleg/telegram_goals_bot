@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
+from threading import RLock
 from uuid import uuid4
 
 from app.bot.clients import BotClient, TelegramInlineButton
@@ -77,6 +78,9 @@ class RegistrationClosedError(RuntimeError):
     """Raised when an unfinished registration no longer belongs to an open window."""
 
 
+_REGISTRATION_FINALIZATION_LOCK = RLock()
+
+
 @dataclass(frozen=True)
 class ParticipantFlowService:
     sheets: SheetsGateway
@@ -91,6 +95,8 @@ class ParticipantFlowService:
         participant = self._participant_for_current_flow(user.telegram_id)
         if participant is None:
             return self._handle_registration_start(user, occurred_at=occurred_at)
+
+        self._clear_completed_registration(user.telegram_id)
 
         participant_id = _string_value(participant.get("participant_id"))
         if not _optional_string_value(participant.get("bot_started_at")):
@@ -351,6 +357,7 @@ class ParticipantFlowService:
     def confirm_registration(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
         participant = self._participant_for_current_flow(user.telegram_id)
         if participant is not None:
+            self._clear_completed_registration(user.telegram_id)
             return self._show_menu(user, participant=participant, occurred_at=occurred_at)
         draft = self._valid_registration_draft(user, occurred_at=occurred_at)
         state = self.dialog_states.get(user.telegram_id)
@@ -358,22 +365,10 @@ class ParticipantFlowService:
             return self._resume_registration(user, draft=draft, occurred_at=occurred_at)
         if not all((draft.consent_given_at, draft.first_name, draft.last_name, draft.captain_id)):
             return self._handle_registration_start(user, occurred_at=occurred_at)
-        captain = self._captain_for_flow(draft.flow_id, draft.captain_id)
-        if captain is None:
+        context = self._registration_team_context(draft)
+        if context is None:
             return self._show_registration_captains(user, draft=draft, occurred_at=occurred_at)
-        team_id = _string_value(captain.get("team_id"))
-        team = next(
-            (
-                row
-                for row in self.sheets.list_teams()
-                if row.get("flow_id") == draft.flow_id and row.get("team_id") == team_id
-                and row.get("captain_id") == draft.captain_id
-                and _truthy(row.get("is_active"))
-            ),
-            None,
-        )
-        if team is None:
-            return self._show_registration_captains(user, draft=draft, occurred_at=occurred_at)
+        captain, team = context
         flow = self._active_registration_flow()
         if flow is None or _optional_string_value(flow.get("flow_id")) != draft.flow_id:
             return self._handle_registration_start(user, occurred_at=occurred_at)
@@ -385,63 +380,88 @@ class ParticipantFlowService:
             captain,
             flow or {},
         )
-        claim_token = uuid4().hex
-        stale_before = (datetime.fromisoformat(occurred_at) - timedelta(minutes=10)).isoformat()
-        if not self._registration_repository().claim_finalization(
-            user.telegram_id,
-            claim_token=claim_token,
-            updated_at=occurred_at,
-            stale_before=stale_before,
-        ):
-            participant = self._participant_for_current_flow(user.telegram_id)
-            if participant is not None:
-                return self._show_menu(user, participant=participant, occurred_at=occurred_at)
-            return self._send_registration_response(user, "Регистрация уже обрабатывается. Повтори /start через минуту.")
-        existing = self.sheets.find_participant_in_flow(draft.flow_id, user.telegram_id)
-        if existing is None:
-            participant_id = _registration_participant_id(draft.flow_id, user.telegram_id)
-            try:
-                self.sheets.append_participant(
-                    {
-                    "flow_id": draft.flow_id,
-                    "participant_id": participant_id,
-                    "telegram_id": user.telegram_id,
-                    "username": user.username or "",
-                    "first_name": draft.first_name,
-                    "last_name": draft.last_name,
-                    "full_name": f"{draft.first_name} {draft.last_name}",
-                    "role": "participant",
-                    "team_id": team_id,
-                    "team_name": team.get("team_name", ""),
-                    "captain_id": draft.captain_id,
-                    "tracker_id": team.get("tracker_id", ""),
-                    "status": "active",
-                    "participant_stage": "goal_setup",
-                    "consent_given": True,
-                    "consent_given_at": draft.consent_given_at,
-                    "consent_status": "accepted",
-                    "bot_started_at": draft.created_at,
-                    "onboarding_completed_at": occurred_at,
-                    "last_stage_updated_at": occurred_at,
-                    "created_at": occurred_at,
-                    "updated_at": occurred_at,
-                    }
-                )
-            except Exception:
-                self._registration_repository().release_finalization(
-                    user.telegram_id,
-                    claim_token=claim_token,
-                    updated_at=occurred_at,
-                )
-                raise
-        participant = self.sheets.find_participant_in_flow(draft.flow_id, user.telegram_id)
-        if participant is None:
-            raise RuntimeError("Participant registration write was not visible")
-        self._registration_repository().clear(user.telegram_id)
+        with _REGISTRATION_FINALIZATION_LOCK:
+            claim_token = uuid4().hex
+            stale_before = (datetime.fromisoformat(occurred_at) - timedelta(minutes=10)).isoformat()
+            if not self._registration_repository().claim_finalization(
+                user.telegram_id, claim_token=claim_token,
+                updated_at=occurred_at, stale_before=stale_before,
+            ):
+                return self._registration_claim_conflict(user, occurred_at=occurred_at)
+            participant = self._write_registered_participant(
+                user, draft=draft, team=team, claim_token=claim_token, occurred_at=occurred_at
+            )
+            if not self._registration_repository().complete_finalization(
+                user.telegram_id, claim_token=claim_token
+            ):
+                raise RuntimeError("Registration finalization ownership was lost")
         self.dialog_states.upsert(
             _dialog_state_for(user=user, participant=participant, flow="idle", step="menu", occurred_at=occurred_at)
         )
         return self._send_registration_response(user, success_text)
+
+    def _registration_claim_conflict(
+        self, user: TelegramUserContext, *, occurred_at: str
+    ) -> FlowResponse:
+        participant = self._participant_for_current_flow(user.telegram_id)
+        if participant is not None:
+            self._clear_completed_registration(user.telegram_id)
+            return self._show_menu(user, participant=participant, occurred_at=occurred_at)
+        return self._send_registration_response(
+            user, "Регистрация уже обрабатывается. Повтори /start через минуту."
+        )
+
+    def _clear_completed_registration(self, telegram_id: int) -> None:
+        if self.registration_drafts is not None:
+            self.registration_drafts.clear(telegram_id)
+
+    def _registration_team_context(
+        self, draft: RegistrationDraft
+    ) -> tuple[SheetRow, SheetRow] | None:
+        captain = self._captain_for_flow(draft.flow_id, draft.captain_id or "")
+        if captain is None:
+            return None
+        team_id = _string_value(captain.get("team_id"))
+        team = next(
+            (
+                row for row in self.sheets.list_teams()
+                if row.get("flow_id") == draft.flow_id
+                and row.get("team_id") == team_id
+                and row.get("captain_id") == draft.captain_id
+                and _truthy(row.get("is_active"))
+            ),
+            None,
+        )
+        return (captain, team) if team is not None else None
+
+    def _write_registered_participant(
+        self,
+        user: TelegramUserContext,
+        *,
+        draft: RegistrationDraft,
+        team: SheetRow,
+        claim_token: str,
+        occurred_at: str,
+    ) -> SheetRow:
+        try:
+            if not self._registration_repository().owns_finalization(
+                user.telegram_id, claim_token=claim_token
+            ):
+                raise RuntimeError("Registration finalization ownership was lost")
+            participant = self.sheets.find_participant_in_flow(draft.flow_id, user.telegram_id)
+            if participant is None:
+                self.sheets.append_participant(
+                    _registration_participant_row(user, draft=draft, team=team, occurred_at=occurred_at)
+                )
+            participant = self.sheets.find_participant_in_flow(draft.flow_id, user.telegram_id)
+            if participant is None:
+                raise RuntimeError("Participant registration write was not visible")
+            return participant
+        except Exception:
+            self._registration_repository().release_finalization(
+                user.telegram_id, claim_token=claim_token, updated_at=occurred_at
+            )
+            raise
 
     def decline_consent(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
         participant = self._participant_for_current_flow(user.telegram_id)
@@ -1382,6 +1402,39 @@ def _captain_matches_team(
 def _registration_participant_id(flow_id: str, telegram_id: int) -> str:
     digest = sha256(f"{flow_id}:{telegram_id}".encode("utf-8")).hexdigest()[:12].upper()
     return f"P{digest}"
+
+
+def _registration_participant_row(
+    user: TelegramUserContext,
+    *,
+    draft: RegistrationDraft,
+    team: SheetRow,
+    occurred_at: str,
+) -> SheetRow:
+    return {
+        "flow_id": draft.flow_id,
+        "participant_id": _registration_participant_id(draft.flow_id, user.telegram_id),
+        "telegram_id": user.telegram_id,
+        "username": user.username or "",
+        "first_name": draft.first_name,
+        "last_name": draft.last_name,
+        "full_name": f"{draft.first_name} {draft.last_name}",
+        "role": "participant",
+        "team_id": team.get("team_id", ""),
+        "team_name": team.get("team_name", ""),
+        "captain_id": draft.captain_id,
+        "tracker_id": team.get("tracker_id", ""),
+        "status": "active",
+        "participant_stage": "goal_setup",
+        "consent_given": True,
+        "consent_given_at": draft.consent_given_at,
+        "consent_status": "accepted",
+        "bot_started_at": draft.created_at,
+        "onboarding_completed_at": occurred_at,
+        "last_stage_updated_at": occurred_at,
+        "created_at": occurred_at,
+        "updated_at": occurred_at,
+    }
 
 
 def _registration_success_text(participant: SheetRow, captain: SheetRow, flow: SheetRow) -> str:

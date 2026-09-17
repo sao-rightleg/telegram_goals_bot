@@ -86,6 +86,28 @@ class RegistrationDraftRepository:
                 (updated_at, telegram_id, claim_token),
             )
 
+    def owns_finalization(self, telegram_id: int, *, claim_token: str) -> bool:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT 1 FROM registration_drafts
+                WHERE telegram_id = ? AND status = 'finalizing' AND claim_token = ?
+                """,
+                (telegram_id, claim_token),
+            ).fetchone()
+        return row is not None
+
+    def complete_finalization(self, telegram_id: int, *, claim_token: str) -> bool:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                DELETE FROM registration_drafts
+                WHERE telegram_id = ? AND status = 'finalizing' AND claim_token = ?
+                """,
+                (telegram_id, claim_token),
+            )
+        return cursor.rowcount == 1
+
     def update(self, telegram_id: int, *, updated_at: str, **changes: str | None) -> RegistrationDraft:
         draft = self.get(telegram_id)
         if draft is None:

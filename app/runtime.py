@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
+import faulthandler
 import logging
 import signal
 import sys
@@ -880,6 +881,7 @@ def main(
     *,
     google_service_factory: GoogleServiceFactory | None = None,
 ) -> int:
+    _enable_crash_diagnostics()
     parser = argparse.ArgumentParser(prog="telegram-goals-bot")
     parser.add_argument(
         "--env-file",
@@ -914,6 +916,14 @@ def main(
         return 2
 
     return 2
+
+
+def _enable_crash_diagnostics() -> None:
+    """Write native crash tracebacks to stderr, which systemd keeps in journal."""
+    try:
+        faulthandler.enable(all_threads=True)
+    except (OSError, RuntimeError):
+        logger.warning("native crash diagnostics could not be enabled")
 
 
 def create_google_sheets_service(settings: Settings) -> object:

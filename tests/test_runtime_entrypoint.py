@@ -2,6 +2,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime
 import stat
+import logging
 from threading import Event
 from zoneinfo import ZoneInfo
 
@@ -44,6 +45,34 @@ from app.services.participant_models import FlowResponse, TelegramUserContext
 from app.services.voice_messages import VoiceMessageInput
 from app.storage.dialog_state import DialogState, DialogStateRepository
 from app.storage.sqlite import REQUIRED_TECHNICAL_TABLES, list_tables
+
+
+def test_crash_diagnostics_enable_all_thread_tracebacks(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[bool] = []
+    monkeypatch.setattr(
+        runtime_module.faulthandler,
+        "enable",
+        lambda *, all_threads: calls.append(all_threads),
+    )
+
+    runtime_module._enable_crash_diagnostics()
+
+    assert calls == [True]
+
+
+def test_crash_diagnostics_failure_does_not_prevent_startup(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def fail_enable(*, all_threads: bool) -> None:
+        raise RuntimeError("stderr has no file descriptor")
+
+    monkeypatch.setattr(runtime_module.faulthandler, "enable", fail_enable)
+
+    with caplog.at_level(logging.WARNING):
+        runtime_module._enable_crash_diagnostics()
+
+    assert "native crash diagnostics could not be enabled" in caplog.text
 
 
 def runtime_env(tmp_path: Path) -> dict[str, str]:
@@ -678,7 +707,16 @@ def test_compose_runtime_binds_to_flow_matching_business_spreadsheet(tmp_path: P
     )
 
 
-def test_cli_check_config_uses_env_file_and_initializes_storage(tmp_path: Path) -> None:
+def test_cli_check_config_uses_env_file_initializes_storage_and_enables_crash_diagnostics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    diagnostics_calls: list[bool] = []
+    monkeypatch.setattr(
+        runtime_module,
+        "_enable_crash_diagnostics",
+        lambda: diagnostics_calls.append(True),
+    )
     env_file = tmp_path / ".env"
     env_file.write_text(
         "\n".join(f"{key}={value}" for key, value in runtime_env(tmp_path).items()),
@@ -692,6 +730,7 @@ def test_cli_check_config_uses_env_file_and_initializes_storage(tmp_path: Path) 
     )
 
     assert exit_code == 0
+    assert diagnostics_calls == [True]
     assert (tmp_path / "data" / "sqlite" / "bot.sqlite3").exists()
 
 

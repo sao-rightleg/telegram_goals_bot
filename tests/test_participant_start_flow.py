@@ -18,7 +18,7 @@ from app.bot.messages import (
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.services.participant_flows import ParticipantFlowService
 from app.services.participant_models import TelegramUserContext
-from app.sheets.gateway import FakeSheetsGateway
+from app.sheets.gateway import FakeSheetsGateway, GoogleSheetsError
 from app.storage.dialog_state import DialogStateRepository
 from app.storage.goal_drafts import GoalDraftRepository
 from app.storage.registration import RegistrationDraftRepository
@@ -632,6 +632,180 @@ def test_repeated_start_resumes_registration_without_duplicate(tmp_path: Path) -
     assert resumed.text == "Как тебя зовут? Напиши только имя."
     assert repository.get(404).step == "awaiting_first_name"
     assert gateway.find_participant_by_telegram_id(404) is None
+
+
+def test_start_cleans_stale_registration_after_participant_was_written(tmp_path: Path) -> None:
+    service, gateway, _main_bot, _error_bot, _notification_bot, dialog_states = _build_service(
+        tmp_path,
+        challenge_flows=[_active_flow()],
+    )
+    user = TelegramUserContext(telegram_id=404, chat_id="chat-404")
+    service.handle_start(user, occurred_at=REGISTRATION_NOW)
+    service.accept_consent(user, consent_given_at=REGISTRATION_NOW)
+    drafts = RegistrationDraftRepository(tmp_path / "state.sqlite3")
+    draft = drafts.get(404)
+    assert draft is not None
+    assert drafts.claim_finalization(
+        404,
+        claim_token="interrupted-worker",
+        updated_at=REGISTRATION_NOW,
+        stale_before="2026-09-10T09:00:00+05:00",
+    )
+    gateway.append_participant({
+        "flow_id": "FLOW_2", "participant_id": "P404", "telegram_id": 404,
+        "role": "participant", "status": "active", "consent_given": True,
+    })
+
+    response = service.handle_start(user, occurred_at="2026-09-10T10:01:00+05:00")
+
+    assert response.menu_items
+    assert drafts.get(404) is None
+    state = dialog_states.get(404)
+    assert state is not None
+    assert (state.flow, state.step) == ("idle", "menu")
+
+
+def test_registration_releases_claim_when_post_write_read_fails(tmp_path: Path) -> None:
+    service, gateway, _main_bot, _error_bot, _notification_bot, _repository = _build_service(
+        tmp_path,
+        participants=[{
+            "flow_id": "FLOW_2", "participant_id": "C001", "telegram_id": 1001,
+            "full_name": "Анна Иванова", "role": "captain", "team_id": "T001",
+            "status": "active", "consent_given": True,
+        }],
+        teams=[{
+            "flow_id": "FLOW_2", "team_id": "T001", "team_name": "Команда 1",
+            "captain_id": "C001", "is_active": True,
+        }],
+        challenge_flows=[_active_flow()],
+    )
+    user = TelegramUserContext(telegram_id=404, chat_id="chat-404")
+    service.handle_start(user, occurred_at=REGISTRATION_NOW)
+    service.accept_consent(user, consent_given_at=REGISTRATION_NOW)
+    service.handle_registration_text(user, "Пётр", occurred_at=REGISTRATION_NOW)
+    service.handle_registration_text(user, "Петров", occurred_at=REGISTRATION_NOW)
+    service.select_registration_captain(user, captain_id="C001", occurred_at=REGISTRATION_NOW)
+    append_finished = False
+    original_append = gateway.append_participant
+    original_find = gateway.find_participant_in_flow
+
+    def append_then_mark(row: dict[str, object]) -> None:
+        nonlocal append_finished
+        original_append(row)
+        append_finished = True
+
+    def fail_first_read_after_append(flow_id: str, telegram_id: int) -> dict[str, object] | None:
+        nonlocal append_finished
+        if append_finished:
+            append_finished = False
+            raise GoogleSheetsError("temporary post-write read failure")
+        return original_find(flow_id, telegram_id)
+
+    gateway.append_participant = append_then_mark
+    gateway.find_participant_in_flow = fail_first_read_after_append
+
+    with pytest.raises(GoogleSheetsError):
+        service.confirm_registration(user, occurred_at=REGISTRATION_NOW)
+
+    draft = RegistrationDraftRepository(tmp_path / "state.sqlite3").get(404)
+    assert draft is not None
+    assert (draft.status, draft.claim_token) == ("active", None)
+    assert gateway.find_participant_by_telegram_id(404) is not None
+
+    response = service.handle_start(user, occurred_at="2026-09-10T10:01:00+05:00")
+    assert response.menu_items
+    assert RegistrationDraftRepository(tmp_path / "state.sqlite3").get(404) is None
+
+
+@pytest.mark.parametrize("failure_mode", ["initial_read", "not_visible"])
+def test_registration_releases_claim_for_every_verification_failure(
+    tmp_path: Path,
+    failure_mode: str,
+) -> None:
+    service, gateway, _main_bot, _error_bot, _notification_bot, _repository = _build_service(
+        tmp_path,
+        participants=[{
+            "flow_id": "FLOW_2", "participant_id": "C001", "telegram_id": 1001,
+            "full_name": "Анна Иванова", "role": "captain", "team_id": "T001",
+            "status": "active", "consent_given": True,
+        }],
+        teams=[{
+            "flow_id": "FLOW_2", "team_id": "T001", "team_name": "Команда 1",
+            "captain_id": "C001", "is_active": True,
+        }],
+        challenge_flows=[_active_flow()],
+    )
+    user = TelegramUserContext(telegram_id=404, chat_id="chat-404")
+    service.handle_start(user, occurred_at=REGISTRATION_NOW)
+    service.accept_consent(user, consent_given_at=REGISTRATION_NOW)
+    service.handle_registration_text(user, "Пётр", occurred_at=REGISTRATION_NOW)
+    service.handle_registration_text(user, "Петров", occurred_at=REGISTRATION_NOW)
+    service.select_registration_captain(user, captain_id="C001", occurred_at=REGISTRATION_NOW)
+    original_find = gateway.find_participant_in_flow
+    original_append = gateway.append_participant
+    reads = 0
+    append_finished = False
+
+    def append_then_mark(row: dict[str, object]) -> None:
+        nonlocal append_finished
+        original_append(row)
+        append_finished = True
+
+    def fail_verification(flow_id: str, telegram_id: int) -> dict[str, object] | None:
+        nonlocal reads, append_finished
+        reads += 1
+        if reads == 2 and failure_mode == "initial_read":
+            raise GoogleSheetsError("initial verification read failed")
+        if append_finished and failure_mode == "not_visible":
+            append_finished = False
+            return None
+        return original_find(flow_id, telegram_id)
+
+    gateway.append_participant = append_then_mark
+    gateway.find_participant_in_flow = fail_verification
+
+    expected_error = GoogleSheetsError if failure_mode == "initial_read" else RuntimeError
+    with pytest.raises(expected_error):
+        service.confirm_registration(user, occurred_at=REGISTRATION_NOW)
+
+    draft = RegistrationDraftRepository(tmp_path / "state.sqlite3").get(404)
+    assert draft is not None
+    assert (draft.status, draft.claim_token) == ("active", None)
+
+
+def test_registration_recovers_when_finalization_ownership_is_lost_after_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, gateway, _main_bot, _error_bot, _notification_bot, _repository = _build_service(
+        tmp_path,
+        participants=[{
+            "flow_id": "FLOW_2", "participant_id": "C001", "telegram_id": 1001,
+            "full_name": "Анна Иванова", "role": "captain", "team_id": "T001",
+            "status": "active", "consent_given": True,
+        }],
+        teams=[{
+            "flow_id": "FLOW_2", "team_id": "T001", "team_name": "Команда 1",
+            "captain_id": "C001", "is_active": True,
+        }],
+        challenge_flows=[_active_flow()],
+    )
+    user = TelegramUserContext(telegram_id=404, chat_id="chat-404")
+    service.handle_start(user, occurred_at=REGISTRATION_NOW)
+    service.accept_consent(user, consent_given_at=REGISTRATION_NOW)
+    service.handle_registration_text(user, "Пётр", occurred_at=REGISTRATION_NOW)
+    service.handle_registration_text(user, "Петров", occurred_at=REGISTRATION_NOW)
+    service.select_registration_captain(user, captain_id="C001", occurred_at=REGISTRATION_NOW)
+    assert service.registration_drafts is not None
+    monkeypatch.setattr(service.registration_drafts, "complete_finalization", lambda *_args, **_kwargs: False)
+
+    with pytest.raises(RuntimeError, match="ownership was lost"):
+        service.confirm_registration(user, occurred_at=REGISTRATION_NOW)
+
+    assert gateway.find_participant_by_telegram_id(404) is not None
+    response = service.handle_start(user, occurred_at="2026-09-10T10:01:00+05:00")
+    assert response.menu_items
+    assert RegistrationDraftRepository(tmp_path / "state.sqlite3").get(404) is None
 
 
 def test_registration_window_includes_exact_open_and_close_boundaries(tmp_path: Path) -> None:

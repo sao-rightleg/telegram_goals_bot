@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 import logging
+from threading import RLock
 from time import sleep
 from typing import Protocol
 
@@ -16,6 +17,7 @@ _GOOGLE_REQUEST_ATTEMPTS = 3
 _GOOGLE_RETRY_BASE_DELAY_SECONDS = 0.25
 _RETRYABLE_HTTP_STATUSES = frozenset({429, 500, 502, 503, 504})
 _RETRYABLE_GOOGLE_REASONS = frozenset({"rateLimitExceeded", "userRateLimitExceeded"})
+_GOOGLE_REQUEST_LOCK = RLock()
 
 
 class GoogleSheetsError(RuntimeError):
@@ -991,7 +993,10 @@ def _execute(request: object, *, retry_safe: bool = False) -> dict[str, object]:
     payload: object | None = None
     for attempt in range(1, _GOOGLE_REQUEST_ATTEMPTS + 1):
         try:
-            payload = request.execute()
+            # google-auth-httplib2/httplib2 clients are shared by the polling and
+            # scheduler threads but are not safe for concurrent request execution.
+            with _GOOGLE_REQUEST_LOCK:
+                payload = request.execute()
             break
         except Exception as exc:
             should_retry = (
