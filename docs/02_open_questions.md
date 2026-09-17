@@ -23,7 +23,7 @@ Codex must treat these decisions as current source of truth. If older documents 
 - Active flow dates are configured in a separate Google Sheets document `ChallengeFlows`.
 - Timezone for all dates, deadlines, and reminders: `Asia/Yekaterinburg`.
 - If Google Sheets has no active flow, runtime falls back to `CHALLENGE_START_DATE`.
-- Participant self-registration opens at the exact kickoff meeting timestamp and closes exactly seven days later.
+- Participant self-registration opens at the exact kickoff meeting timestamp. The default window is seven days; the administrator may explicitly extend the closing timestamp by up to ten additional days without shifting the challenge calendar.
 - After closing, a Telegram ID without a completed participant record receives `Данный поток уже набран`; registered participants remain allowed.
 
 ## 2. Reminders and Deadline

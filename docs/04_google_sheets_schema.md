@@ -78,7 +78,8 @@ Notes:
 - Working weeks are named `week_01` through `week_08`.
 - `kickoff_meeting_at`, `registration_opens_at`, and `registration_closes_at` are timestamps in `Asia/Yekaterinburg`.
 - `registration_opens_at` must equal `kickoff_meeting_at`.
-- `registration_closes_at` must equal `registration_opens_at + 7 days`.
+- `registration_closes_at` must be later than `registration_opens_at`; the default is seven days and the administrator may explicitly extend it by no more than ten additional days for late registration.
+- The `ChallengeFlows` registry must be writable only by the administrator and the bot service account. Tracker access is granted to allowed per-flow business spreadsheets, not to this registry.
 - The per-flow `FlowStart` sheet calculates both registration boundaries and includes them in launch-readiness validation.
 
 ## FlowSchedule

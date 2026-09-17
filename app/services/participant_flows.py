@@ -1340,10 +1340,17 @@ def _registration_window(flow: SheetRow) -> tuple[datetime, datetime]:
     opens_at = _flow_timestamp(flow, "registration_opens_at")
     closes_at = _flow_timestamp(flow, "registration_closes_at")
     expected_offset = 5 * 60 * 60
-    if int(opens_at.utcoffset().total_seconds()) != expected_offset:
+    if any(
+        int(timestamp.utcoffset().total_seconds()) != expected_offset
+        for timestamp in (kickoff, opens_at, closes_at)
+    ):
         raise ValueError("Registration window must use Asia/Yekaterinburg UTC offset")
-    if opens_at != kickoff or closes_at - opens_at != timedelta(days=7):
-        raise ValueError("Registration window must start at kickoff and last exactly seven days")
+    if opens_at != kickoff:
+        raise ValueError("Registration window must start at kickoff")
+    if closes_at <= opens_at:
+        raise ValueError("Registration window must close after it opens")
+    if closes_at - opens_at > timedelta(days=17):
+        raise ValueError("Registration window cannot exceed seventeen days")
     return opens_at, closes_at
 
 

@@ -269,13 +269,14 @@ All schedule times use `Asia/Yekaterinburg`.
 
 ### Participant registration window
 
-- Self-registration opens at `kickoff_meeting_at` and remains open for exactly seven days.
-- `registration_opens_at` equals `kickoff_meeting_at`; `registration_closes_at` equals `registration_opens_at + 7 days`.
+- Self-registration opens at `kickoff_meeting_at`. The default window is seven days, and the administrator may explicitly extend `registration_closes_at` by up to ten additional days for late participants without changing the challenge calendar.
+- `registration_opens_at` equals `kickoff_meeting_at`; `registration_closes_at` must be later than `registration_opens_at`.
 - During this window, an unknown Telegram ID may start the consent and registration scenario for the active flow.
 - After `registration_closes_at`, `/start` from a Telegram ID that has no participant record for this flow receives: `Данный поток уже набран`.
 - A participant already registered in the flow continues to use the bot after the window closes.
 - An unfinished registration draft does not reserve a place after the deadline.
 - Readiness validation must fail when the kickoff timestamp or either registration-window boundary is missing or inconsistent.
+- The challenge-flow registry is writable only by the administrator and the bot service account; trackers receive access to their allowed per-flow business sheets, not to the registry.
 
 Each challenge flow has an explicit day-by-day schedule in the separate challenge-flows spreadsheet. The administrator sets the flow start date in `ChallengeFlows`; the system materializes concrete calendar dates for every phase, week, deadline, notification, report generation, and report delivery event in `FlowSchedule`.
 

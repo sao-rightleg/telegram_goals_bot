@@ -648,6 +648,105 @@ def test_registration_window_includes_exact_open_and_close_boundaries(tmp_path: 
         assert error_bot.sent_messages == []
 
 
+def test_admin_can_extend_registration_window_beyond_default_seven_days(tmp_path: Path) -> None:
+    extended_flow = {
+        **_active_flow(),
+        "registration_closes_at": "2026-09-26T18:00:00+05:00",
+    }
+    service, _gateway, _main_bot, error_bot, _notification_bot, _repository = _build_service(
+        tmp_path,
+        challenge_flows=[extended_flow],
+    )
+
+    response = service.handle_start(
+        TelegramUserContext(telegram_id=404, chat_id="chat-404"),
+        occurred_at="2026-09-17T18:00:00+05:00",
+    )
+
+    assert response.text == CONSENT_TEXT
+    assert error_bot.sent_messages == []
+
+
+def test_registration_window_rejects_close_not_after_open(tmp_path: Path) -> None:
+    invalid_flow = {
+        **_active_flow(),
+        "registration_closes_at": REGISTRATION_OPEN,
+    }
+    service, _gateway, _main_bot, _error_bot, _notification_bot, _repository = _build_service(
+        tmp_path,
+        challenge_flows=[invalid_flow],
+    )
+
+    with pytest.raises(ValueError, match="Registration window must close after it opens"):
+        service.handle_start(
+            TelegramUserContext(telegram_id=404, chat_id="chat-404"),
+            occurred_at=REGISTRATION_NOW,
+        )
+
+
+def test_registration_window_rejects_extension_beyond_ten_extra_days(tmp_path: Path) -> None:
+    invalid_flow = {
+        **_active_flow(),
+        "registration_closes_at": "2026-09-26T18:00:01+05:00",
+    }
+    service, _gateway, _main_bot, _error_bot, _notification_bot, _repository = _build_service(
+        tmp_path,
+        challenge_flows=[invalid_flow],
+    )
+
+    with pytest.raises(ValueError, match="Registration window cannot exceed seventeen days"):
+        service.handle_start(
+            TelegramUserContext(telegram_id=404, chat_id="chat-404"),
+            occurred_at=REGISTRATION_NOW,
+        )
+
+
+def test_registration_window_must_open_at_kickoff(tmp_path: Path) -> None:
+    invalid_flow = {
+        **_active_flow(),
+        "registration_opens_at": "2026-09-09T18:00:01+05:00",
+    }
+    service, _gateway, _main_bot, _error_bot, _notification_bot, _repository = _build_service(
+        tmp_path,
+        challenge_flows=[invalid_flow],
+    )
+
+    with pytest.raises(ValueError, match="Registration window must start at kickoff"):
+        service.handle_start(
+            TelegramUserContext(telegram_id=404, chat_id="chat-404"),
+            occurred_at=REGISTRATION_NOW,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("kickoff_meeting_at", "2026-09-09T00:00:00+03:00"),
+        ("registration_opens_at", "2026-09-09T00:00:00+03:00"),
+        ("registration_closes_at", "2026-09-26T00:00:00+03:00"),
+    ],
+)
+def test_registration_window_requires_yekaterinburg_offset_for_every_boundary(
+    tmp_path: Path,
+    field: str,
+    value: str,
+) -> None:
+    invalid_flow = {**_active_flow(), field: value}
+    service, _gateway, _main_bot, _error_bot, _notification_bot, _repository = _build_service(
+        tmp_path,
+        challenge_flows=[invalid_flow],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Registration window must use Asia/Yekaterinburg UTC offset",
+    ):
+        service.handle_start(
+            TelegramUserContext(telegram_id=404, chat_id="chat-404"),
+            occurred_at=REGISTRATION_NOW,
+        )
+
+
 def test_registration_draft_cannot_cross_into_another_active_flow(tmp_path: Path) -> None:
     service, gateway, _main_bot, _error_bot, _notification_bot, repository = _build_service(
         tmp_path,
