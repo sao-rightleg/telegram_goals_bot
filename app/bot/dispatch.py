@@ -9,8 +9,11 @@ from zoneinfo import ZoneInfo
 
 from app.bot.menus import (
     CAPTAIN_DONE_CALLBACK,
+    CAPTAIN_CALLBACK_PREFIX,
     CAPTAIN_GOAL_CALLBACK_PREFIX,
     CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX,
+    CAPTAIN_STEP_CALLBACK_PREFIX,
+    CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX,
     CAPTAIN_MANUAL_REPORT_CALLBACK_PREFIX,
     CAPTAIN_STATUS_CALLBACK_PREFIX,
     CAPTAIN_STEPS_CALLBACK_PREFIX,
@@ -259,6 +262,22 @@ class TelegramUpdateDispatcher:
         if data.startswith(MENU_CALLBACK_PREFIX):
             return self._dispatch_menu_callback(user, data, now=now)
 
+        if data.startswith("weekly:"):
+            return self._dispatch_weekly_report_callback(user, data, now=now)
+        if data.startswith("insight:"):
+            return self._dispatch_insight_callback(user, data, now=now)
+        if data.startswith(CAPTAIN_CALLBACK_PREFIX):
+            return self._dispatch_captain_callback(user, data, now=now)
+
+        raise TelegramCallbackError("unknown callback prefix")
+
+    def _dispatch_weekly_report_callback(
+        self,
+        user: TelegramUserContext,
+        data: str,
+        *,
+        now: datetime,
+    ) -> FlowResponse:
         if data == WEEKLY_REPORT_START_CALLBACK:
             return self.weekly_report_service.start_report(user, now=now)
         if data.startswith(WEEKLY_REPORT_EDIT_STEP_CALLBACK_PREFIX):
@@ -281,7 +300,15 @@ class TelegramUpdateDispatcher:
             return self.weekly_report_service.select_steps(user, step_ids, now=now)
         if data == WEEKLY_REPORT_DONE_CALLBACK:
             return self.weekly_report_service.finalize_report(user, now=now)
+        raise TelegramCallbackError("unknown weekly report callback prefix")
 
+    def _dispatch_insight_callback(
+        self,
+        user: TelegramUserContext,
+        data: str,
+        *,
+        now: datetime,
+    ) -> FlowResponse:
         if data == INSIGHT_MENU_CALLBACK:
             return self.insight_service.show_menu(user, now=now)
         if data == INSIGHT_ADD_CALLBACK:
@@ -304,7 +331,15 @@ class TelegramUpdateDispatcher:
             return self.insight_service.skip_title_and_save(user, now=now)
         if data == INSIGHT_CANCEL_CALLBACK:
             return self.insight_service.cancel(user, now=now)
+        raise TelegramCallbackError("unknown insight callback prefix")
 
+    def _dispatch_captain_callback(
+        self,
+        user: TelegramUserContext,
+        data: str,
+        *,
+        now: datetime,
+    ) -> FlowResponse:
         if data == CAPTAIN_TEAM_CALLBACK:
             return self.captain_service.show_team(user, occurred_at=now.isoformat())
         if data.startswith(CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX):
@@ -319,6 +354,27 @@ class TelegramUpdateDispatcher:
                 participant_id=_required_suffix(data, CAPTAIN_GOAL_CALLBACK_PREFIX),
                 now=now,
             )
+        if data.startswith(CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX):
+            return self.captain_service.show_team_steps(
+                user,
+                now=now,
+                page_index=_int_suffix(data, CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX),
+            )
+        if data.startswith(CAPTAIN_STEP_CALLBACK_PREFIX):
+            return self.captain_service.show_participant_steps(
+                user,
+                participant_id=_required_suffix(data, CAPTAIN_STEP_CALLBACK_PREFIX),
+                now=now,
+            )
+        return self._dispatch_captain_report_callback(user, data, now=now)
+
+    def _dispatch_captain_report_callback(
+        self,
+        user: TelegramUserContext,
+        data: str,
+        *,
+        now: datetime,
+    ) -> FlowResponse:
         if data.startswith(CAPTAIN_MANUAL_REPORT_CALLBACK_PREFIX):
             return self.captain_service.start_manual_report(
                 user,
@@ -334,7 +390,7 @@ class TelegramUpdateDispatcher:
         if data == CAPTAIN_DONE_CALLBACK:
             return self.captain_service.finalize_manual_report(user, now=now)
 
-        raise TelegramCallbackError("unknown callback prefix")
+        raise TelegramCallbackError("unknown captain callback prefix")
 
     def _dispatch_menu_callback(
         self,
@@ -357,6 +413,8 @@ class TelegramUpdateDispatcher:
             return self.captain_service.show_team_progress(user, now=now)
         if action is MenuAction.VIEW_TEAM_GOALS:
             return self.captain_service.show_team_goals(user, now=now)
+        if action is MenuAction.VIEW_TEAM_STEPS:
+            return self.captain_service.show_team_steps(user, now=now)
         if action is MenuAction.CAPTAIN_MANUAL_REPORT:
             raise TelegramCallbackError("captain manual report callback requires participant id")
         return self.participant_service.handle_menu_action(user, action, occurred_at=now.isoformat())

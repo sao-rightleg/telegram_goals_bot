@@ -98,6 +98,8 @@ Captain has additional responsibilities:
 - can select an active consenting participant from own team and view all fields
   of that participant's active goal; the goal text is available only in a
   private chat with the bot
+- can select an active consenting participant from own team and view the
+  numbered planned steps of that participant's active goal in a private chat
 
 Captain cannot:
 - add reports for other teams

@@ -1474,6 +1474,7 @@ _INERT_ACTIONS = {
     MenuAction.VIEW_TEAM,
     MenuAction.VIEW_TEAM_PROGRESS,
     MenuAction.VIEW_TEAM_GOALS,
+    MenuAction.VIEW_TEAM_STEPS,
     MenuAction.CAPTAIN_MANUAL_REPORT,
     MenuAction.VIEW_TEAM_REPORT,
 }

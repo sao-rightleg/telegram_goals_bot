@@ -249,6 +249,21 @@ description, value, permission condition, and permission metric. Both the list
 and goal callback revalidate the active captain, exact active Teams assignment,
 flow, team, participant status, consent, and private chat.
 
+## Captain Team Steps
+
+Captain menu button:
+
+```text
+📍 Шаги команды
+```
+
+The bot shows a paginated participant-selection list containing only active
+consenting members of the captain's own team. Selecting a participant returns
+the numbered planned steps of that participant's active goal in number order.
+Open steps use `⬜`; closed steps use `🟩`. Both the list and detail callback
+repeat the same captain, active Teams assignment, flow, team, participant,
+consent, and private-chat authorization checks used by team goals.
+
 ## View Progress
 
 Trigger:

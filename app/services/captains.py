@@ -7,7 +7,12 @@ from datetime import datetime
 import re
 
 from app.bot.clients import BotClient, TelegramInlineButton
-from app.bot.menus import CAPTAIN_GOAL_CALLBACK_PREFIX, CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX
+from app.bot.menus import (
+    CAPTAIN_GOAL_CALLBACK_PREFIX,
+    CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX,
+    CAPTAIN_STEP_CALLBACK_PREFIX,
+    CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX,
+)
 from app.domain import PLANNED_STEP_COUNT
 from app.bot.messages import (
     CAPTAIN_DROPPED_PARTICIPANT_TEXT,
@@ -20,6 +25,7 @@ from app.bot.messages import (
     CAPTAIN_NO_TEAM_MEMBERS_TEXT,
     CAPTAIN_ONLY_TEXT,
     CAPTAIN_PRIVATE_CHAT_ONLY_TEXT,
+    CAPTAIN_STEPS_MISSING_TEXT,
     CAPTAIN_TEAM_TITLE_TEXT,
     CONSENT_ACCEPT_BUTTON,
     CONSENT_DECLINE_BUTTON,
@@ -125,26 +131,13 @@ class CaptainService:
         now: datetime,
         page_index: int = 0,
     ) -> FlowResponse:
-        context = self._resolve_team_data_captain(user, occurred_at=_occurred_at(now))
-        if isinstance(context, FlowResponse):
-            return context
-        captain, _captain_id, team_id = context
-        participants = _eligible_team_participants(
-            self.sheets.list_participants_by_team(team_id),
-            flow_id=_string_value(captain.get("flow_id")),
-        )
-        if not participants:
-            return self._send_response(user, text=CAPTAIN_NO_TEAM_MEMBERS_TEXT)
-        eligible_buttons = [
-            TelegramInlineButton(text=_button_display_name(participant), callback_data=callback_data)
-            for participant in sorted(participants, key=_team_member_sort_key)
-            if (callback_data := _goal_callback_data(participant)) is not None
-        ]
-        buttons = _goal_page_buttons(eligible_buttons, page_index=page_index)
-        return self._send_response(
+        return self._show_team_participant_selector(
             user,
-            text="Выбери участника, чтобы посмотреть его цель.",
-            buttons=buttons,
+            now=now,
+            page_index=page_index,
+            item_prefix=CAPTAIN_GOAL_CALLBACK_PREFIX,
+            page_prefix=CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX,
+            prompt="Выбери участника, чтобы посмотреть его цель.",
         )
 
     def show_participant_goal(
@@ -159,7 +152,10 @@ class CaptainService:
             return context
         captain, _captain_id, team_id = context
         flow_id = _string_value(captain.get("flow_id"))
-        if not _valid_callback_participant_id(participant_id):
+        if not _valid_callback_participant_id(
+            participant_id,
+            prefix=CAPTAIN_GOAL_CALLBACK_PREFIX,
+        ):
             return self._send_response(user, text=CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT)
         participant = self.sheets.get_participant(participant_id)
         if participant is None or not _participant_is_in_authorized_team(
@@ -175,6 +171,104 @@ class CaptainService:
             user,
             text=_format_captain_goal(participant, goal),
             continuation_header="Цель участника — продолжение",
+        )
+
+    def show_team_steps(
+        self,
+        user: TelegramUserContext,
+        *,
+        now: datetime,
+        page_index: int = 0,
+    ) -> FlowResponse:
+        return self._show_team_participant_selector(
+            user,
+            now=now,
+            page_index=page_index,
+            item_prefix=CAPTAIN_STEP_CALLBACK_PREFIX,
+            page_prefix=CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX,
+            prompt="Выбери участника, чтобы посмотреть его шаги.",
+        )
+
+    def _show_team_participant_selector(
+        self,
+        user: TelegramUserContext,
+        *,
+        now: datetime,
+        page_index: int,
+        item_prefix: str,
+        page_prefix: str,
+        prompt: str,
+    ) -> FlowResponse:
+        context = self._resolve_team_data_captain(user, occurred_at=_occurred_at(now))
+        if isinstance(context, FlowResponse):
+            return context
+        captain, _captain_id, team_id = context
+        participants = _eligible_team_participants(
+            self.sheets.list_participants_by_team(team_id),
+            flow_id=_string_value(captain.get("flow_id")),
+        )
+        if not participants:
+            return self._send_response(user, text=CAPTAIN_NO_TEAM_MEMBERS_TEXT)
+        eligible_buttons = [
+            TelegramInlineButton(text=_button_display_name(participant), callback_data=callback_data)
+            for participant in sorted(participants, key=_team_member_sort_key)
+            if (
+                callback_data := _participant_callback_data(
+                    participant,
+                    prefix=item_prefix,
+                )
+            )
+            is not None
+        ]
+        buttons = _participant_page_buttons(
+            eligible_buttons,
+            page_index=page_index,
+            page_prefix=page_prefix,
+        )
+        return self._send_response(
+            user,
+            text=prompt,
+            buttons=buttons,
+        )
+
+    def show_participant_steps(
+        self,
+        user: TelegramUserContext,
+        *,
+        participant_id: str,
+        now: datetime,
+    ) -> FlowResponse:
+        context = self._resolve_team_data_captain(user, occurred_at=_occurred_at(now))
+        if isinstance(context, FlowResponse):
+            return context
+        captain, _captain_id, team_id = context
+        flow_id = _string_value(captain.get("flow_id"))
+        if not _valid_callback_participant_id(
+            participant_id,
+            prefix=CAPTAIN_STEP_CALLBACK_PREFIX,
+        ):
+            return self._send_response(user, text=CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT)
+        participant = self.sheets.get_participant(participant_id)
+        if participant is None or not _participant_is_in_authorized_team(
+            participant,
+            team_id=team_id,
+            flow_id=flow_id,
+        ):
+            return self._send_response(user, text=CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT)
+        goal = self.sheets.get_active_goal(participant_id)
+        if goal is None:
+            return self._send_response(user, text=CAPTAIN_STEPS_MISSING_TEXT)
+        steps = self.sheets.list_planned_steps(
+            participant_id,
+            _string_value(goal.get("goal_id")),
+        )
+        valid_steps = _valid_numbered_steps(steps)
+        if not valid_steps:
+            return self._send_response(user, text=CAPTAIN_STEPS_MISSING_TEXT)
+        return self._send_sectioned_response(
+            user,
+            text=_format_captain_steps(participant, valid_steps),
+            continuation_header="Шаги участника — продолжение",
         )
 
     def start_manual_report(
@@ -671,24 +765,32 @@ def _button_display_name(participant: SheetRow) -> str:
     return name if len(name) <= 64 else name[:61].rstrip() + "..."
 
 
-def _goal_callback_data(participant: SheetRow) -> str | None:
+def _participant_callback_data(
+    participant: SheetRow,
+    *,
+    prefix: str,
+) -> str | None:
     participant_id = _optional_string_value(participant.get("participant_id"))
-    if participant_id is None or not _valid_callback_participant_id(participant_id):
+    if participant_id is None or not _valid_callback_participant_id(
+        participant_id,
+        prefix=prefix,
+    ):
         return None
-    return f"{CAPTAIN_GOAL_CALLBACK_PREFIX}{participant_id}"
+    return f"{prefix}{participant_id}"
 
 
-def _valid_callback_participant_id(participant_id: str) -> bool:
-    callback_data = f"{CAPTAIN_GOAL_CALLBACK_PREFIX}{participant_id}"
+def _valid_callback_participant_id(participant_id: str, *, prefix: str) -> bool:
+    callback_data = f"{prefix}{participant_id}"
     return bool(re.fullmatch(r"[A-Za-z0-9:_-]+", participant_id)) and len(
         callback_data.encode("utf-8")
     ) <= 64
 
 
-def _goal_page_buttons(
+def _participant_page_buttons(
     participant_buttons: list[TelegramInlineButton],
     *,
     page_index: int,
+    page_prefix: str,
     page_size: int = 20,
 ) -> tuple[TelegramInlineButton, ...]:
     max_page = max(0, (len(participant_buttons) - 1) // page_size)
@@ -700,14 +802,14 @@ def _goal_page_buttons(
             0,
             TelegramInlineButton(
                 text="← Назад",
-                callback_data=f"{CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX}{safe_page - 1}",
+                callback_data=f"{page_prefix}{safe_page - 1}",
             ),
         )
     if safe_page < max_page:
         buttons.append(
             TelegramInlineButton(
                 text="Далее →",
-                callback_data=f"{CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX}{safe_page + 1}",
+                callback_data=f"{page_prefix}{safe_page + 1}",
             )
         )
     return tuple(buttons)
@@ -724,6 +826,27 @@ def _format_captain_goal(participant: SheetRow, goal: SheetRow) -> str:
             f"Показатель выполнения: {_permission_metric_text(goal)}",
         )
     )
+
+
+def _format_captain_steps(
+    participant: SheetRow,
+    steps: dict[int, SheetRow],
+) -> str:
+    sections = [f"Шаги участника: {_safe_step_title(_display_name(participant))}"]
+    sections.extend(
+        f"{number}. {_step_status_symbol(step)} {_safe_step_title(step.get('step_title'))}"
+        for number, step in sorted(steps.items())
+    )
+    return "\n\n".join(sections)
+
+
+def _step_status_symbol(step: SheetRow) -> str:
+    return "🟩" if _normalized_string(step.get("step_status")) == "closed" else "⬜"
+
+
+def _safe_step_title(value: object) -> str:
+    text = str(value or "").strip() or "Шаг без названия"
+    return text if len(text) <= 1000 else text[:997].rstrip() + "..."
 
 
 def _goal_value_text(goal: SheetRow) -> str:

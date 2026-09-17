@@ -14,6 +14,8 @@ from app.bot.messages import MESSAGE_WITHOUT_FLOW_TEXT
 from app.bot.menus import (
     CAPTAIN_GOAL_CALLBACK_PREFIX,
     CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX,
+    CAPTAIN_STEP_CALLBACK_PREFIX,
+    CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX,
     CONSENT_ACCEPT_CALLBACK,
     CONSENT_DECLINE_CALLBACK,
     CONSENT_DECLINE_CONFIRM_CALLBACK,
@@ -843,6 +845,27 @@ def test_dispatcher_routes_team_goals_menu_and_participant_selection(tmp_path: P
     assert services.captains.goal_requests == [(user, "P001", NOW)]
 
 
+def test_dispatcher_routes_team_steps_menu_and_participant_selection(tmp_path: Path) -> None:
+    dispatcher, services, _error_bot = _dispatcher(tmp_path)
+
+    menu_response = dispatcher.dispatch_update(
+        _callback_update(data=f"{MENU_CALLBACK_PREFIX}{MenuAction.VIEW_TEAM_STEPS.value}")
+    )
+    steps_response = dispatcher.dispatch_update(
+        _callback_update(data=f"{CAPTAIN_STEP_CALLBACK_PREFIX}P001")
+    )
+    page_response = dispatcher.dispatch_update(
+        _callback_update(data=f"{CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX}1")
+    )
+
+    user = TelegramUserContext(telegram_id=1001, chat_id="chat-1001", username="p001")
+    assert menu_response == FlowResponse(chat_id="chat-1001", text="team steps")
+    assert steps_response == FlowResponse(chat_id="chat-1001", text="participant steps")
+    assert page_response == FlowResponse(chat_id="chat-1001", text="team steps")
+    assert services.captains.step_list_requests == [(user, NOW, 0), (user, NOW, 1)]
+    assert services.captains.step_requests == [(user, "P001", NOW)]
+
+
 def test_dispatcher_routes_step_report_callback_to_weekly_flow(tmp_path: Path) -> None:
     dispatcher, services, _error_bot = _dispatcher(tmp_path)
 
@@ -1316,6 +1339,8 @@ class RecordingCaptainService:
         self.progress_requests: list[tuple[TelegramUserContext, datetime]] = []
         self.goal_list_requests: list[tuple[TelegramUserContext, datetime, int]] = []
         self.goal_requests: list[tuple[TelegramUserContext, str, datetime]] = []
+        self.step_list_requests: list[tuple[TelegramUserContext, datetime, int]] = []
+        self.step_requests: list[tuple[TelegramUserContext, str, datetime]] = []
 
     def show_team_progress(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
         self.progress_requests.append((user, now))
@@ -1340,6 +1365,26 @@ class RecordingCaptainService:
     ) -> FlowResponse:
         self.goal_requests.append((user, participant_id, now))
         return FlowResponse(chat_id=user.chat_id, text="participant goal")
+
+    def show_team_steps(
+        self,
+        user: TelegramUserContext,
+        *,
+        now: datetime,
+        page_index: int = 0,
+    ) -> FlowResponse:
+        self.step_list_requests.append((user, now, page_index))
+        return FlowResponse(chat_id=user.chat_id, text="team steps")
+
+    def show_participant_steps(
+        self,
+        user: TelegramUserContext,
+        *,
+        participant_id: str,
+        now: datetime,
+    ) -> FlowResponse:
+        self.step_requests.append((user, participant_id, now))
+        return FlowResponse(chat_id=user.chat_id, text="participant steps")
 
 
 def _router(*, error_bot: FakeBotClient) -> NotificationRouter:

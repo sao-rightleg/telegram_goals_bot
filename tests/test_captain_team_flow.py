@@ -3,12 +3,17 @@ from datetime import datetime
 import pytest
 
 from app.bot.clients import BotPurpose, FakeBotClient, TelegramInlineButton
-from app.bot.menus import CAPTAIN_GOAL_CALLBACK_PREFIX
+from app.bot.menus import (
+    CAPTAIN_GOAL_CALLBACK_PREFIX,
+    CAPTAIN_STEP_CALLBACK_PREFIX,
+    CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX,
+)
 from app.bot.messages import (
     CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT,
     CAPTAIN_GOAL_MISSING_TEXT,
     CAPTAIN_ONLY_TEXT,
     CAPTAIN_PRIVATE_CHAT_ONLY_TEXT,
+    CAPTAIN_STEPS_MISSING_TEXT,
     CAPTAIN_TEAM_TITLE_TEXT,
     CONSENT_ACCEPT_BUTTON,
     CONSENT_DECLINE_BUTTON,
@@ -189,6 +194,317 @@ def test_captain_can_view_full_active_goal_of_own_team_member() -> None:
     )
     assert main_bot.sent_messages[-1].text == response.text
     assert error_bot.sent_messages == []
+
+
+def test_captain_can_choose_own_team_member_to_view_steps() -> None:
+    service, _gateway, main_bot, error_bot, _notification_bot = _build_service(
+        participants=[
+            _participant("C001", 2001, role="captain", full_name="Капитан команды"),
+            _participant("P001", 1001, full_name="Анна Своя"),
+            _participant("P002", 1002, team_id="T002", full_name="Олег Чужой"),
+        ],
+    )
+
+    response = service.show_team_steps(
+        TelegramUserContext(telegram_id=2001, chat_id="2001"),
+        now=datetime.fromisoformat(NOW),
+    )
+
+    assert response.text == "Выбери участника, чтобы посмотреть его шаги."
+    assert response.buttons == (
+        TelegramInlineButton(text="Анна Своя", callback_data=f"{CAPTAIN_STEP_CALLBACK_PREFIX}P001"),
+        TelegramInlineButton(text="Капитан команды", callback_data=f"{CAPTAIN_STEP_CALLBACK_PREFIX}C001"),
+    )
+    assert all("Олег" not in button.text for button in response.buttons)
+    assert main_bot.sent_messages[-1].buttons == response.buttons
+    assert error_bot.sent_messages == []
+
+
+def test_captain_can_view_ordered_steps_of_participants_active_goal() -> None:
+    service, _gateway, main_bot, error_bot, _notification_bot = _build_service(
+        participants=[
+            _participant("C001", 2001, role="captain", full_name="Капитан"),
+            _participant("P001", 1001, full_name="Анна Своя"),
+        ],
+        goals=[
+            {"goal_id": "G001", "participant_id": "P001", "goal_status": "active"},
+            {"goal_id": "OLD", "participant_id": "P001", "goal_status": "closed"},
+        ],
+        planned_steps=[
+            {"step_id": "S2", "participant_id": "P001", "goal_id": "G001", "step_number": 2, "step_title": "Второй шаг", "step_status": "closed"},
+            {"step_id": "S1", "participant_id": "P001", "goal_id": "G001", "step_number": 1, "step_title": "Первый шаг", "step_status": "open"},
+            {"step_id": "OLD1", "participant_id": "P001", "goal_id": "OLD", "step_number": 1, "step_title": "Старый секретный шаг", "step_status": "open"},
+        ],
+    )
+
+    response = service.show_participant_steps(
+        TelegramUserContext(telegram_id=2001, chat_id="2001"),
+        participant_id="P001",
+        now=datetime.fromisoformat(NOW),
+    )
+
+    assert response.text == (
+        "Шаги участника: Анна Своя\n\n"
+        "1. ⬜ Первый шаг\n\n"
+        "2. 🟩 Второй шаг"
+    )
+    assert "Старый секретный шаг" not in response.text
+    assert main_bot.sent_messages[-1].text == response.text
+    assert error_bot.sent_messages == []
+
+
+@pytest.mark.parametrize("planned_steps", [[], [{"step_id": "OLD1", "participant_id": "P001", "goal_id": "OLD", "step_number": 1, "step_title": "Старый шаг", "step_status": "open"}]])
+def test_captain_sees_missing_text_when_participant_has_no_active_steps(
+    planned_steps: list[dict[str, object]],
+) -> None:
+    service, _gateway, main_bot, _error_bot, _notification_bot = _build_service(
+        participants=[
+            _participant("C001", 2001, role="captain"),
+            _participant("P001", 1001, full_name="Участник"),
+        ],
+        goals=[{"goal_id": "G001", "participant_id": "P001", "goal_status": "active"}],
+        planned_steps=planned_steps,
+    )
+
+    response = service.show_participant_steps(
+        TelegramUserContext(telegram_id=2001, chat_id="2001"),
+        participant_id="P001",
+        now=datetime.fromisoformat(NOW),
+    )
+
+    assert response.text == CAPTAIN_STEPS_MISSING_TEXT
+    assert main_bot.sent_messages[-1].text == CAPTAIN_STEPS_MISSING_TEXT
+
+
+def test_forged_steps_callback_cannot_reveal_another_team_steps() -> None:
+    service, _gateway, _main_bot, _error_bot, _notification_bot = _build_service(
+        participants=[
+            _participant("C001", 2001, role="captain"),
+            _participant("P999", 9999, team_id="T002", full_name="Чужой участник"),
+        ],
+        goals=[{"goal_id": "G999", "participant_id": "P999", "goal_status": "active"}],
+        planned_steps=[{"step_id": "S999", "participant_id": "P999", "goal_id": "G999", "step_number": 1, "step_title": "Секретный шаг", "step_status": "open"}],
+    )
+
+    response = service.show_participant_steps(
+        TelegramUserContext(telegram_id=2001, chat_id="2001"),
+        participant_id="P999",
+        now=datetime.fromisoformat(NOW),
+    )
+
+    assert response.text == CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT
+    assert "Секретный шаг" not in response.text
+
+
+@pytest.mark.parametrize("detail", [False, True])
+def test_team_steps_are_not_disclosed_outside_captain_private_chat(detail: bool) -> None:
+    service, _gateway, main_bot, _error_bot, _notification_bot = _build_service(
+        participants=[
+            _participant("C001", 2001, role="captain"),
+            _participant("P001", 1001, full_name="Участник"),
+        ],
+        goals=[{"goal_id": "G001", "participant_id": "P001", "goal_status": "active"}],
+        planned_steps=[{"step_id": "S001", "participant_id": "P001", "goal_id": "G001", "step_number": 1, "step_title": "Секретный шаг", "step_status": "open"}],
+    )
+    user = TelegramUserContext(telegram_id=2001, chat_id="-100123")
+
+    response = (
+        service.show_participant_steps(user, participant_id="P001", now=datetime.fromisoformat(NOW))
+        if detail
+        else service.show_team_steps(user, now=datetime.fromisoformat(NOW))
+    )
+
+    assert response.text == CAPTAIN_PRIVATE_CHAT_ONLY_TEXT
+    assert "Секретный шаг" not in response.text
+    assert main_bot.sent_messages[-1].chat_id == "-100123"
+
+
+@pytest.mark.parametrize(
+    "captain_changes",
+    [{"role": "participant"}, {"status": "inactive"}, {"consent_given": False}],
+)
+@pytest.mark.parametrize("detail", [False, True])
+def test_team_steps_reject_ineligible_captain(
+    captain_changes: dict[str, object],
+    detail: bool,
+) -> None:
+    captain = _participant("C001", 2001, role="captain")
+    captain.update(captain_changes)
+    service, _gateway, _main_bot, _error_bot, _notification_bot = _build_service(
+        participants=[captain, _participant("P001", 1001)],
+    )
+
+    user = TelegramUserContext(telegram_id=2001, chat_id="2001")
+    response = (
+        service.show_participant_steps(
+            user,
+            participant_id="P001",
+            now=datetime.fromisoformat(NOW),
+        )
+        if detail
+        else service.show_team_steps(user, now=datetime.fromisoformat(NOW))
+    )
+
+    expected = CONSENT_TEXT if captain_changes.get("consent_given") is False else CAPTAIN_ONLY_TEXT
+    assert response.text == expected
+    assert response.buttons == (
+        (CONSENT_ACCEPT_BUTTON, CONSENT_DECLINE_BUTTON)
+        if expected == CONSENT_TEXT
+        else ()
+    )
+
+
+def test_team_steps_list_uses_steps_pagination_prefix_and_exact_partition() -> None:
+    participants = [_participant("C001", 2001, role="captain", full_name="Капитан")]
+    participants.extend(
+        _participant(f"P{index:03d}", 3000 + index, full_name=f"Участник {index:02d}")
+        for index in range(1, 26)
+    )
+    participants.append(_participant("Я" * 60, 9999, full_name="Некорректный ID"))
+    service, _gateway, _main_bot, _error_bot, _notification_bot = _build_service(
+        participants=participants,
+    )
+    user = TelegramUserContext(telegram_id=2001, chat_id="2001")
+
+    first = service.show_team_steps(user, now=datetime.fromisoformat(NOW), page_index=0)
+    second = service.show_team_steps(user, now=datetime.fromisoformat(NOW), page_index=1)
+    negative = service.show_team_steps(user, now=datetime.fromisoformat(NOW), page_index=-1)
+    oversized = service.show_team_steps(user, now=datetime.fromisoformat(NOW), page_index=999)
+
+    first_members = [button for button in first.buttons if button.text != "Далее →"]
+    second_members = [button for button in second.buttons if button.text != "← Назад"]
+    assert len(first_members) == 20
+    assert len(second_members) == 6
+    assert first.buttons[-1].callback_data == f"{CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX}1"
+    assert second.buttons[0].callback_data == f"{CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX}0"
+    assert [button.callback_data for button in first_members + second_members] == [
+        f"{CAPTAIN_STEP_CALLBACK_PREFIX}C001",
+        *(f"{CAPTAIN_STEP_CALLBACK_PREFIX}P{index:03d}" for index in range(1, 26)),
+    ]
+    assert negative.buttons == first.buttons
+    assert oversized.buttons == second.buttons
+    assert all(len(button.callback_data.encode("utf-8")) <= 64 for button in first.buttons + second.buttons)
+
+
+@pytest.mark.parametrize("goal_status", [None, "closed"])
+def test_captain_step_view_requires_active_goal(goal_status: str | None) -> None:
+    goals = [] if goal_status is None else [
+        {"goal_id": "OLD", "participant_id": "P001", "goal_status": goal_status}
+    ]
+    service, _gateway, _main_bot, _error_bot, _notification_bot = _build_service(
+        participants=[_participant("C001", 2001, role="captain"), _participant("P001", 1001)],
+        goals=goals,
+        planned_steps=[{"step_id": "OLD1", "participant_id": "P001", "goal_id": "OLD", "step_number": 1, "step_title": "Старый секретный шаг", "step_status": "open"}],
+    )
+
+    response = service.show_participant_steps(
+        TelegramUserContext(telegram_id=2001, chat_id="2001"),
+        participant_id="P001",
+        now=datetime.fromisoformat(NOW),
+    )
+
+    assert response.text == CAPTAIN_STEPS_MISSING_TEXT
+    assert "Старый секретный шаг" not in response.text
+
+
+def test_captain_step_view_excludes_duplicate_blank_and_out_of_range_steps() -> None:
+    service, _gateway, _main_bot, _error_bot, _notification_bot = _build_service(
+        participants=[_participant("C001", 2001, role="captain"), _participant("P001", 1001)],
+        goals=[{"goal_id": "G001", "participant_id": "P001", "goal_status": "active"}],
+        planned_steps=[
+            {"step_id": "S1", "participant_id": "P001", "goal_id": "G001", "step_number": 1, "step_title": "Верный шаг", "step_status": "open"},
+            {"step_id": "S2A", "participant_id": "P001", "goal_id": "G001", "step_number": 2, "step_title": "Дубль A", "step_status": "open"},
+            {"step_id": "S2B", "participant_id": "P001", "goal_id": "G001", "step_number": 2, "step_title": "Дубль B", "step_status": "closed"},
+            {"step_id": "S3", "participant_id": "P001", "goal_id": "G001", "step_number": 3, "step_title": "", "step_status": "open"},
+            {"step_id": "S0", "participant_id": "P001", "goal_id": "G001", "step_number": 0, "step_title": "Нулевой", "step_status": "open"},
+            {"step_id": "S9", "participant_id": "P001", "goal_id": "G001", "step_number": 9, "step_title": "Девятый", "step_status": "open"},
+        ],
+    )
+
+    response = service.show_participant_steps(
+        TelegramUserContext(telegram_id=2001, chat_id="2001"),
+        participant_id="P001",
+        now=datetime.fromisoformat(NOW),
+    )
+
+    assert response.text == "Шаги участника: Участник\n\n1. ⬜ Верный шаг"
+    assert all(value not in response.text for value in ("Дубль", "Нулевой", "Девятый"))
+
+
+@pytest.mark.parametrize(
+    "participant_changes",
+    [
+        {"status": "dropped"},
+        {"status": "inactive"},
+        {"consent_given": False},
+        {"role": "tracker"},
+        {"flow_id": "FLOW_2"},
+    ],
+)
+def test_forged_steps_callback_rejects_ineligible_same_team_participant(
+    participant_changes: dict[str, object],
+) -> None:
+    target = _participant("P001", 1001, full_name="Закрытый участник")
+    target.update(participant_changes)
+    service, _gateway, _main_bot, _error_bot, _notification_bot = _build_service(
+        participants=[_participant("C001", 2001, role="captain"), target],
+        goals=[{"goal_id": "G001", "participant_id": "P001", "goal_status": "active"}],
+        planned_steps=[{"step_id": "S001", "participant_id": "P001", "goal_id": "G001", "step_number": 1, "step_title": "Секретный шаг", "step_status": "open"}],
+    )
+
+    response = service.show_participant_steps(
+        TelegramUserContext(telegram_id=2001, chat_id="2001"),
+        participant_id="P001",
+        now=datetime.fromisoformat(NOW),
+    )
+
+    assert response.text == CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT
+    assert "Секретный шаг" not in response.text
+
+
+@pytest.mark.parametrize("participant_id", ["bad id", "Я" * 60])
+def test_forged_steps_callback_rejects_invalid_participant_id(participant_id: str) -> None:
+    service, _gateway, _main_bot, _error_bot, _notification_bot = _build_service(
+        participants=[_participant("C001", 2001, role="captain")],
+    )
+
+    response = service.show_participant_steps(
+        TelegramUserContext(telegram_id=2001, chat_id="2001"),
+        participant_id=participant_id,
+        now=datetime.fromisoformat(NOW),
+    )
+
+    assert response.text == CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT
+
+
+def test_long_captain_steps_are_truncated_and_delivered_in_complete_sections() -> None:
+    long_title = "Я" * 1200
+    service, _gateway, main_bot, _error_bot, _notification_bot = _build_service(
+        participants=[_participant("C001", 2001, role="captain"), _participant("P001", 1001)],
+        goals=[{"goal_id": "G001", "participant_id": "P001", "goal_status": "active"}],
+        planned_steps=[
+            {"step_id": f"S{number}", "participant_id": "P001", "goal_id": "G001", "step_number": number, "step_title": long_title, "step_status": "open"}
+            for number in range(1, 9)
+        ],
+    )
+
+    response = service.show_participant_steps(
+        TelegramUserContext(telegram_id=2001, chat_id="2001"),
+        participant_id="P001",
+        now=datetime.fromisoformat(NOW),
+    )
+
+    assert len(response.text) > 4096
+    assert len(main_bot.sent_messages) > 1
+    assert all(len(message.text) <= 3900 for message in main_bot.sent_messages)
+    delivered_sections: list[str] = []
+    for index, message in enumerate(main_bot.sent_messages):
+        sections = message.text.split("\n\n")
+        if index:
+            assert sections.pop(0) == "Шаги участника — продолжение"
+        delivered_sections.extend(sections)
+    assert delivered_sections == response.text.split("\n\n")
+    assert response.text.count("...") == 8
 
 
 def test_captain_cannot_view_goal_of_participant_from_another_team() -> None:
