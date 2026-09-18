@@ -29,6 +29,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
+      - name: Resolve checked-out release SHA
+        run: |
+          DEPLOY_SHA=$(git rev-parse HEAD)
+          echo "DEPLOY_SHA=$DEPLOY_SHA" >> "$GITHUB_ENV"
+          echo "DEPLOY_KEY=$DEPLOY_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
@@ -61,7 +66,7 @@ jobs:
             --exclude='*.sqlite' \
             --exclude='*.sqlite3' \
             --exclude='*.db' \
-            -czf "/tmp/telegram-goals-bot-test-${GITHUB_SHA}.tgz" .
+            -czf "/tmp/telegram-goals-bot-test-${DEPLOY_KEY}.tgz" .
       - name: Configure SSH
         run: |
           install -m 700 -d ~/.ssh
@@ -71,22 +76,24 @@ jobs:
       - name: Upload archive
         run: |
           scp -i ~/.ssh/deploy_key -P "${TEST_VPS_PORT:-22}" \
-            "/tmp/telegram-goals-bot-test-${GITHUB_SHA}.tgz" \
-            "$TEST_VPS_USER@$TEST_VPS_HOST:/tmp/telegram-goals-bot-test-${GITHUB_SHA}.tgz"
+            "/tmp/telegram-goals-bot-test-${DEPLOY_KEY}.tgz" \
+            "$TEST_VPS_USER@$TEST_VPS_HOST:/tmp/telegram-goals-bot-test-${DEPLOY_KEY}.tgz"
       - name: Install test release and restart test service
         run: |
           ssh -i ~/.ssh/deploy_key -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_USER@$TEST_VPS_HOST" \
-            "TEST_APP_DIR='$TEST_VPS_APP_DIR' TEST_SERVICE_NAME='$TEST_VPS_SERVICE_NAME' GITHUB_SHA='$GITHUB_SHA' bash -s" <<'REMOTE'
+            "TEST_APP_DIR='$TEST_VPS_APP_DIR' TEST_SERVICE_NAME='$TEST_VPS_SERVICE_NAME' DEPLOY_KEY='$DEPLOY_KEY' bash -s" <<'REMOTE'
           set -euo pipefail
 
           test "$TEST_APP_DIR" = "/opt/telegram_goals_bot_test"
           test "$TEST_SERVICE_NAME" = "telegram-goals-bot-test.service"
+          [[ "$DEPLOY_KEY" =~ ^[0-9a-f]{40}-[0-9]+-[0-9]+$ ]]
 
           TEST_SERVICE_USER="telegram-goals-bot-test"
           TEST_SERVICE_GROUP="telegram-goals-bot-test"
-          RELEASE_DIR="$TEST_APP_DIR/releases/$GITHUB_SHA"
-          mkdir -p "$RELEASE_DIR" "$TEST_APP_DIR/shared"
-          tar -xzf "/tmp/telegram-goals-bot-test-$GITHUB_SHA.tgz" -C "$RELEASE_DIR"
+          RELEASE_DIR="$TEST_APP_DIR/releases/$DEPLOY_KEY"
+          mkdir -p "$TEST_APP_DIR/releases" "$TEST_APP_DIR/shared"
+          mkdir "$RELEASE_DIR"
+          tar -xzf "/tmp/telegram-goals-bot-test-$DEPLOY_KEY.tgz" -C "$RELEASE_DIR"
 
           cd "$RELEASE_DIR"
           python3 -m venv .venv

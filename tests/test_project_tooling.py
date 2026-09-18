@@ -97,6 +97,23 @@ def test_deploy_test_workflow_installs_test_systemd_unit() -> None:
     assert "sudo systemctl restart \"$TEST_SERVICE_NAME\"" in workflow
 
 
+def test_deploy_test_workflow_uses_unique_clean_release_directory() -> None:
+    workflow = DEPLOY_TEST_WORKFLOW.read_text(encoding="utf-8")
+
+    checkout = workflow.index("uses: actions/checkout@v4")
+    resolve = workflow.index("DEPLOY_SHA=$(git rev-parse HEAD)")
+    assert checkout < resolve
+    assert 'DEPLOY_KEY=$DEPLOY_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT' in workflow
+    assert '[[ "$DEPLOY_KEY" =~ ^[0-9a-f]{40}-[0-9]+-[0-9]+$ ]]' in workflow
+    assert 'RELEASE_DIR="$TEST_APP_DIR/releases/$DEPLOY_KEY"' in workflow
+    assert 'mkdir -p "$TEST_APP_DIR/releases" "$TEST_APP_DIR/shared"' in workflow
+    assert 'mkdir "$RELEASE_DIR"' in workflow
+    assert 'mkdir -p "$RELEASE_DIR"' not in workflow
+    assert workflow.count('telegram-goals-bot-test-${DEPLOY_KEY}.tgz') == 3
+    assert 'telegram-goals-bot-test-$DEPLOY_KEY.tgz' in workflow
+    assert "DEPLOY_KEY='$DEPLOY_KEY'" in workflow
+
+
 def test_test_systemd_unit_targets_test_app_dir_and_service() -> None:
     unit = TEST_SYSTEMD_UNIT.read_text(encoding="utf-8")
 
