@@ -732,8 +732,9 @@ def _format_team_progress(
     return "\n\n".join(sections)
 
 
-def _format_step_score(value: float) -> str:
-    return str(int(value)) if value.is_integer() else str(value)
+def _format_step_score(value: float | int) -> str:
+    numeric = float(value)
+    return str(int(numeric)) if numeric.is_integer() else str(numeric)
 
 
 def _valid_numbered_steps(rows: list[SheetRow]) -> dict[int, SheetRow]:

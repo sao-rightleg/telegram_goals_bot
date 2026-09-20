@@ -22,13 +22,18 @@ from app.bot.messages import (
     UNKNOWN_USER_TEXT,
 )
 from app.scheduler.calendar import current_challenge_week_number
-from app.services.captains import CaptainService
+from app.services.captains import CaptainService, _format_step_score
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.services.participant_models import TelegramUserContext
 from app.sheets.gateway import FakeSheetsGateway
 
 
 NOW = "2026-07-02T10:00:00+05:00"
+
+
+def test_step_score_formatter_accepts_integer_zero_on_python_310() -> None:
+    assert _format_step_score(0) == "0"
+    assert _format_step_score(0.5) == "0.5"
 
 
 def test_captain_can_view_only_own_team() -> None:
