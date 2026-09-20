@@ -17,6 +17,7 @@ class FakeSheetsService:
         }
         self.appended: list[tuple[str, list[object]]] = []
         self.updated: list[tuple[str, list[list[object]]]] = []
+        self.value_input_options: list[tuple[str, str]] = []
 
     def spreadsheets(self) -> "FakeSheetsService":
         return self
@@ -52,6 +53,7 @@ class FakeSheetsService:
         body: dict[str, object],
     ) -> "_Executable":
         values = _body_values(body)
+        self.value_input_options.append(("append", valueInputOption))
         title = _sheet_title(range)
         self._sheets_for(spreadsheetId).setdefault(title, []).extend(values)
         for row in values:
@@ -67,6 +69,7 @@ class FakeSheetsService:
         body: dict[str, object],
     ) -> "_Executable":
         values = _body_values(body)
+        self.value_input_options.append(("update", valueInputOption))
         title = _sheet_title(range)
         start_row = _start_row(range)
         rows = self._sheets_for(spreadsheetId).setdefault(title, [])
@@ -176,12 +179,16 @@ def minimal_live_sheets(**overrides: list[list[object]]) -> dict[str, list[list[
                 "goal_id",
                 "step_number",
                 "step_title",
+                "step_description",
+                "step_metric",
                 "step_status",
                 "closed_week_number",
                 "closed_report_id",
                 "closed_at",
+                "created_at",
+                "updated_at",
             ],
-            ["S001", "P001", "G001", "1", "Step one", "open", "", "", ""],
+            ["S001", "P001", "G001", "1", "Step one", "Description", "Metric", "open", "", "", "", "now", "now"],
         ],
         "WeeklyReports": [
             [
@@ -198,7 +205,7 @@ def minimal_live_sheets(**overrides: list[list[object]]) -> dict[str, list[list[
             ]
         ],
         "WeeklyReportSteps": [
-            ["id", "weekly_report_id", "participant_id", "step_id", "relation_type", "created_at"]
+            ["id", "weekly_report_id", "participant_id", "step_id", "relation_type", "metric_status", "metric_result_text", "created_at"]
         ],
         "WeeklyFocus": [
             [

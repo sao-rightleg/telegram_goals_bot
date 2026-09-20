@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from datetime import date
 from html import escape
 
-from app.domain import PLANNED_STEP_COUNT
+from app.domain import planned_steps_bar, planned_steps_percent
 from app.scheduler.calendar import WORKING_WEEK_COUNT
 from app.services.insight_models import InsightListItem, InsightPage
 from app.services.participant_models import Goal, PlannedStep, WeeklyStatus
@@ -317,14 +317,11 @@ def format_progress_view(
 
 
 def calculate_progress_percent(steps: Sequence[PlannedStep]) -> int:
-    closed_count = sum(1 for step in steps if step.step_status == "closed")
-    return round(min(closed_count, PLANNED_STEP_COUNT) / PLANNED_STEP_COUNT * 100)
+    return planned_steps_percent(tuple(step.step_status for step in steps))
 
 
 def _format_progress_bar(steps: Sequence[PlannedStep]) -> str:
-    closed_count = sum(1 for step in steps if step.step_status == "closed")
-    filled_cells = min(closed_count, PLANNED_STEP_COUNT)
-    return "■" * filled_cells + "□" * (PLANNED_STEP_COUNT - filled_cells)
+    return planned_steps_bar(tuple(step.step_status for step in steps))
 
 
 def _format_goal_value(goal: Goal) -> str:
@@ -364,13 +361,16 @@ def _format_expandable_blockquote(text: str) -> str:
 def _format_step_lines(steps: Sequence[PlannedStep], *, focus_step_id: str | None = None) -> list[str]:
     lines = []
     for step in steps:
-        symbol = "🟩" if step.step_status == "closed" else "⬜"
+        symbol = {"closed": "🟩", "partial": "🟦"}.get(step.step_status, "⬜")
         focus_marker = " 🎯" if step.step_id == focus_step_id else ""
         title = escape(step.step_title)
         lines.append(f"{symbol} Шаг {step.step_number}.{focus_marker} {title}")
         description = step.step_description.strip()
         if description:
             lines.append(_format_step_description(description))
+        metric = step.step_metric.strip()
+        if metric:
+            lines.append(f"Метрика: {escape(metric)}")
     return lines
 
 

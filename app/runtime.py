@@ -53,6 +53,7 @@ from app.storage.registration import RegistrationDraftRepository
 from app.storage.rupor import RuporRepository
 from app.storage.insight_drafts import InsightDraftRepository
 from app.storage.goal_drafts import GoalDraftRepository
+from app.storage.step_drafts import StepDraftRepository
 from app.storage.paths import StoragePathPolicy
 from app.storage.reports import ReportStateRepository
 from app.storage.scheduler import SchedulerJobRepository
@@ -225,7 +226,10 @@ def compose_runtime(
     dialog_states = DialogStateRepository(db_path)
     registration_drafts = RegistrationDraftRepository(db_path)
     goal_drafts = GoalDraftRepository(db_path)
-    weekly_drafts = WeeklyReportDraftRepository(db_path)
+    step_drafts = StepDraftRepository(db_path)
+    weekly_drafts = WeeklyReportDraftRepository(
+        db_path, audio_root=settings.storage.audio_storage_dir
+    )
     insight_drafts = InsightDraftRepository(db_path)
     scheduler_jobs = SchedulerJobRepository(db_path)
     sheets_gateway, bound_flow = _build_sheets_and_flow(
@@ -244,6 +248,7 @@ def compose_runtime(
         registration_flows=bound_flow_gateway,
         registration_drafts=registration_drafts,
         goal_drafts=goal_drafts,
+        step_drafts=step_drafts,
     )
     weekly_report_service = WeeklyReportService(
         sheets=sheets_gateway,
@@ -251,6 +256,7 @@ def compose_runtime(
         notification_router=notification_router,
         drafts=weekly_drafts,
         voice_messages=voice_service,
+        active_flow_id=str(bound_flow.get("flow_id") or "") or None,
     )
     insight_service = InsightService(
         sheets=sheets_gateway,

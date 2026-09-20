@@ -306,11 +306,17 @@ Allowed `step_status` values:
 
 Notes:
 - Steps are not tied to specific weeks.
-- Participants cannot add new steps in MVP.
 - Main route contains 8 planned steps.
+- An active consenting participant creates exactly eight numbered steps in the
+  main bot during the configured steps-setup window.
+- Every step contains a concrete `step_description` and a measurable
+  `step_metric`; `step_title` is a short display form derived from the description.
+- The eight rows are written only after the participant confirms the complete
+  draft. Stable step IDs make confirmation idempotent.
 - One weekly report may close several steps.
 - Already closed steps cannot be closed again.
-- New/additional steps are formulated by participant with captain/tracker and added by admin in Google Sheets.
+- A confirmed plan is locked after the first weekly focus/report; later changes
+  are made by the administrator in Google Sheets.
 
 ## WeeklyReports
 
@@ -388,6 +394,8 @@ Columns:
 - `participant_id`
 - `step_id`
 - `relation_type`
+- `metric_status`
+- `metric_result_text`
 - `created_at`
 
 Allowed `relation_type` values:
@@ -395,11 +403,20 @@ Allowed `relation_type` values:
 - `partial`
 - `mentioned`
 
+Allowed `metric_status` values:
+- `completed`
+- `partial`
+- `not_completed`
+
 Notes:
 - This sheet is mandatory for participant step reports.
 - `green` participant step reports require one `closed` relation.
 - A planned step can have only one final participant step report.
 - Bot must reject duplicate closure of already closed steps.
+- For participant step reports, `metric_result_text` stores the factual result
+  supplied by the participant after comparing it with `PlannedSteps.step_metric`.
+- Partial or not-completed results may be reported again in a later week; only
+  one report for the same step is allowed within one working week.
 
 ## WeeklyFocus
 

@@ -31,6 +31,10 @@ from app.bot.menus import (
     INSIGHT_MENU_CALLBACK,
     INSIGHT_SKIP_TITLE_CALLBACK,
     MENU_CALLBACK_PREFIX,
+    STEPS_CANCEL_CALLBACK,
+    STEPS_CONFIRM_CALLBACK,
+    STEPS_EDIT_CALLBACK_PREFIX,
+    WEEKLY_REPORT_METRIC_CALLBACK_PREFIX,
     WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX,
     WEEKLY_REPORT_DONE_CALLBACK,
     WEEKLY_REPORT_EDIT_STEP_CALLBACK_PREFIX,
@@ -185,6 +189,10 @@ class TelegramUpdateDispatcher:
                 message.text or "",
                 occurred_at=now.isoformat(),
             )
+        if state.flow == "steps_setup":
+            return self.participant_service.handle_steps_text(
+                user, message.text or "", occurred_at=now.isoformat()
+            )
 
         return None
 
@@ -237,6 +245,16 @@ class TelegramUpdateDispatcher:
             return self.participant_service.confirm_goal(user, occurred_at=now.isoformat())
         if data == GOAL_CANCEL_CALLBACK:
             return self.participant_service.cancel_goal(user, occurred_at=now.isoformat())
+        if data == STEPS_CONFIRM_CALLBACK:
+            return self.participant_service.confirm_steps(user, occurred_at=now.isoformat())
+        if data == STEPS_CANCEL_CALLBACK:
+            return self.participant_service.cancel_steps(user, occurred_at=now.isoformat())
+        if data.startswith(STEPS_EDIT_CALLBACK_PREFIX):
+            return self.participant_service.edit_step_draft(
+                user,
+                step_number=_int_suffix(data, STEPS_EDIT_CALLBACK_PREFIX),
+                occurred_at=now.isoformat(),
+            )
         if data.startswith("registration:captain:"):
             return self.participant_service.select_registration_captain(
                 user,
@@ -295,6 +313,12 @@ class TelegramUpdateDispatcher:
         if data.startswith(WEEKLY_REPORT_STATUS_CALLBACK_PREFIX):
             status = _status_from_callback(data, WEEKLY_REPORT_STATUS_CALLBACK_PREFIX)
             return self.weekly_report_service.select_status(user, status, now=now)
+        if data.startswith(WEEKLY_REPORT_METRIC_CALLBACK_PREFIX):
+            return self.weekly_report_service.select_metric_result(
+                user,
+                _required_suffix(data, WEEKLY_REPORT_METRIC_CALLBACK_PREFIX),
+                now=now,
+            )
         if data.startswith(WEEKLY_REPORT_STEPS_CALLBACK_PREFIX):
             step_ids = _csv_suffix(data, WEEKLY_REPORT_STEPS_CALLBACK_PREFIX)
             return self.weekly_report_service.select_steps(user, step_ids, now=now)

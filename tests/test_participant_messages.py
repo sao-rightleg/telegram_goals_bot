@@ -118,8 +118,7 @@ def test_progress_formatter_uses_eight_cells_and_percent() -> None:
     )
 
     assert text.startswith("Мой прогресс\n\nЦель: 🟩\nШаги: 🟩\n\nВыполнение шагов\nПрогресс: 38%")
-    assert text.count("■") == 3
-    assert text.count("□") == 5
+    assert "🟩🟩🟩⬜⬜⬜⬜⬜" in text
     assert "🟩" in text
     assert "Неделя 2: ⬛" in text
     assert "Неделя 4: ⬜" in text

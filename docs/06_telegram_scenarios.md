@@ -294,6 +294,21 @@ read from the bound active flow (`goal_setup_end_date` and
 
 ## Step Report Flow
 
+## Planned Steps Setup
+
+Trigger:
+- `📍 Мои шаги` when the active goal exists and no confirmed eight-step plan exists.
+
+The bot collects exactly eight steps sequentially. For every step it asks first
+for the concrete essence and then for the measurable completion metric. The
+draft is stored in SQLite, can be resumed, and is written to `PlannedSteps` only
+after the participant reviews all eight pairs and presses `✅ Подтвердить 8 шагов`.
+Before confirmation, any numbered step can be rewritten. Empty descriptions or
+metrics and answers over their configured limits are rejected.
+
+After confirmation the regular `📍 Мои шаги` view shows the essence and metric
+for each step. The plan is not editable after weekly focus/report activity starts.
+
 ### Start
 
 Flow can start from:
@@ -304,20 +319,29 @@ Flow can start from:
 Bot shows selected step:
 
 ```text
-Выбран шаг:
-{number}. {step}
-Отправь отчёт по этому шагу.
+Шаг {number}. {step_title}
+
+Суть: {step_description}
+
+Метрика: {step_metric}
+
+Как выполнена метрика этого шага?
 ```
 
 Buttons:
-- `✅ Отчёт готов`
+- `✅ Выполнена полностью`
+- `🟦 Выполнена частично`
+- `🟥 Не выполнена`
+
+After the choice, the bot asks for the factual metric result. The participant
+sends text/voice and confirms it with `✅ Отчёт готов`.
 
 On save:
 - save report to Google Sheets
-- save status `green` / `🟩`
-- save score `1`
-- save one selected step relation as `closed`
-- close selected planned step
+- full completion saves `green` / `🟩`, a `closed` relation and closes the step;
+- partial completion saves `blue` / `🟦`, a `partial` relation and keeps the step reportable;
+- non-completion saves `red` / `🟥`, a `mentioned` relation and keeps the step open;
+- save `metric_status` and the factual `metric_result_text` in the relation;
 - clear SQLite draft
 
 Confirmation:

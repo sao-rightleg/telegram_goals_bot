@@ -258,7 +258,7 @@ def test_progress_view_uses_planned_steps_as_primary_progress(tmp_path: Path) ->
     )
 
     assert "38%" in response.text
-    assert "■■■□□□□□" in response.text
+    assert "🟩🟩🟩⬜⬜⬜⬜⬜" in response.text
     assert "Цель: 🟩" in response.text
     assert "Шаги: 🟩" in response.text
 

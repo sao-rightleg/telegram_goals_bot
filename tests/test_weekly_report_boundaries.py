@@ -77,7 +77,7 @@ def test_duplicate_report_never_writes_second_report_or_relations(tmp_path: Path
         {"weekly_report_id": "WR:P001:week-04:step-S001", "participant_id": "P001", "week_number": 4}
     ]
     assert len(gateway.list_weekly_report_steps()) == 1
-    assert drafts.get_active_draft(1001) is not None
+    assert drafts.get_active_draft(1001) is None
 
 
 def test_voice_does_not_bypass_deadline_or_duplicate_guards(tmp_path: Path) -> None:

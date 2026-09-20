@@ -57,6 +57,11 @@ CAPTAIN_DONE_CALLBACK = "captain:done"
 
 GOAL_CONFIRM_CALLBACK = "goal:confirm"
 GOAL_CANCEL_CALLBACK = "goal:cancel"
+STEPS_CONFIRM_CALLBACK = "steps:confirm"
+STEPS_CANCEL_CALLBACK = "steps:cancel"
+STEPS_EDIT_CALLBACK_PREFIX = "steps:edit:"
+
+WEEKLY_REPORT_METRIC_CALLBACK_PREFIX = "weekly:metric:"
 
 
 PARTICIPANT_MENU_ITEMS = (

@@ -22,6 +22,8 @@ REQUIRED_TECHNICAL_TABLES = {
     "error_events",
     "registration_drafts",
     "goal_drafts",
+    "step_setup_drafts",
+    "step_setup_items",
     "rupor_drafts",
     "rupor_deliveries",
     "rupor_audit_log",
@@ -42,6 +44,28 @@ BUSINESS_PRIMARY_TABLES = {
 
 
 SCHEMA_STATEMENTS = [
+    """
+    CREATE TABLE IF NOT EXISTS step_setup_drafts (
+        telegram_id INTEGER PRIMARY KEY,
+        participant_id TEXT NOT NULL,
+        flow_id TEXT NOT NULL,
+        goal_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('active', 'finalizing')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS step_setup_items (
+        telegram_id INTEGER NOT NULL,
+        step_number INTEGER NOT NULL CHECK (step_number BETWEEN 1 AND 8),
+        description TEXT NOT NULL,
+        metric TEXT,
+        PRIMARY KEY (telegram_id, step_number),
+        FOREIGN KEY (telegram_id) REFERENCES step_setup_drafts(telegram_id) ON DELETE CASCADE
+    )
+    """,
     """
     CREATE TABLE IF NOT EXISTS rupor_drafts (
         operator_telegram_id INTEGER PRIMARY KEY,
@@ -134,6 +158,7 @@ SCHEMA_STATEMENTS = [
                 'consent',
                 'registration',
                 'goal_setup',
+                'steps_setup',
                 'weekly_report',
                 'insight',
                 'captain_manual_report',
@@ -446,6 +471,13 @@ def initialize_schema(db_path: str | Path) -> None:
         )
         _ensure_columns(
             connection,
+            "draft_reports",
+            {
+                "metric_status": "TEXT CHECK (metric_status IS NULL OR metric_status IN ('completed', 'partial', 'not_completed'))",
+            },
+        )
+        _ensure_columns(
+            connection,
             "reminder_log",
             {
                 "attempt_count": "INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count > 0)",
@@ -505,7 +537,7 @@ def _migrate_dialog_states_flow_constraint(connection: sqlite3.Connection) -> No
     ).fetchone()
     schema_sql = str(schema_row[0] or "") if schema_row is not None else ""
     required_flows = (
-        "consent", "registration", "goal_setup", "weekly_report", "insight",
+        "consent", "registration", "goal_setup", "steps_setup", "weekly_report", "insight",
         "captain_manual_report", "view_goal", "view_steps", "view_progress",
         "view_team", "idle",
     )

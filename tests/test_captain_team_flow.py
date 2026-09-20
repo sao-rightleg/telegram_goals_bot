@@ -110,19 +110,19 @@ def test_captain_can_view_live_progress_for_active_consented_own_team_only() -> 
         "Шаги: 🟩 8 из 8\n"
         "Фокус недели: «Приоритетный шаг»\n"
         "Выполнено: 2 из 8 — 25%\n"
-        "■■□□□□□□\n\n"
+        "🟩🟩⬜⬜⬜⬜⬜⬜\n\n"
         "Борис Свой\n"
         "Цель: ⬜\n"
         "Шаги: ⬜ 0 из 8\n"
         "Фокус недели: не выбран\n"
         "Выполнено: 0 из 8 — 0%\n"
-        "□□□□□□□□\n\n"
+        "⬜⬜⬜⬜⬜⬜⬜⬜\n\n"
         "Капитан команды\n"
         "Цель: ⬜\n"
         "Шаги: ⬜ 0 из 8\n"
         "Фокус недели: не выбран\n"
         "Выполнено: 0 из 8 — 0%\n"
-        "□□□□□□□□"
+        "⬜⬜⬜⬜⬜⬜⬜⬜"
     )
     assert "Олег Чужой" not in response.text
     assert "Выбывший Участник" not in response.text
@@ -922,7 +922,7 @@ def test_team_progress_counts_only_unique_valid_steps_of_active_goal() -> None:
     participant_section = response.text.split("Участник", 1)[1]
     assert "Шаги: 🟦 1 из 8" in participant_section
     assert "Выполнено: 1 из 8 — 12%" in participant_section
-    assert "■□□□□□□□" in participant_section
+    assert "🟩⬜⬜⬜⬜⬜⬜⬜" in participant_section
 
 
 def test_captain_without_team_routes_missing_data_to_admin() -> None:

@@ -310,6 +310,51 @@ def test_missing_or_invalid_draft_returns_none_or_recoverable_error(tmp_path: Pa
     assert repository.get_active_draft(1001) is None
 
 
+def test_weekly_draft_has_bounded_expiry_and_purge_cascades(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    _create_draft(repository)
+    draft = repository.get_active_draft(1001)
+    assert draft is not None
+    assert draft.expires_at == "2026-07-16T10:00:00+05:00"
+
+    assert repository.purge_expired(occurred_at="2026-07-16T10:00:00+05:00") == 0
+    assert repository.purge_expired(occurred_at="2026-07-16T10:00:01+05:00") == 1
+    assert repository.get_active_draft(1001) is None
+
+
+def test_stale_saving_claim_becomes_retryable_but_fresh_claim_does_not(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    _create_draft(repository)
+    assert repository.claim_finalization(1001, occurred_at=NOW) is True
+    assert repository.get_active_draft(1001) is None
+
+    assert repository.recover_stale_finalization(
+        1001, stale_before="2026-07-02T09:59:59+05:00", occurred_at=LATER
+    ) is False
+    assert repository.recover_stale_finalization(
+        1001, stale_before="2026-07-02T10:00:01+05:00", occurred_at=LATER
+    ) is True
+    assert repository.get_active_draft(1001) is not None
+
+
+def test_expired_weekly_draft_deletes_private_audio_before_metadata(tmp_path: Path) -> None:
+    audio_root = tmp_path / "audio"
+    audio_path = audio_root / "2026" / "week_02" / "voice.ogg"
+    audio_path.parent.mkdir(parents=True)
+    audio_path.write_bytes(b"private audio")
+    db_path = tmp_path / "state.sqlite3"
+    initialize_schema(db_path)
+    repository = WeeklyReportDraftRepository(db_path, audio_root=audio_root)
+    _create_draft(repository)
+    repository.append_voice_transcription(
+        1001, telegram_file_id="file-1", local_file_path=audio_path,
+        duration_seconds=5, transcription_text="текст", occurred_at=NOW,
+    )
+
+    assert repository.purge_expired(occurred_at="2026-07-16T10:00:01+05:00") == 1
+    assert not audio_path.exists()
+    assert repository.get_active_draft(1001) is None
+
 def _repository(tmp_path: Path) -> WeeklyReportDraftRepository:
     db_path = tmp_path / "state.sqlite3"
     initialize_schema(db_path)

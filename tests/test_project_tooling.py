@@ -9,6 +9,8 @@ except ModuleNotFoundError:  # pragma: no cover - Python < 3.11 compatibility.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT_PATH = PROJECT_ROOT / "pyproject.toml"
 DEPLOY_TEST_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "deploy-test.yml"
+DEPLOY_PRODUCTION_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "deploy-production.yml"
+BUSINESS_SCHEMA_MIGRATION = PROJECT_ROOT / "scripts" / "migrate_business_schema.py"
 TEST_SYSTEMD_UNIT = PROJECT_ROOT / "deploy" / "systemd" / "telegram-goals-bot-test.service"
 
 
@@ -119,6 +121,11 @@ def test_deploy_test_workflow_has_bounded_business_schema_migration() -> None:
         "last_stage_updated_at",
         "onboarding_completed_at",
         "participant_stage",
+        "step_description",
+        "step_metric",
+        "created_at",
+        "metric_status",
+        "metric_result_text",
     ):
         assert f'"{header}"' in job
     assert '"Teams": ("flow_id",)' in job
@@ -132,6 +139,20 @@ def test_deploy_test_workflow_has_bounded_business_schema_migration() -> None:
     assert "for header in required[sheet_name] if header not in verified" in job
     assert '"pasteType": "PASTE_FORMAT"' in job
     assert "Schema verification failed" in job
+
+
+def test_production_deploy_runs_shared_business_schema_migration_before_config_check() -> None:
+    workflow = DEPLOY_PRODUCTION_WORKFLOW.read_text(encoding="utf-8")
+    migration = BUSINESS_SCHEMA_MIGRATION.read_text(encoding="utf-8")
+    migration_call = './.venv/bin/python scripts/migrate_business_schema.py'
+    config_check = './.venv/bin/telegram-goals-bot --env-file "$APP_DIR/shared/.env" check-config'
+    assert migration_call in workflow
+    assert workflow.index(migration_call) < workflow.index(config_check)
+    for header in ("step_description", "step_metric", "metric_status", "metric_result_text"):
+        assert f'"{header}"' in migration
+    assert "valueRenderOption=\"FORMULA\"" in migration
+    assert '"pasteType": "PASTE_FORMAT"' in migration
+    assert "Schema verification failed" in migration
 
 
 def test_deploy_test_workflow_can_create_idempotent_smoke_flow_copy() -> None:

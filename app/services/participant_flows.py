@@ -13,6 +13,9 @@ from app.bot.clients import BotClient, TelegramInlineButton
 from app.domain import PLANNED_STEP_COUNT
 from app.bot.menus import (
     MenuAction,
+    STEPS_CANCEL_CALLBACK,
+    STEPS_CONFIRM_CALLBACK,
+    STEPS_EDIT_CALLBACK_PREFIX,
     WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX,
     WEEKLY_REPORT_EDIT_STEP_CALLBACK_PREFIX,
     WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX,
@@ -71,6 +74,7 @@ from app.services.participant_models import (
 from app.sheets.gateway import SheetRow, SheetsGateway
 from app.storage.dialog_state import DialogState, DialogStateRepository
 from app.storage.goal_drafts import GoalDraft, GoalDraftRepository
+from app.storage.step_drafts import StepDraft, StepDraftRepository
 from app.storage.registration import RegistrationDraft, RegistrationDraftRepository
 
 
@@ -90,6 +94,7 @@ class ParticipantFlowService:
     registration_flows: SheetsGateway | None = None
     registration_drafts: RegistrationDraftRepository | None = None
     goal_drafts: GoalDraftRepository | None = None
+    step_drafts: StepDraftRepository | None = None
 
     def handle_start(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
         participant = self._participant_for_current_flow(user.telegram_id)
@@ -272,6 +277,143 @@ class ParticipantFlowService:
         return self._send_simple_response(
             user, participant=participant, text=GOAL_DRAFT_CANCELLED_TEXT,
             flow="idle", step="goal_cancelled", occurred_at=occurred_at,
+        )
+
+    def handle_steps_text(
+        self, user: TelegramUserContext, text: str, *, occurred_at: str
+    ) -> FlowResponse:
+        participant, goal = self._eligible_steps_context(user, occurred_at=occurred_at)
+        state = self.dialog_states.get(user.telegram_id)
+        draft = self._step_repository().get(user.telegram_id)
+        if not _valid_step_draft(draft, participant=participant, goal=goal, occurred_at=occurred_at):
+            return self._start_steps_creation(user, participant=participant, goal=goal, occurred_at=occurred_at)
+        if state is None or state.flow != "steps_setup":
+            return self._resume_steps_creation(user, participant=participant, draft=draft, occurred_at=occurred_at)
+        value = " ".join(text.strip().split())
+        if not value:
+            return self._steps_response(
+                user, participant=participant, text="Ответ не должен быть пустым.",
+                step=state.step, occurred_at=occurred_at,
+            )
+        step_number = _step_number_from_state(state.step)
+        if state.step.startswith("awaiting_description_"):
+            return self._save_step_description(
+                user, participant=participant, step_number=step_number,
+                value=value, occurred_at=occurred_at,
+            )
+        if not state.step.startswith("awaiting_metric_"):
+            return self._resume_steps_creation(user, participant=participant, draft=draft, occurred_at=occurred_at)
+        return self._save_step_metric(
+            user, participant=participant, step_number=step_number,
+            value=value, occurred_at=occurred_at,
+        )
+
+    def _save_step_description(
+        self, user: TelegramUserContext, *, participant: SheetRow,
+        step_number: int, value: str, occurred_at: str,
+    ) -> FlowResponse:
+        if len(value) > 500:
+            return self._steps_response(
+                user, participant=participant, text="Сократи суть шага до 500 символов.",
+                step=f"awaiting_description_{step_number}", occurred_at=occurred_at,
+            )
+        self._step_repository().set_description(
+            user.telegram_id, step_number=step_number, description=value, occurred_at=occurred_at
+        )
+        return self._steps_response(
+            user, participant=participant,
+            text=f"Шаг {step_number} из {PLANNED_STEP_COUNT}. Укажи измеримую метрику достижения этого шага.",
+            step=f"awaiting_metric_{step_number}", occurred_at=occurred_at,
+        )
+
+    def _save_step_metric(
+        self, user: TelegramUserContext, *, participant: SheetRow,
+        step_number: int, value: str, occurred_at: str,
+    ) -> FlowResponse:
+        if len(value) > 300:
+            return self._steps_response(
+                user, participant=participant, text="Сократи метрику до 300 символов.",
+                step=f"awaiting_metric_{step_number}", occurred_at=occurred_at,
+            )
+        self._step_repository().set_metric(
+            user.telegram_id, step_number=step_number, metric=value, occurred_at=occurred_at
+        )
+        draft = self._step_repository().get(user.telegram_id)
+        if draft is None:
+            raise RuntimeError("Step draft disappeared")
+        if step_number < PLANNED_STEP_COUNT and len(draft.items) < PLANNED_STEP_COUNT:
+            next_number = step_number + 1
+            return self._steps_response(
+                user, participant=participant,
+                text=(f"Шаг {step_number} сохранён.\n\nШаг {next_number} из {PLANNED_STEP_COUNT}. "
+                      "Опиши суть шага: что конкретно ты собираешься сделать?"),
+                step=f"awaiting_description_{next_number}", occurred_at=occurred_at,
+            )
+        return self._show_steps_confirmation(user, participant=participant, draft=draft, occurred_at=occurred_at)
+
+    def edit_step_draft(
+        self, user: TelegramUserContext, *, step_number: int, occurred_at: str
+    ) -> FlowResponse:
+        participant, goal = self._eligible_steps_context(user, occurred_at=occurred_at)
+        draft = self._step_repository().get(user.telegram_id)
+        if not _valid_step_draft(draft, participant=participant, goal=goal, occurred_at=occurred_at):
+            return self._start_steps_creation(user, participant=participant, goal=goal, occurred_at=occurred_at)
+        if step_number not in range(1, PLANNED_STEP_COUNT + 1):
+            raise ValueError("Invalid planned step number")
+        return self._steps_response(
+            user, participant=participant,
+            text=f"Шаг {step_number} из {PLANNED_STEP_COUNT}. Введи новую суть шага.",
+            step=f"awaiting_description_{step_number}", occurred_at=occurred_at,
+        )
+
+    def confirm_steps(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
+        participant, goal = self._eligible_steps_context(user, occurred_at=occurred_at)
+        now = datetime.fromisoformat(occurred_at)
+        self._step_repository().recover_stale_finalization(
+            user.telegram_id,
+            stale_before=(now - timedelta(minutes=10)).isoformat(),
+            occurred_at=occurred_at,
+        )
+        participant_id = _string_value(participant.get("participant_id"))
+        goal_id = _string_value(goal.get("goal_id"))
+        if _complete_planned_steps(self.sheets.list_planned_steps(participant_id, goal_id)):
+            self._step_repository().clear(user.telegram_id)
+            return self._steps_response(
+                user, participant=participant, text="Восемь шагов уже сохранены.",
+                step="steps_saved", occurred_at=occurred_at, flow="idle",
+            )
+        draft = self._step_repository().get(user.telegram_id)
+        state = self.dialog_states.get(user.telegram_id)
+        if (
+            not _valid_step_draft(draft, participant=participant, goal=goal, occurred_at=occurred_at)
+            or state is None or state.flow != "steps_setup" or state.step != "awaiting_confirmation"
+            or not _complete_step_draft(draft)
+        ):
+            return self._start_steps_creation(user, participant=participant, goal=goal, occurred_at=occurred_at)
+        if not self._step_repository().claim(user.telegram_id, occurred_at=occurred_at):
+            return self._steps_response(
+                user, participant=participant, text="Шаги уже сохраняются. Подожди несколько секунд.",
+                step="awaiting_confirmation", occurred_at=occurred_at,
+            )
+        try:
+            self.sheets.append_planned_steps(
+                _planned_step_rows(draft, participant=participant, occurred_at=occurred_at)
+            )
+        except Exception:
+            self._step_repository().release(user.telegram_id, occurred_at=occurred_at)
+            raise
+        self._step_repository().clear(user.telegram_id)
+        return self._steps_response(
+            user, participant=participant, text="Восемь шагов сохранены.",
+            step="steps_saved", occurred_at=occurred_at, flow="idle",
+        )
+
+    def cancel_steps(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
+        participant, _goal = self._eligible_steps_context(user, occurred_at=occurred_at)
+        self._step_repository().clear(user.telegram_id)
+        return self._steps_response(
+            user, participant=participant, text="Черновик шагов удалён.",
+            step="steps_cancelled", occurred_at=occurred_at, flow="idle",
         )
 
     def handle_registration_text(
@@ -602,28 +744,18 @@ class ParticipantFlowService:
         participant = self.sheets.find_participant_by_telegram_id(user.telegram_id)
         if participant is None:
             return self._handle_unknown_user(user, occurred_at=occurred_at)
+        return self._handle_known_participant_menu_action(
+            user, participant=participant, action=action, occurred_at=occurred_at
+        )
 
+    def _handle_known_participant_menu_action(
+        self, user: TelegramUserContext, *, participant: SheetRow,
+        action: MenuAction | str, occurred_at: str,
+    ) -> FlowResponse:
         if not _consent_is_given(participant):
-            response = FlowResponse(
-                chat_id=user.chat_id,
-                text=CONSENT_TEXT,
-                buttons=(CONSENT_ACCEPT_BUTTON, CONSENT_DECLINE_BUTTON),
+            return self._handle_consent_menu_action(
+                user, participant=participant, occurred_at=occurred_at
             )
-            self.dialog_states.upsert(
-                _dialog_state_for(
-                    user=user,
-                    participant=participant,
-                    flow="consent",
-                    step="awaiting_consent",
-                    occurred_at=occurred_at,
-                )
-            )
-            self.main_bot.send_message(
-                chat_id=user.chat_id,
-                text=response.text,
-                buttons=response.buttons,
-            )
-            return response
 
         normalized_action = _normalize_action(action)
         if normalized_action is MenuAction.VIEW_INSIGHTS:
@@ -647,7 +779,6 @@ class ParticipantFlowService:
                 occurred_at=occurred_at,
             )
 
-        participant_id = _string_value(participant.get("participant_id"))
         if not _optional_string_value(participant.get("team_id")):
             return self._handle_missing_data(
                 user,
@@ -655,42 +786,37 @@ class ParticipantFlowService:
                 missing_type="team_id",
                 occurred_at=occurred_at,
             )
+        return self._handle_goal_step_menu_action(
+            user, participant=participant, normalized_action=normalized_action,
+            occurred_at=occurred_at,
+        )
 
+    def _handle_consent_menu_action(
+        self, user: TelegramUserContext, *, participant: SheetRow, occurred_at: str
+    ) -> FlowResponse:
+        response = FlowResponse(
+            chat_id=user.chat_id, text=CONSENT_TEXT,
+            buttons=(CONSENT_ACCEPT_BUTTON, CONSENT_DECLINE_BUTTON),
+        )
+        self.dialog_states.upsert(_dialog_state_for(
+            user=user, participant=participant, flow="consent",
+            step="awaiting_consent", occurred_at=occurred_at,
+        ))
+        self.main_bot.send_message(
+            chat_id=user.chat_id, text=response.text, buttons=response.buttons,
+        )
+        return response
+
+    def _handle_goal_step_menu_action(
+        self, user: TelegramUserContext, *, participant: SheetRow,
+        normalized_action: MenuAction, occurred_at: str,
+    ) -> FlowResponse:
+        participant_id = _string_value(participant.get("participant_id"))
         goal_row = self.sheets.get_active_goal(participant_id)
         if normalized_action is MenuAction.VIEW_PROGRESS:
-            goal = _goal_from_row(goal_row) if goal_row is not None else None
-            steps = (
-                [
-                    _planned_step_from_row(row)
-                    for row in self.sheets.list_planned_steps(participant_id, goal.goal_id)
-                ]
-                if goal is not None
-                else []
-            )
-            now = datetime.fromisoformat(occurred_at)
-            goal_status_symbol, steps_status_symbol = _setup_progress_symbols(
-                goal_exists=goal is not None,
-                steps=steps,
-                now=now,
-                flow=self._active_registration_flow(),
-            )
-            weekly_history = [
-                _weekly_status_from_row(row)
-                for row in self.sheets.list_weekly_status_history(participant_id)
-            ]
-            return self._send_simple_response(
-                user,
-                participant=participant,
-                text=format_progress_view(
-                    steps=steps,
-                    goal_status_symbol=goal_status_symbol,
-                    steps_status_symbol=steps_status_symbol,
-                    weekly_history=weekly_history,
-                    closed_week_number=closed_challenge_week_count(now),
-                ),
-                flow="view_progress",
-                step="render",
-                occurred_at=occurred_at,
+            return self._handle_progress_menu_action(
+                user, participant=participant, participant_id=participant_id,
+                goal_row=goal_row, occurred_at=occurred_at,
             )
 
         if goal_row is None:
@@ -721,9 +847,23 @@ class ParticipantFlowService:
                 step="render",
                 occurred_at=occurred_at,
             )
+        return self._handle_steps_menu_action(
+            user, participant=participant, participant_id=participant_id,
+            goal=goal, goal_row=goal_row, normalized_action=normalized_action,
+            occurred_at=occurred_at,
+        )
 
+    def _handle_steps_menu_action(
+        self, user: TelegramUserContext, *, participant: SheetRow,
+        participant_id: str, goal: Goal, goal_row: SheetRow,
+        normalized_action: MenuAction, occurred_at: str,
+    ) -> FlowResponse:
         steps = [_planned_step_from_row(row) for row in self.sheets.list_planned_steps(participant_id, goal.goal_id)]
         if not steps:
+            if normalized_action is MenuAction.VIEW_STEPS and self.step_drafts is not None:
+                return self._start_steps_creation(
+                    user, participant=participant, goal=goal_row, occurred_at=occurred_at
+                )
             return self._handle_missing_data(
                 user,
                 participant=participant,
@@ -759,6 +899,36 @@ class ParticipantFlowService:
             flow="idle",
             step="unknown_action",
             occurred_at=occurred_at,
+        )
+
+    def _handle_progress_menu_action(
+        self, user: TelegramUserContext, *, participant: SheetRow,
+        participant_id: str, goal_row: SheetRow | None, occurred_at: str,
+    ) -> FlowResponse:
+        goal = _goal_from_row(goal_row) if goal_row is not None else None
+        steps = (
+            [_planned_step_from_row(row) for row in self.sheets.list_planned_steps(
+                participant_id, goal.goal_id
+            )]
+            if goal is not None else []
+        )
+        now = datetime.fromisoformat(occurred_at)
+        goal_status_symbol, steps_status_symbol = _setup_progress_symbols(
+            goal_exists=goal is not None, steps=steps, now=now,
+            flow=self._active_registration_flow(),
+        )
+        weekly_history = [
+            _weekly_status_from_row(row)
+            for row in self.sheets.list_weekly_status_history(participant_id)
+        ]
+        return self._send_simple_response(
+            user, participant=participant,
+            text=format_progress_view(
+                steps=steps, goal_status_symbol=goal_status_symbol,
+                steps_status_symbol=steps_status_symbol, weekly_history=weekly_history,
+                closed_week_number=closed_challenge_week_count(now),
+            ),
+            flow="view_progress", step="render", occurred_at=occurred_at,
         )
 
     def _show_menu(
@@ -972,6 +1142,104 @@ class ParticipantFlowService:
         if self.goal_drafts is None:
             raise RuntimeError("Goal draft repository is not configured")
         return self.goal_drafts
+
+    def _step_repository(self) -> StepDraftRepository:
+        if self.step_drafts is None:
+            raise RuntimeError("Step draft repository is not configured")
+        return self.step_drafts
+
+    def _eligible_steps_context(
+        self, user: TelegramUserContext, *, occurred_at: str
+    ) -> tuple[SheetRow, SheetRow]:
+        self._step_repository().purge_expired(occurred_at=occurred_at)
+        flow = self._active_registration_flow()
+        flow_id = _optional_string_value(flow.get("flow_id")) if flow else None
+        if flow is None or not flow_id:
+            raise PermissionError("Steps setup flow is unavailable")
+        participant = self.sheets.find_participant_in_flow(flow_id, user.telegram_id)
+        if participant is None:
+            raise PermissionError("Steps participant is unavailable")
+        if (
+            not _consent_is_given(participant)
+            or str(participant.get("status", "")).strip().lower() != "active"
+            or _role(participant) not in {"participant", "captain"}
+        ):
+            raise PermissionError("Steps participant is not eligible")
+        if not _steps_setup_is_open(flow, occurred_at):
+            raise PermissionError("Steps setup stage is not active")
+        goal = self.sheets.get_active_goal(_string_value(participant.get("participant_id")))
+        if goal is None:
+            raise PermissionError("Active goal is required")
+        return participant, goal
+
+    def _start_steps_creation(
+        self, user: TelegramUserContext, *, participant: SheetRow,
+        goal: SheetRow, occurred_at: str,
+    ) -> FlowResponse:
+        flow = self._active_registration_flow()
+        if flow is None or not _steps_setup_is_open(flow, occurred_at):
+            return self._steps_response(
+                user, participant=participant, text="Этап формирования шагов уже завершён.",
+                step="steps_closed", occurred_at=occurred_at, flow="idle",
+            )
+        participant, goal = self._eligible_steps_context(user, occurred_at=occurred_at)
+        self._step_repository().create(
+            telegram_id=user.telegram_id,
+            participant_id=_string_value(participant.get("participant_id")),
+            flow_id=_string_value(participant.get("flow_id")),
+            goal_id=_string_value(goal.get("goal_id")),
+            occurred_at=occurred_at,
+        )
+        return self._steps_response(
+            user, participant=participant,
+            text=(f"Сформулируем {PLANNED_STEP_COUNT} шагов к твоей цели.\n\n"
+                  f"Шаг 1 из {PLANNED_STEP_COUNT}. Опиши суть шага: что конкретно ты собираешься сделать?"),
+            step="awaiting_description_1", occurred_at=occurred_at,
+        )
+
+    def _resume_steps_creation(
+        self, user: TelegramUserContext, *, participant: SheetRow,
+        draft: StepDraft, occurred_at: str,
+    ) -> FlowResponse:
+        incomplete = next((item for item in draft.items if not item.metric), None)
+        if incomplete is not None:
+            step = f"awaiting_metric_{incomplete.step_number}"
+            text = f"Шаг {incomplete.step_number} из {PLANNED_STEP_COUNT}. Укажи измеримую метрику достижения этого шага."
+        elif len(draft.items) < PLANNED_STEP_COUNT:
+            number = len(draft.items) + 1
+            step = f"awaiting_description_{number}"
+            text = f"Шаг {number} из {PLANNED_STEP_COUNT}. Опиши суть шага: что конкретно ты собираешься сделать?"
+        else:
+            return self._show_steps_confirmation(user, participant=participant, draft=draft, occurred_at=occurred_at)
+        return self._steps_response(
+            user, participant=participant, text=text, step=step, occurred_at=occurred_at
+        )
+
+    def _show_steps_confirmation(
+        self, user: TelegramUserContext, *, participant: SheetRow,
+        draft: StepDraft, occurred_at: str,
+    ) -> FlowResponse:
+        buttons = tuple(
+            TelegramInlineButton(f"✏️ Изменить шаг {item.step_number}", f"{STEPS_EDIT_CALLBACK_PREFIX}{item.step_number}")
+            for item in draft.items
+        ) + (
+            TelegramInlineButton("✅ Подтвердить 8 шагов", STEPS_CONFIRM_CALLBACK),
+            TelegramInlineButton("Отмена", STEPS_CANCEL_CALLBACK),
+        )
+        return self._steps_response(
+            user, participant=participant, text=_step_draft_confirmation_text(draft),
+            step="awaiting_confirmation", occurred_at=occurred_at, buttons=buttons,
+        )
+
+    def _steps_response(
+        self, user: TelegramUserContext, *, participant: SheetRow, text: str,
+        step: str, occurred_at: str, flow: str = "steps_setup",
+        buttons: tuple[object, ...] = (),
+    ) -> FlowResponse:
+        return self._send_simple_response(
+            user, participant=participant, text=text, flow=flow, step=step,
+            occurred_at=occurred_at, buttons=buttons,
+        )
 
     def _handle_registration_start(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
         if self.registration_drafts is None:
@@ -1517,6 +1785,85 @@ def _short_date(value: str) -> str:
     return datetime.fromisoformat(value).strftime("%d.%m.%Y")
 
 
+def _steps_setup_is_open(flow: SheetRow, occurred_at: str) -> bool:
+    now = datetime.fromisoformat(occurred_at).date()
+    start = datetime.fromisoformat(_string_value(flow.get("steps_setup_start_date"))).date()
+    end = datetime.fromisoformat(_string_value(flow.get("steps_setup_end_date"))).date()
+    return start <= now <= end
+
+
+def _valid_step_draft(
+    draft: StepDraft | None, *, participant: SheetRow, goal: SheetRow, occurred_at: str
+) -> bool:
+    if draft is None or draft.status != "active":
+        return False
+    return (
+        draft.participant_id == _string_value(participant.get("participant_id"))
+        and draft.flow_id == _string_value(participant.get("flow_id"))
+        and draft.goal_id == _string_value(goal.get("goal_id"))
+        and datetime.fromisoformat(occurred_at) <= datetime.fromisoformat(draft.expires_at)
+    )
+
+
+def _complete_step_draft(draft: StepDraft | None) -> bool:
+    return bool(
+        draft
+        and [item.step_number for item in draft.items] == list(range(1, PLANNED_STEP_COUNT + 1))
+        and all(item.description.strip() and (item.metric or "").strip() for item in draft.items)
+    )
+
+
+def _complete_planned_steps(rows: list[SheetRow]) -> bool:
+    numbers = sorted(
+        int(row.get("step_number", 0))
+        for row in rows
+        if str(row.get("step_description", "")).strip()
+        and str(row.get("step_metric", "")).strip()
+    )
+    return numbers == list(range(1, PLANNED_STEP_COUNT + 1))
+
+
+def _step_number_from_state(step: str) -> int:
+    try:
+        number = int(step.rsplit("_", 1)[1])
+    except (IndexError, ValueError) as exc:
+        raise ValueError("Invalid step draft state") from exc
+    if number not in range(1, PLANNED_STEP_COUNT + 1):
+        raise ValueError("Invalid step draft number")
+    return number
+
+
+def _step_draft_confirmation_text(draft: StepDraft) -> str:
+    lines = ["Проверь свои шаги перед сохранением."]
+    for item in draft.items:
+        lines.extend(("", f"Шаг {item.step_number}. {item.description}", f"Метрика: {item.metric}"))
+    return "\n".join(lines)
+
+
+def _planned_step_rows(
+    draft: StepDraft, *, participant: SheetRow, occurred_at: str
+) -> list[SheetRow]:
+    participant_id = _string_value(participant.get("participant_id"))
+    return [
+        {
+            "step_id": f"S:{participant_id}:{draft.goal_id}:{item.step_number:02d}",
+            "participant_id": participant_id,
+            "goal_id": draft.goal_id,
+            "step_number": item.step_number,
+            "step_title": _short_step_title(item.description, limit=80),
+            "step_description": item.description,
+            "step_metric": item.metric or "",
+            "step_status": "open",
+            "closed_week_number": "",
+            "closed_report_id": "",
+            "closed_at": "",
+            "created_at": occurred_at,
+            "updated_at": occurred_at,
+        }
+        for item in draft.items
+    ]
+
+
 def _truthy(value: object) -> bool:
     if isinstance(value, bool):
         return value
@@ -1606,6 +1953,7 @@ def _planned_step_from_row(row: SheetRow) -> PlannedStep:
         step_title=str(row.get("step_title") or ""),
         step_description=str(row.get("step_description") or ""),
         step_status=str(row.get("step_status") or ""),
+        step_metric=str(row.get("step_metric") or ""),
         closed_week_number=_optional_int_value(row.get("closed_week_number")),
         closed_at=_optional_string_value(row.get("closed_at")),
     )

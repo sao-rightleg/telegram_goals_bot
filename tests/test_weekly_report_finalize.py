@@ -221,7 +221,7 @@ def test_finalize_rejects_duplicate_step_report_without_final_facts(tmp_path: Pa
 
     assert response.text == "По этому шагу отчёт уже сохранён. Нажми «Редактировать отчёт»."
     assert len(gateway.list_weekly_reports()) == 1
-    assert drafts.get_active_draft(1001) is not None
+    assert drafts.get_active_draft(1001) is None
 
 
 def test_edit_step_report_updates_text_without_reclosing_step(tmp_path: Path) -> None:
@@ -263,6 +263,8 @@ def test_edit_step_report_updates_text_without_reclosing_step(tmp_path: Path) ->
                 "weekly_report_id": "WR:P001:week-04:step-S001",
                 "participant_id": "P001",
                 "step_id": "S001",
+                "metric_status": "completed",
+                "metric_result_text": "Старый результат",
             }
         ],
     )
@@ -279,6 +281,10 @@ def test_edit_step_report_updates_text_without_reclosing_step(tmp_path: Path) ->
     assert report["report_text"] == "Новый текст"
     assert report["submitted_at"] == "2026-07-01T10:00:00+05:00"
     assert report["updated_at"] == NOW.isoformat()
+    relation = gateway.list_weekly_report_steps()[0]
+    assert relation["metric_status"] == "completed"
+    assert relation["metric_result_text"] == "Новый текст"
+    assert len(gateway.list_weekly_report_steps()) == 1
     step = gateway.list_planned_steps("P001", "G001")[0]
     assert step["closed_at"] == "2026-07-01T10:00:00+05:00"
     assert step["closed_week_number"] == 4

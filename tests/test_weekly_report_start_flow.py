@@ -7,7 +7,6 @@ from app.bot.messages import CONSENT_TEXT, MISSING_DATA_TEXT, UNKNOWN_USER_TEXT,
 from app.scheduler.calendar import TIMEZONE_NAME
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.services.participant_models import TelegramUserContext
-from app.services.weekly_report_models import WeeklyReportStatus
 from app.services.weekly_reports import WeeklyReportService
 from app.sheets.gateway import FakeSheetsGateway
 from app.storage.sqlite import initialize_schema
@@ -47,18 +46,12 @@ def test_start_report_for_step_preselects_open_step(tmp_path: Path) -> None:
     response = service.start_report_for_step(user, step_id="S001", now=NOW)
 
     draft = drafts.get_active_draft(1001)
-    assert "Выбран шаг:" in response.text
-    assert "1. Первый шаг" in response.text
+    assert "Шаг 1. Первый шаг" in response.text
     assert "2. Второй шаг" not in response.text
-    assert "Отправь отчёт по этому шагу." in response.text
+    assert "Как выполнена метрика этого шага?" in response.text
     assert draft is not None
     assert draft.selected_step_ids == ("S001",)
-    assert draft.status_code == "green"
-
-    status_response = service.select_status(user, WeeklyReportStatus.GREEN, now=NOW)
-
-    assert status_response.text == "Что именно ты сделал?"
-    assert drafts.get_active_draft(1001).selected_step_ids == ("S001",)
+    assert draft.status_code is None
 
 
 def test_start_report_for_step_before_working_weeks_explains_opening_date(tmp_path: Path) -> None:
@@ -214,6 +207,7 @@ def _participant(*, consent_given: bool = True) -> dict[str, object]:
         "participant_id": "P001",
         "telegram_id": 1001,
         "role": "participant",
+        "status": "active",
         "team_id": "T001",
         "consent_given": consent_given,
     }

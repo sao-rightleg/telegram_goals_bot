@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 import sqlite3
 
@@ -31,6 +32,7 @@ class WeeklyReportDraft:
     status_code: str | None
     status_symbol: str | None
     selected_step_ids: tuple[str, ...]
+    metric_status: str | None
     report_text: str
     message_count: int
     created_at: str
@@ -44,8 +46,9 @@ class WeeklyReportDraft:
 
 
 class WeeklyReportDraftRepository:
-    def __init__(self, db_path: str | Path) -> None:
+    def __init__(self, db_path: str | Path, *, audio_root: str | Path | None = None) -> None:
         self._db_path = Path(db_path)
+        self._audio_root = Path(audio_root).resolve() if audio_root is not None else None
 
     def create_draft(
         self,
@@ -59,6 +62,7 @@ class WeeklyReportDraftRepository:
         occurred_at: str,
         expires_at: str | None = None,
     ) -> None:
+        expires_at = expires_at or _default_expiry(occurred_at)
         self.clear_draft(telegram_id)
         with self._connect() as connection:
             connection.execute("DELETE FROM draft_sessions WHERE draft_id = ?", (draft_id,))
@@ -165,6 +169,7 @@ class WeeklyReportDraftRepository:
         occurred_at: str,
         expires_at: str | None = None,
     ) -> None:
+        expires_at = expires_at or _default_expiry(occurred_at)
         self.clear_draft(telegram_id)
         with self._connect() as connection:
             connection.execute("DELETE FROM draft_sessions WHERE draft_id = ?", (draft_id,))
@@ -333,6 +338,32 @@ class WeeklyReportDraftRepository:
                 (serialized_step_ids or None, occurred_at, telegram_id),
             )
 
+    def select_metric(
+        self,
+        telegram_id: int,
+        *,
+        metric_status: str,
+        status: WeeklyReportStatus,
+        occurred_at: str,
+    ) -> None:
+        if metric_status not in {"completed", "partial", "not_completed"}:
+            raise ValueError("Unsupported metric status")
+        draft_id = self._get_dialog_draft_id(telegram_id)
+        if draft_id is None:
+            raise KeyError(f"Active weekly report draft not found for telegram_id={telegram_id}")
+        with self._connect() as connection:
+            connection.execute(
+                """UPDATE draft_reports
+                SET metric_status=?, status_code=?, status_symbol=?, updated_at=?
+                WHERE draft_id=?""",
+                (metric_status, status.code, status.symbol, occurred_at, draft_id),
+            )
+            connection.execute(
+                """UPDATE dialog_states SET step='awaiting_text', selected_status=?, updated_at=?
+                WHERE telegram_id=?""",
+                (status.code, occurred_at, telegram_id),
+            )
+
     def append_text_message(
         self,
         telegram_id: int,
@@ -382,6 +413,75 @@ class WeeklyReportDraftRepository:
             connection.execute(
                 "UPDATE dialog_states SET updated_at = ? WHERE telegram_id = ?",
                 (occurred_at, telegram_id),
+            )
+
+    def claim_finalization(self, telegram_id: int, *, occurred_at: str) -> bool:
+        draft_id = self._get_dialog_draft_id(telegram_id)
+        if draft_id is None:
+            return False
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """UPDATE draft_sessions SET status='saving', updated_at=?
+                WHERE draft_id=? AND status='active'""",
+                (occurred_at, draft_id),
+            )
+        return cursor.rowcount == 1
+
+    def recover_stale_finalization(
+        self, telegram_id: int, *, stale_before: str, occurred_at: str
+    ) -> bool:
+        """Make an interrupted single-process finalization retryable after its lease expires."""
+        draft_id = self._get_dialog_draft_id(telegram_id)
+        if draft_id is None:
+            return False
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """UPDATE draft_sessions SET status='active', updated_at=?
+                WHERE draft_id=? AND status='saving' AND updated_at < ?""",
+                (occurred_at, draft_id, stale_before),
+            )
+        return cursor.rowcount == 1
+
+    def purge_expired(self, *, occurred_at: str) -> int:
+        with self._connect() as connection:
+            paths = [
+                str(row["local_file_path"])
+                for row in connection.execute(
+                    """SELECT attachments.local_file_path
+                    FROM draft_attachments AS attachments
+                    JOIN draft_sessions AS sessions USING (draft_id)
+                    WHERE sessions.expires_at IS NOT NULL AND sessions.expires_at < ?""",
+                    (occurred_at,),
+                ).fetchall()
+            ]
+            self._delete_expired_audio(paths)
+            cursor = connection.execute(
+                "DELETE FROM draft_sessions WHERE expires_at IS NOT NULL AND expires_at < ?",
+                (occurred_at,),
+            )
+        return cursor.rowcount
+
+    def _delete_expired_audio(self, paths: list[str]) -> None:
+        if self._audio_root is None:
+            if paths:
+                raise RuntimeError("Audio root is required to purge draft attachments")
+            return
+        for raw_path in paths:
+            path = Path(raw_path)
+            resolved = path.resolve() if path.is_absolute() else (Path.cwd() / path).resolve()
+            if not resolved.is_relative_to(self._audio_root):
+                raise RuntimeError("Draft audio path is outside configured audio root")
+            resolved.unlink(missing_ok=True)
+
+    def release_finalization(self, telegram_id: int, *, occurred_at: str) -> None:
+        draft_id = self._get_dialog_draft_id(telegram_id)
+        if draft_id is None:
+            return
+        with self._connect() as connection:
+            connection.execute(
+                """UPDATE draft_sessions SET status='active', updated_at=?
+                WHERE draft_id=? AND status='saving'""",
+                (occurred_at, draft_id),
             )
 
     def append_voice_transcription(
@@ -479,6 +579,7 @@ class WeeklyReportDraftRepository:
                     reports.status_code,
                     reports.status_symbol,
                     reports.selected_step_ids,
+                    reports.metric_status,
                     reports.flow_source,
                     reports.submitted_by_id,
                     reports.submitted_by_role,
@@ -536,6 +637,7 @@ class WeeklyReportDraftRepository:
             status_code=status_code,
             status_symbol=status_symbol,
             selected_step_ids=_parse_step_ids(row["selected_step_ids"]),
+            metric_status=row["metric_status"],
             report_text="\n".join(str(message["text"]) for message in message_rows),
             message_count=len(message_rows),
             created_at=str(row["created_at"]),
@@ -581,6 +683,10 @@ class WeeklyReportDraftRepository:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         return connection
+
+
+def _default_expiry(occurred_at: str) -> str:
+    return (datetime.fromisoformat(occurred_at) + timedelta(days=14)).isoformat()
 
 
 def _serialize_step_ids(step_ids: list[str] | tuple[str, ...]) -> str:

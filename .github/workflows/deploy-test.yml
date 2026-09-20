@@ -341,6 +341,18 @@ jobs:
                   "participant_stage",
               ),
               "Teams": ("flow_id",),
+              "PlannedSteps": (
+                  "step_number",
+                  "step_title",
+                  "step_description",
+                  "step_metric",
+                  "updated_at",
+                  "created_at",
+              ),
+              "WeeklyReportSteps": (
+                  "metric_status",
+                  "metric_result_text",
+              ),
           }
           spreadsheet_id = os.environ["GOOGLE_SHEETS_ID"]
           credentials = Credentials.from_service_account_file(

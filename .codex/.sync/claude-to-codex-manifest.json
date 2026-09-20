@@ -83,18 +83,18 @@
     {
       "adapter": "project-skill",
       "adapter_version": "1",
-      "input_set_hash": "10bef0ffd5887cd3e633f91ab388ace5429b8e30be88a6d18028cf9372f7b333",
+      "input_set_hash": "3e1175750bae13601dda48b59ffa21c3f6721696be16e5355cf5fe2b8789f92c",
       "outputs": [
         {
-          "output_sha256": "7a1c4cef0f193c84e6ac8b3905bdff3d1561b781760bbabaa88b02573fd3afe8",
-          "source_sha256": "10bef0ffd5887cd3e633f91ab388ace5429b8e30be88a6d18028cf9372f7b333",
+          "output_sha256": "1eea4ef342de4a17ba7ba947d7f7b56b57ee02fa49f75a1a891c03b3f239846b",
+          "source_sha256": "3e1175750bae13601dda48b59ffa21c3f6721696be16e5355cf5fe2b8789f92c",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/references/architecture.md"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/references/architecture.md",
       "transformer_version": "1",
-      "updated_at": "2026-09-02T13:06:30Z"
+      "updated_at": "2026-09-20T14:09:51Z"
     },
     {
       "adapter": "project-skill",
@@ -147,18 +147,18 @@
     {
       "adapter": "project-skill",
       "adapter_version": "1",
-      "input_set_hash": "0f17cf5cbda2020a43bf66fcbed9167e2c5872bf723d9dfa58a69069737401b4",
+      "input_set_hash": "31cfc3fc63a4474d69657db6fabfdabb7762d5f1656c0f06e3d6ebcdef9635e8",
       "outputs": [
         {
-          "output_sha256": "92d2c19f7f682e7a139396793176c4ec725ec9e773a6876d05412a5b6107e819",
-          "source_sha256": "0f17cf5cbda2020a43bf66fcbed9167e2c5872bf723d9dfa58a69069737401b4",
+          "output_sha256": "8d7ed0336d4284e69f6cd17fa4490af3264f2c7cd9b7f6571a5b6d822d5da5e7",
+          "source_sha256": "31cfc3fc63a4474d69657db6fabfdabb7762d5f1656c0f06e3d6ebcdef9635e8",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/references/requirements.md"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/references/requirements.md",
       "transformer_version": "1",
-      "updated_at": "2026-09-16T06:44:10Z"
+      "updated_at": "2026-09-20T14:09:51Z"
     },
     {
       "adapter": "project-skill",

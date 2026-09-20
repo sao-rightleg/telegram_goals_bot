@@ -86,6 +86,9 @@ class SheetsGateway(Protocol):
     def list_planned_steps(self, participant_id: str, goal_id: str) -> list[SheetRow]:
         """Return planned steps scoped to the participant and goal."""
 
+    def append_planned_steps(self, rows: Sequence[SheetRow]) -> None:
+        """Append one confirmed eight-step plan in a single provider request."""
+
     def list_weekly_status_history(self, participant_id: str) -> list[SheetRow]:
         """Return weekly report/status rows scoped to the participant."""
 
@@ -102,6 +105,11 @@ class SheetsGateway(Protocol):
         step_id: str,
     ) -> SheetRow | None:
         """Find the final report linked to a planned step when it exists."""
+
+    def find_weekly_report_for_step_week(
+        self, participant_id: str, *, step_id: str, week_number: int
+    ) -> SheetRow | None:
+        """Find a step report for the same participant and working week."""
 
     def get_weekly_report(self, weekly_report_id: str) -> SheetRow | None:
         """Return one weekly report by stable report ID."""
@@ -120,6 +128,11 @@ class SheetsGateway(Protocol):
     def append_weekly_report_step(self, row: SheetRow) -> None:
         """Append a final weekly report to planned-step relation row."""
 
+    def update_weekly_report_step_metric(
+        self, weekly_report_id: str, *, metric_result_text: str
+    ) -> None:
+        """Update the factual metric result when an existing step report is edited."""
+
     def close_planned_steps(
         self,
         participant_id: str,
@@ -131,6 +144,11 @@ class SheetsGateway(Protocol):
         closed_at: str,
     ) -> None:
         """Mark selected participant planned steps as closed in business storage."""
+
+    def mark_planned_steps_partial(
+        self, participant_id: str, goal_id: str, step_ids: Sequence[str], *, updated_at: str
+    ) -> None:
+        """Mark selected open steps as partially completed."""
 
     def append_insight(self, row: SheetRow) -> None:
         """Append a final insight row to the business storage."""
@@ -243,10 +261,16 @@ REQUIRED_SHEET_COLUMNS: dict[str, frozenset[str]] = {
             "step_id",
             "participant_id",
             "goal_id",
+            "step_number",
+            "step_title",
+            "step_description",
+            "step_metric",
             "step_status",
             "closed_week_number",
             "closed_report_id",
             "closed_at",
+            "created_at",
+            "updated_at",
         }
     ),
     "WeeklyReports": frozenset(
@@ -263,7 +287,10 @@ REQUIRED_SHEET_COLUMNS: dict[str, frozenset[str]] = {
         }
     ),
     "WeeklyReportSteps": frozenset(
-        {"id", "weekly_report_id", "participant_id", "step_id", "relation_type", "created_at"}
+        {
+            "id", "weekly_report_id", "participant_id", "step_id", "relation_type",
+            "metric_status", "metric_result_text", "created_at",
+        }
     ),
     "WeeklyFocus": frozenset(
         {
@@ -425,6 +452,25 @@ class GoogleSheetsGateway:
             if row.get("participant_id") == participant_id and row.get("goal_id") == goal_id
         ]
 
+    def append_planned_steps(self, rows: Sequence[SheetRow]) -> None:
+        if not rows:
+            return
+        if _validate_step_plan_append(self._list_rows("PlannedSteps"), rows):
+            return
+        headers, _existing = self._table("PlannedSteps")
+        if not headers:
+            raise GoogleSheetsSchemaError("Sheet PlannedSteps has no header row")
+        values = [[_value_for_header(row, header) for header in headers] for row in rows]
+        _execute(
+            self.service.spreadsheets().values().append(
+                spreadsheetId=self.spreadsheet_id,
+                range=_sheet_range("PlannedSteps"),
+                valueInputOption="RAW",
+                insertDataOption="INSERT_ROWS",
+                body={"values": values},
+            )
+        )
+
     def list_weekly_status_history(self, participant_id: str) -> list[SheetRow]:
         return [
             row
@@ -433,6 +479,11 @@ class GoogleSheetsGateway:
         ]
 
     def append_weekly_report(self, row: SheetRow) -> None:
+        if self._business_row_exists(
+            "WeeklyReports", row, id_field="weekly_report_id",
+            scope_fields=("participant_id", "goal_id", "week_number", "status_code"),
+        ):
+            return
         self._append_row("WeeklyReports", row)
 
     def find_weekly_report(self, participant_id: str, *, week_number: int) -> SheetRow | None:
@@ -456,6 +507,24 @@ class GoogleSheetsGateway:
             if row.get("participant_id") == participant_id and str(row.get("weekly_report_id")) in report_ids:
                 return row
         return None
+
+    def find_weekly_report_for_step_week(
+        self, participant_id: str, *, step_id: str, week_number: int
+    ) -> SheetRow | None:
+        report = self.find_weekly_report_for_step(participant_id, step_id=step_id)
+        if report is not None and report.get("week_number") == week_number:
+            return report
+        report_ids = {
+            str(row.get("weekly_report_id")) for row in self.list_weekly_report_steps()
+            if row.get("participant_id") == participant_id and row.get("step_id") == step_id
+        }
+        return next(
+            (row for row in self.list_weekly_reports()
+             if row.get("participant_id") == participant_id
+             and row.get("week_number") == week_number
+             and str(row.get("weekly_report_id")) in report_ids),
+            None,
+        )
 
     def get_weekly_report(self, weekly_report_id: str) -> SheetRow | None:
         for row in self.list_weekly_reports():
@@ -490,7 +559,26 @@ class GoogleSheetsGateway:
         raise KeyError(f"Weekly report not found: {weekly_report_id}")
 
     def append_weekly_report_step(self, row: SheetRow) -> None:
+        if self._business_row_exists(
+            "WeeklyReportSteps", row, id_field="weekly_report_step_id",
+            scope_fields=("weekly_report_id", "participant_id", "step_id", "relation_status"),
+        ):
+            return
         self._append_row("WeeklyReportSteps", row)
+
+    def update_weekly_report_step_metric(
+        self, weekly_report_id: str, *, metric_result_text: str
+    ) -> None:
+        headers, rows = self._table("WeeklyReportSteps")
+        report_index = _header_index(headers, "weekly_report_id")
+        result_index = _header_index(headers, "metric_result_text")
+        for offset, row in enumerate(rows, start=2):
+            padded = _pad_row(row, len(headers))
+            if padded[report_index] == weekly_report_id:
+                padded[result_index] = metric_result_text
+                self._update_row("WeeklyReportSteps", offset, padded)
+                return
+        raise KeyError(f"Weekly report step relation not found: {weekly_report_id}")
 
     def close_planned_steps(
         self,
@@ -526,6 +614,34 @@ class GoogleSheetsGateway:
             row[report_index] = closed_report_id
             row[closed_at_index] = closed_at
             self._update_row("PlannedSteps", offset, row)
+
+    def mark_planned_steps_partial(
+        self, participant_id: str, goal_id: str, step_ids: Sequence[str], *, updated_at: str
+    ) -> None:
+        self._set_planned_step_status(
+            participant_id, goal_id, step_ids, status="partial", updated_at=updated_at
+        )
+
+    def _set_planned_step_status(
+        self, participant_id: str, goal_id: str, step_ids: Sequence[str],
+        *, status: str, updated_at: str,
+    ) -> None:
+        headers, rows = self._table("PlannedSteps")
+        status_index = _header_index(headers, "step_status")
+        updated_index = _header_index(headers, "updated_at")
+        wanted = set(step_ids)
+        for offset, row in enumerate(rows, start=2):
+            row_data = _row_from_values(headers, row)
+            if (
+                row_data.get("participant_id") == participant_id
+                and row_data.get("goal_id") == goal_id
+                and row_data.get("step_id") in wanted
+                and row_data.get("step_status") != "closed"
+            ):
+                padded = _pad_row(row, len(headers))
+                padded[status_index] = status
+                padded[updated_index] = updated_at
+                self._update_row("PlannedSteps", offset, padded)
 
     def append_insight(self, row: SheetRow) -> None:
         self._append_row("Insights", row)
@@ -600,6 +716,21 @@ class GoogleSheetsGateway:
         headers, rows = self._table(sheet_name)
         return [_row_from_values(headers, row) for row in rows]
 
+    def _business_row_exists(
+        self, sheet_name: str, requested: SheetRow, *, id_field: str,
+        scope_fields: Sequence[str],
+    ) -> bool:
+        requested_id = str(requested.get(id_field) or "")
+        if not requested_id:
+            raise GoogleSheetsError(f"{sheet_name} row has no stable ID")
+        for row in self._list_rows(sheet_name):
+            if str(row.get(id_field) or "") != requested_id:
+                continue
+            if all(str(row.get(field) or "") == str(requested.get(field) or "") for field in scope_fields):
+                return True
+            raise GoogleSheetsError(f"{sheet_name} stable ID conflicts with existing scope")
+        return False
+
     def _table(self, sheet_name: str) -> tuple[list[str], list[list[object]]]:
         values = _execute(
             self.service.spreadsheets()
@@ -624,7 +755,7 @@ class GoogleSheetsGateway:
             .append(
                 spreadsheetId=self.spreadsheet_id,
                 range=_sheet_range(sheet_name),
-                valueInputOption="USER_ENTERED",
+                valueInputOption="RAW",
                 insertDataOption="INSERT_ROWS",
                 body={"values": [values]},
             )
@@ -637,7 +768,7 @@ class GoogleSheetsGateway:
             .update(
                 spreadsheetId=self.spreadsheet_id,
                 range=f"{_sheet_range(sheet_name)}!A{row_number}",
-                valueInputOption="USER_ENTERED",
+                valueInputOption="RAW",
                 body={"values": [values]},
             ),
             retry_safe=True,
@@ -828,6 +959,11 @@ class FakeSheetsGateway:
             if row.get("participant_id") == participant_id and row.get("goal_id") == goal_id
         ]
 
+    def append_planned_steps(self, rows: Sequence[SheetRow]) -> None:
+        if not rows or _validate_step_plan_append(self._planned_steps, rows):
+            return
+        self._planned_steps.extend(dict(row) for row in rows)
+
     def list_weekly_status_history(self, participant_id: str) -> list[SheetRow]:
         return [
             dict(row)
@@ -836,6 +972,11 @@ class FakeSheetsGateway:
         ]
 
     def append_weekly_report(self, row: SheetRow) -> None:
+        if _fake_row_exists(
+            self._weekly_reports, row, id_field="weekly_report_id",
+            scope_fields=("participant_id", "goal_id", "week_number", "status_code"),
+        ):
+            return
         self._weekly_reports.append(dict(row))
 
     def find_weekly_report(self, participant_id: str, *, week_number: int) -> SheetRow | None:
@@ -857,6 +998,22 @@ class FakeSheetsGateway:
         }
         for row in self._weekly_reports:
             if row.get("participant_id") == participant_id and str(row.get("weekly_report_id")) in report_ids:
+                return dict(row)
+        return None
+
+    def find_weekly_report_for_step_week(
+        self, participant_id: str, *, step_id: str, week_number: int
+    ) -> SheetRow | None:
+        report_ids = {
+            str(row.get("weekly_report_id")) for row in self._weekly_report_steps
+            if row.get("participant_id") == participant_id and row.get("step_id") == step_id
+        }
+        for row in self._weekly_reports:
+            if (
+                row.get("participant_id") == participant_id
+                and row.get("week_number") == week_number
+                and str(row.get("weekly_report_id")) in report_ids
+            ):
                 return dict(row)
         return None
 
@@ -885,7 +1042,21 @@ class FakeSheetsGateway:
         raise KeyError(f"Weekly report not found: {weekly_report_id}")
 
     def append_weekly_report_step(self, row: SheetRow) -> None:
+        if _fake_row_exists(
+            self._weekly_report_steps, row, id_field="weekly_report_step_id",
+            scope_fields=("weekly_report_id", "participant_id", "step_id", "relation_status"),
+        ):
+            return
         self._weekly_report_steps.append(dict(row))
+
+    def update_weekly_report_step_metric(
+        self, weekly_report_id: str, *, metric_result_text: str
+    ) -> None:
+        for row in self._weekly_report_steps:
+            if row.get("weekly_report_id") == weekly_report_id:
+                row["metric_result_text"] = metric_result_text
+                return
+        raise KeyError(f"Weekly report step relation not found: {weekly_report_id}")
 
     def close_planned_steps(
         self,
@@ -914,6 +1085,20 @@ class FakeSheetsGateway:
             row["closed_week_number"] = closed_week_number
             row["closed_report_id"] = closed_report_id
             row["closed_at"] = closed_at
+
+    def mark_planned_steps_partial(
+        self, participant_id: str, goal_id: str, step_ids: Sequence[str], *, updated_at: str
+    ) -> None:
+        wanted = set(step_ids)
+        for row in self._planned_steps:
+            if (
+                row.get("participant_id") == participant_id
+                and row.get("goal_id") == goal_id
+                and row.get("step_id") in wanted
+                and row.get("step_status") != "closed"
+            ):
+                row["step_status"] = "partial"
+                row["updated_at"] = updated_at
 
     def append_insight(self, row: SheetRow) -> None:
         self._insights.append(dict(row))
@@ -1148,3 +1333,43 @@ def _header_index(headers: Sequence[str], header: str) -> int:
         return list(headers).index(header)
     except ValueError as exc:
         raise GoogleSheetsSchemaError(f"Missing required Google Sheets column: {header}") from exc
+
+
+def _validate_step_plan_append(
+    existing_rows: Sequence[SheetRow], requested_rows: Sequence[SheetRow]
+) -> bool:
+    """Return true for an already committed exact plan; reject partial/conflicting rows."""
+    requested_ids = {str(row.get("step_id") or "") for row in requested_rows}
+    if len(requested_ids) != len(requested_rows) or "" in requested_ids:
+        raise GoogleSheetsError("Planned step batch has invalid stable IDs")
+    participant_ids = {str(row.get("participant_id") or "") for row in requested_rows}
+    goal_ids = {str(row.get("goal_id") or "") for row in requested_rows}
+    if len(participant_ids) != 1 or len(goal_ids) != 1 or "" in participant_ids | goal_ids:
+        raise GoogleSheetsError("Planned step batch scope is inconsistent")
+    scoped = [
+        row for row in existing_rows
+        if str(row.get("participant_id") or "") in participant_ids
+        and str(row.get("goal_id") or "") in goal_ids
+    ]
+    existing_ids = {str(row.get("step_id") or "") for row in scoped}
+    if existing_ids == requested_ids and len(scoped) == len(requested_rows):
+        return True
+    if scoped or existing_ids & requested_ids:
+        raise GoogleSheetsError("Planned step plan already exists or is partially written")
+    return False
+
+
+def _fake_row_exists(
+    existing_rows: Sequence[SheetRow], requested: SheetRow, *, id_field: str,
+    scope_fields: Sequence[str],
+) -> bool:
+    requested_id = str(requested.get(id_field) or "")
+    if not requested_id:
+        raise GoogleSheetsError("Business row has no stable ID")
+    for row in existing_rows:
+        if str(row.get(id_field) or "") != requested_id:
+            continue
+        if all(str(row.get(field) or "") == str(requested.get(field) or "") for field in scope_fields):
+            return True
+        raise GoogleSheetsError("Business row stable ID conflicts with existing scope")
+    return False

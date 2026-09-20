@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterable
 
-from app.domain import PLANNED_STEP_COUNT
+from app.domain import planned_steps_bar, planned_steps_percent
 from app.reports.models import AllTeamsReportData, ParticipantReportSection, TeamReportData
 from app.sheets.gateway import SheetsGateway, SheetRow
 
@@ -22,10 +22,6 @@ STATUS_SCORES = {
     "blue": 0.5,
     "red": 0.0,
     "gray": 0.0,
-}
-STEP_SYMBOLS = {
-    "closed": "🟩",
-    "partial": "🟦",
 }
 
 
@@ -210,27 +206,11 @@ def _weekly_victory_percent(active_sections: list[ParticipantReportSection]) -> 
 
 
 def _progress_percent(steps: list[SheetRow]) -> int:
-    if not steps:
-        return 0
-    score = sum(_step_score(step) for step in steps)
-    return round(min(score, PLANNED_STEP_COUNT) / PLANNED_STEP_COUNT * 100)
+    return planned_steps_percent(tuple(step.get("step_status") for step in steps))
 
 
 def _progress_bar(steps: list[SheetRow]) -> str:
-    symbols = [
-        STEP_SYMBOLS.get(str(step.get("step_status")), "⬜")
-        for step in steps[:PLANNED_STEP_COUNT]
-    ]
-    return "".join(symbols + ["⬜"] * (PLANNED_STEP_COUNT - len(symbols)))
-
-
-def _step_score(step: SheetRow) -> float:
-    status = step.get("step_status")
-    if status == "closed":
-        return 1.0
-    if status == "partial":
-        return 0.5
-    return 0.0
+    return planned_steps_bar(tuple(step.get("step_status") for step in steps))
 
 
 def _risk_state(participant: SheetRow) -> str:

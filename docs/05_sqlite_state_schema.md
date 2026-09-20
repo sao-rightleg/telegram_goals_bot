@@ -375,6 +375,14 @@ Challenge calendar:
 - challenge end date is `2026-07-31`
 - weeks 1-2 are goal/route setup
 - setup phases are `goal_setup` and `steps_setup`
+
+### `step_setup_drafts` and `step_setup_items`
+
+Temporary participant draft for the eight-step plan. The parent row binds the
+Telegram user to participant, flow, and active goal and supports an
+`active`/`finalizing` claim. Child rows contain step numbers 1-8, description,
+and metric. Cascade deletion removes all personal draft text after confirmation
+or cancellation. Final planned steps exist only in Google Sheets.
 - working phases are `week_01` through `week_08`
 - after week 8 there are four days for final summary
 

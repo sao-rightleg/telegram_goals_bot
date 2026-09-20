@@ -129,7 +129,9 @@ Web form may be added later.
 
 Participants cannot edit previous weeks.
 
-Participants cannot add new planned steps in MVP.
+Participants create their initial eight planned steps in the main bot during the
+configured setup window. Each step requires an essence and achievement metric.
+Additional or post-lock changes remain an administrator operation.
 
 Late reports after Sunday 23:59 Yekaterinburg time do not change weekly status.
 

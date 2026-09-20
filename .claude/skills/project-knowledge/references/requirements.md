@@ -25,7 +25,8 @@ Product decisions in `docs/02_open_questions.md` are resolved and must be follow
 - Business data is stored in Google Sheets.
 - SQLite stores only technical state and temporary drafts.
 - Audio files and PDF files are stored locally on VPS.
-- Participants cannot add planned steps in MVP.
+- Participants create exactly eight initial planned steps in the main bot during
+  the configured setup window; each step requires an essence and achievement metric.
 - Participants cannot edit previous weeks.
 - Late reports after Sunday 23:59 Yekaterinburg time do not change weekly status.
 - Do not use yellow late status.

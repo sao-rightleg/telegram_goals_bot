@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.bot.clients import BotClient, TelegramInlineButton
-from app.bot.menus import WEEKLY_REPORT_DONE_CALLBACK
+from app.bot.menus import WEEKLY_REPORT_DONE_CALLBACK, WEEKLY_REPORT_METRIC_CALLBACK_PREFIX
 from app.bot.messages import (
     CONSENT_ACCEPT_BUTTON,
     CONSENT_DECLINE_BUTTON,
@@ -34,7 +34,7 @@ from app.services.participant_models import FlowResponse, TelegramUserContext
 from app.services.voice_messages import VoiceMessageInput, VoiceMessageService
 from app.services.weekly_report_models import WeeklyReportStatus
 from app.sheets.gateway import SheetRow, SheetsGateway
-from app.storage.weekly_report_drafts import WeeklyReportDraftRepository
+from app.storage.weekly_report_drafts import WeeklyReportDraft, WeeklyReportDraftRepository
 
 
 @dataclass(frozen=True)
@@ -44,6 +44,7 @@ class WeeklyReportService:
     notification_router: NotificationRouter
     drafts: WeeklyReportDraftRepository
     voice_messages: VoiceMessageService | None = None
+    active_flow_id: str | None = None
 
     def start_report(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
         context = self._resolve_context(user, now=now)
@@ -94,7 +95,9 @@ class WeeklyReportService:
         valid_open_step_ids = {_string_value(row.get("step_id")) for row in open_steps}
         if step_id not in valid_open_step_ids:
             return self._send(user, text=WEEKLY_REPORT_GREEN_STEP_REQUIRED_TEXT)
-        if self.sheets.find_weekly_report_for_step(participant_id, step_id=step_id) is not None:
+        if self.sheets.find_weekly_report_for_step_week(
+            participant_id, step_id=step_id, week_number=week_number
+        ) is not None:
             return self._send(user, text="По этому шагу отчёт уже сохранён. Нажми «Редактировать отчёт».")
 
         self.drafts.create_draft(
@@ -107,16 +110,53 @@ class WeeklyReportService:
             occurred_at=_occurred_at(now),
         )
         self.drafts.preselect_steps(user.telegram_id, [step_id], occurred_at=_occurred_at(now))
-        self.drafts.update_status_and_steps(
-            user.telegram_id,
-            WeeklyReportStatus.GREEN,
-            [step_id],
-            occurred_at=_occurred_at(now),
-        )
         return self._send(
             user,
             text=_format_step_start_text(_step_by_id(open_steps, step_id)),
-            buttons=_weekly_report_text_buttons(),
+            buttons=_metric_status_buttons(),
+        )
+
+    def select_metric_result(
+        self, user: TelegramUserContext, metric_status: str, *, now: datetime
+    ) -> FlowResponse:
+        context = self._resolve_context(user, now=now)
+        if isinstance(context, FlowResponse):
+            return context
+        _participant, participant_id, team_id, goal, week_number = context
+        draft = self.drafts.get_active_draft(user.telegram_id)
+        if (
+            draft is None
+            or len(draft.selected_step_ids) != 1
+            or ":step-" not in draft.draft_id
+            or _edit_report_id(draft.draft_id) is not None
+        ):
+            raise KeyError(f"Active step report draft not found for telegram_id={user.telegram_id}")
+        if not _draft_scope_matches(
+            draft, participant_id=participant_id, team_id=team_id,
+            goal_id=_string_value(goal.get("goal_id")), week_number=week_number,
+        ):
+            return self.recover_invalid_draft(user, reason="scope_mismatch", now=now)
+        valid_ids = _valid_step_ids(
+            self.sheets.list_planned_steps(participant_id, _string_value(goal.get("goal_id"))),
+            require_open=True,
+        )
+        if draft.selected_step_ids[0] not in valid_ids:
+            return self._send(user, text=WEEKLY_REPORT_GREEN_STEP_REQUIRED_TEXT)
+        status_by_metric = {
+            "completed": WeeklyReportStatus.GREEN,
+            "partial": WeeklyReportStatus.BLUE,
+            "not_completed": WeeklyReportStatus.RED,
+        }
+        status = status_by_metric.get(metric_status)
+        if status is None:
+            raise ValueError("Unsupported metric status")
+        self.drafts.select_metric(
+            user.telegram_id, metric_status=metric_status,
+            status=status, occurred_at=_occurred_at(now),
+        )
+        return self._send(
+            user,
+            text="Укажи фактический результат по метрике. Например: «Провёл 8 из 10 встреч».",
         )
 
     def start_edit_report_for_step(
@@ -170,10 +210,15 @@ class WeeklyReportService:
         if isinstance(context, FlowResponse):
             return context
 
-        _participant, participant_id, _team_id, goal, _week_number = context
+        _participant, participant_id, team_id, goal, week_number = context
         draft = self.drafts.get_active_draft(user.telegram_id)
         if draft is None:
             raise KeyError(f"Active weekly report draft not found for telegram_id={user.telegram_id}")
+        if not _draft_scope_matches(
+            draft, participant_id=participant_id, team_id=team_id,
+            goal_id=_string_value(goal.get("goal_id")), week_number=week_number,
+        ):
+            return self.recover_invalid_draft(user, reason="scope_mismatch", now=now)
 
         if status is WeeklyReportStatus.RED:
             self.drafts.update_status_and_steps(user.telegram_id, status, [], occurred_at=_occurred_at(now))
@@ -205,11 +250,16 @@ class WeeklyReportService:
         if isinstance(context, FlowResponse):
             return context
 
-        _participant, participant_id, _team_id, goal, _week_number = context
+        _participant, participant_id, team_id, goal, week_number = context
         draft = self.drafts.get_active_draft(user.telegram_id)
         if draft is None:
             raise KeyError(f"Active weekly report draft not found for telegram_id={user.telegram_id}")
-
+        goal_id = _string_value(goal.get("goal_id"))
+        if not _draft_scope_matches(
+            draft, participant_id=participant_id, team_id=team_id,
+            goal_id=goal_id, week_number=week_number,
+        ):
+            return self.recover_invalid_draft(user, reason="scope_mismatch", now=now)
         status = _status_from_code(draft.status_code) or WeeklyReportStatus.GREEN
         if status is WeeklyReportStatus.RED:
             self.drafts.update_status_and_steps(user.telegram_id, status, [], occurred_at=_occurred_at(now))
@@ -243,9 +293,15 @@ class WeeklyReportService:
         if isinstance(context, FlowResponse):
             return context
 
+        _participant, participant_id, team_id, goal, week_number = context
         draft = self.drafts.get_active_draft(user.telegram_id)
         if draft is None:
             raise KeyError(f"Active weekly report draft not found for telegram_id={user.telegram_id}")
+        if not _draft_scope_matches(
+            draft, participant_id=participant_id, team_id=team_id,
+            goal_id=_string_value(goal.get("goal_id")), week_number=week_number,
+        ):
+            return self.recover_invalid_draft(user, reason="scope_mismatch", now=now)
         if _draft_has_duplicate_step_report(self.sheets, draft):
             return self._send(user, text="По этому шагу отчёт уже сохранён. Нажми «Редактировать отчёт».")
 
@@ -274,9 +330,15 @@ class WeeklyReportService:
         if isinstance(context, FlowResponse):
             return context
 
+        _participant, participant_id, team_id, goal, week_number = context
         draft = self.drafts.get_active_draft(user.telegram_id)
         if draft is None:
             raise KeyError(f"Active weekly report draft not found for telegram_id={user.telegram_id}")
+        if not _draft_scope_matches(
+            draft, participant_id=participant_id, team_id=team_id,
+            goal_id=_string_value(goal.get("goal_id")), week_number=week_number,
+        ):
+            return self.recover_invalid_draft(user, reason="scope_mismatch", now=now)
         if _draft_has_duplicate_step_report(self.sheets, draft):
             return self._send(user, text="По этому шагу отчёт уже сохранён. Нажми «Редактировать отчёт».")
         if self.voice_messages is None:
@@ -322,9 +384,21 @@ class WeeklyReportService:
             return context
 
         _participant, participant_id, team_id, goal, week_number = context
+        submitted_at = _occurred_at(now)
+        self.drafts.recover_stale_finalization(
+            user.telegram_id,
+            stale_before=_occurred_at(now - timedelta(minutes=10)),
+            occurred_at=submitted_at,
+        )
         draft = self.drafts.get_active_draft(user.telegram_id)
         if draft is None:
             raise KeyError(f"Active weekly report draft not found for telegram_id={user.telegram_id}")
+        goal_id = _string_value(goal.get("goal_id"))
+        if not _draft_scope_matches(
+            draft, participant_id=participant_id, team_id=team_id,
+            goal_id=goal_id, week_number=week_number,
+        ):
+            return self.recover_invalid_draft(user, reason="scope_mismatch", now=now)
 
         status = _status_from_code(draft.status_code)
         if status is None:
@@ -334,27 +408,63 @@ class WeeklyReportService:
         if not draft.report_text.strip():
             return self._send(user, text=WEEKLY_REPORT_EMPTY_TEXT)
 
-        goal_id = _string_value(goal.get("goal_id"))
-        submitted_at = _occurred_at(now)
         edit_report_id = _edit_report_id(draft.draft_id)
         if edit_report_id is not None:
-            self.sheets.update_weekly_report_text(
-                edit_report_id,
-                report_text=draft.report_text,
-                transcription_text=_voice_transcription_text(draft),
-                audio_file_path=_voice_audio_file_path(draft),
-                updated_at=submitted_at,
-            )
+            if not _editable_report_matches(
+                self.sheets, edit_report_id, draft=draft,
+                participant_id=participant_id, goal_id=goal_id,
+            ):
+                return self.recover_invalid_draft(user, reason="edit_scope_mismatch", now=now)
+            self._update_existing_step_report(edit_report_id, draft=draft, submitted_at=submitted_at)
             self.drafts.clear_draft(user.telegram_id)
             return self._send(user, text="Отчёт по шагу обновлён.")
 
-        report_step_id = draft.selected_step_ids[0] if draft.selected_step_ids else None
-        if report_step_id is not None and self.sheets.find_weekly_report_for_step(
-            participant_id,
-            step_id=report_step_id,
-        ) is not None:
-            return self._send(user, text="По этому шагу отчёт уже сохранён. Нажми «Редактировать отчёт».")
+        return self._finalize_new_report(
+            user, draft=draft, participant_id=participant_id, team_id=team_id,
+            goal_id=goal_id, week_number=week_number, status=status,
+            submitted_at=submitted_at,
+        )
 
+    def _finalize_new_report(
+        self, user: TelegramUserContext, *, draft: WeeklyReportDraft,
+        participant_id: str, team_id: str, goal_id: str, week_number: int,
+        status: WeeklyReportStatus, submitted_at: str,
+    ) -> FlowResponse:
+        report_step_id = draft.selected_step_ids[0] if draft.selected_step_ids else None
+        if report_step_id is not None and self.sheets.find_weekly_report_for_step_week(
+            participant_id, step_id=report_step_id, week_number=week_number,
+        ) is not None:
+            self.drafts.clear_draft(user.telegram_id)
+            return self._send(user, text="По этому шагу отчёт уже сохранён. Нажми «Редактировать отчёт».")
+        if not self.drafts.claim_finalization(user.telegram_id, occurred_at=submitted_at):
+            return self._send(user, text="Отчёт уже сохраняется. Подожди несколько секунд.")
+        try:
+            weekly_report_id = self._save_new_report(
+                draft=draft, participant_id=participant_id, team_id=team_id,
+                goal_id=goal_id, week_number=week_number, status=status,
+                report_step_id=report_step_id, submitted_at=submitted_at,
+            )
+            self._apply_reported_step_status(
+                draft=draft, participant_id=participant_id, goal_id=goal_id,
+                week_number=week_number, weekly_report_id=weekly_report_id,
+                status=status, submitted_at=submitted_at,
+            )
+            self._append_report_step_relations(
+                draft=draft, participant_id=participant_id, goal_id=goal_id,
+                week_number=week_number, status=status,
+                weekly_report_id=weekly_report_id, submitted_at=submitted_at,
+            )
+        except Exception:
+            self.drafts.release_finalization(user.telegram_id, occurred_at=submitted_at)
+            raise
+        self.drafts.clear_draft(user.telegram_id)
+        return self._send(user, text=get_weekly_report_success_text(status))
+
+    def _save_new_report(
+        self, *, draft: WeeklyReportDraft, participant_id: str, team_id: str,
+        goal_id: str, week_number: int, status: WeeklyReportStatus,
+        report_step_id: str | None, submitted_at: str,
+    ) -> str:
         weekly_report_id = _weekly_report_id(participant_id, week_number, report_step_id)
         self.sheets.append_weekly_report(
             {
@@ -376,21 +486,40 @@ class WeeklyReportService:
                 "flow_source": "participant_bot",
             }
         )
-        if status in {WeeklyReportStatus.GREEN, WeeklyReportStatus.BLUE}:
-            relation_status = "closed" if status is WeeklyReportStatus.GREEN else "partial"
+        return weekly_report_id
+
+    def _append_report_step_relations(
+        self, *, draft: WeeklyReportDraft, participant_id: str, goal_id: str,
+        week_number: int, status: WeeklyReportStatus,
+        weekly_report_id: str, submitted_at: str,
+    ) -> None:
+        if draft.selected_step_ids:
+            relation_status = {
+                WeeklyReportStatus.GREEN: "closed",
+                WeeklyReportStatus.BLUE: "partial",
+                WeeklyReportStatus.RED: "mentioned",
+            }[status]
             for step_id in draft.selected_step_ids:
-                self.sheets.append_weekly_report_step(
-                    {
-                        "weekly_report_step_id": _weekly_report_step_id(weekly_report_id, step_id),
-                        "weekly_report_id": weekly_report_id,
-                        "participant_id": participant_id,
-                        "goal_id": goal_id,
-                        "step_id": step_id,
-                        "week_number": week_number,
-                        "relation_status": relation_status,
-                        "created_at": submitted_at,
-                    }
-                )
+                relation = {
+                    "weekly_report_step_id": _weekly_report_step_id(weekly_report_id, step_id),
+                    "weekly_report_id": weekly_report_id,
+                    "participant_id": participant_id,
+                    "goal_id": goal_id,
+                    "step_id": step_id,
+                    "week_number": week_number,
+                    "relation_status": relation_status,
+                    "created_at": submitted_at,
+                }
+                if draft.metric_status:
+                    relation["metric_status"] = draft.metric_status
+                    relation["metric_result_text"] = draft.report_text
+                self.sheets.append_weekly_report_step(relation)
+
+    def _apply_reported_step_status(
+        self, *, draft: WeeklyReportDraft, participant_id: str, goal_id: str,
+        week_number: int, weekly_report_id: str, status: WeeklyReportStatus,
+        submitted_at: str,
+    ) -> None:
         if status is WeeklyReportStatus.GREEN:
             self.sheets.close_planned_steps(
                 participant_id,
@@ -400,9 +529,22 @@ class WeeklyReportService:
                 closed_report_id=weekly_report_id,
                 closed_at=submitted_at,
             )
+        elif status is WeeklyReportStatus.BLUE and draft.metric_status == "partial":
+            self.sheets.mark_planned_steps_partial(
+                participant_id, goal_id, draft.selected_step_ids, updated_at=submitted_at
+            )
 
-        self.drafts.clear_draft(user.telegram_id)
-        return self._send(user, text=get_weekly_report_success_text(status))
+    def _update_existing_step_report(
+        self, report_id: str, *, draft: WeeklyReportDraft, submitted_at: str
+    ) -> None:
+        self.sheets.update_weekly_report_text(
+            report_id, report_text=draft.report_text,
+            transcription_text=_voice_transcription_text(draft),
+            audio_file_path=_voice_audio_file_path(draft), updated_at=submitted_at,
+        )
+        self.sheets.update_weekly_report_step_metric(
+            report_id, metric_result_text=draft.report_text
+        )
 
     def _resolve_context(
         self,
@@ -410,13 +552,16 @@ class WeeklyReportService:
         *,
         now: datetime,
     ) -> tuple[SheetRow, str, str, SheetRow, int] | FlowResponse:
-        participant = self.sheets.find_participant_by_telegram_id(user.telegram_id)
         occurred_at = _occurred_at(now)
+        self.drafts.purge_expired(occurred_at=occurred_at)
+        participant = self.sheets.find_participant_by_telegram_id(user.telegram_id)
         if participant is None:
             return self._handle_unknown_user(user, occurred_at=occurred_at)
 
         if not _consent_is_given(participant):
             return self._send(user, text=CONSENT_TEXT, buttons=(CONSENT_ACCEPT_BUTTON, CONSENT_DECLINE_BUTTON))
+        if not _participant_can_report(participant, active_flow_id=self.active_flow_id):
+            return self._send(user, text="Раздел недоступен для этого аккаунта.")
 
         if current_challenge_stage(now) in {"pre_start", "goal_setup", "steps_setup"}:
             return self._send(
@@ -506,12 +651,21 @@ def _weekly_report_text_buttons() -> tuple[TelegramInlineButton, ...]:
     )
 
 
+def _metric_status_buttons() -> tuple[TelegramInlineButton, ...]:
+    return (
+        TelegramInlineButton("✅ Выполнена полностью", f"{WEEKLY_REPORT_METRIC_CALLBACK_PREFIX}completed"),
+        TelegramInlineButton("🟦 Выполнена частично", f"{WEEKLY_REPORT_METRIC_CALLBACK_PREFIX}partial"),
+        TelegramInlineButton("🟥 Не выполнена", f"{WEEKLY_REPORT_METRIC_CALLBACK_PREFIX}not_completed"),
+    )
+
+
 def _format_step_start_text(step: SheetRow) -> str:
-    return "\n".join(
+    return "\n\n".join(
         (
-            "Выбран шаг:",
-            f"{_int_value(step.get('step_number'))}. {str(step.get('step_title') or '')}",
-            "Отправь отчёт по этому шагу.",
+            f"Шаг {_int_value(step.get('step_number'))}. {str(step.get('step_title') or '')}",
+            f"Суть: {str(step.get('step_description') or 'не указана')}",
+            f"Метрика: {str(step.get('step_metric') or 'не указана')}",
+            "Как выполнена метрика этого шага?",
         )
     )
 
@@ -577,10 +731,53 @@ def _draft_has_duplicate_step_report(sheets: SheetsGateway, draft) -> bool:
         return False
     if len(draft.selected_step_ids) != 1:
         return False
-    return sheets.find_weekly_report_for_step(
-        draft.participant_id,
-        step_id=draft.selected_step_ids[0],
+    return sheets.find_weekly_report_for_step_week(
+        draft.participant_id, step_id=draft.selected_step_ids[0],
+        week_number=draft.week_number,
     ) is not None
+
+
+def _draft_scope_matches(
+    draft: WeeklyReportDraft, *, participant_id: str, team_id: str,
+    goal_id: str, week_number: int,
+) -> bool:
+    return (
+        draft.participant_id == participant_id
+        and draft.team_id == team_id
+        and draft.goal_id == goal_id
+        and draft.week_number == week_number
+    )
+
+
+def _participant_can_report(participant: SheetRow, *, active_flow_id: str | None) -> bool:
+    return (
+        str(participant.get("status", "")).strip().lower() == "active"
+        and str(participant.get("role", "")).strip().lower() in {"participant", "captain"}
+        and (
+            active_flow_id is None
+            or str(participant.get("flow_id", "")) == active_flow_id
+        )
+    )
+
+
+def _editable_report_matches(
+    sheets: SheetsGateway, report_id: str, *, draft: WeeklyReportDraft,
+    participant_id: str, goal_id: str,
+) -> bool:
+    report = sheets.get_weekly_report(report_id)
+    if report is None or len(draft.selected_step_ids) != 1:
+        return False
+    if (
+        str(report.get("participant_id") or "") != participant_id
+        or str(report.get("goal_id") or "") != goal_id
+    ):
+        return False
+    return any(
+        str(row.get("weekly_report_id") or "") == report_id
+        and str(row.get("participant_id") or "") == participant_id
+        and str(row.get("step_id") or "") == draft.selected_step_ids[0]
+        for row in sheets.list_weekly_report_steps()
+    )
 
 
 def _draft_id(participant_id: str, week_number: int, *, step_id: str | None = None) -> str:

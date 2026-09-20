@@ -13,7 +13,7 @@ from app.bot.menus import (
     CAPTAIN_STEP_CALLBACK_PREFIX,
     CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX,
 )
-from app.domain import PLANNED_STEP_COUNT
+from app.domain import PLANNED_STEP_COUNT, planned_step_score, planned_steps_bar, planned_steps_percent
 from app.bot.messages import (
     CAPTAIN_DROPPED_PARTICIPANT_TEXT,
     CAPTAIN_EMPTY_REPORT_TEXT,
@@ -709,10 +709,9 @@ def _format_team_progress(
         steps = steps_by_participant.get(participant_id, [])
         valid_steps = _valid_numbered_steps(steps)
         configured_count = len(valid_steps)
-        closed_count = sum(
-            1 for row in valid_steps.values() if _normalized_string(row.get("step_status")) == "closed"
-        )
-        percent = round(closed_count / PLANNED_STEP_COUNT * 100)
+        statuses = tuple(row.get("step_status") for row in valid_steps.values())
+        completed_score = sum(planned_step_score(status) for status in statuses)
+        percent = planned_steps_percent(statuses)
         focus_text = _team_focus_text(
             focuses.get(participant_id),
             steps=valid_steps,
@@ -725,12 +724,16 @@ def _format_team_progress(
                     f"Цель: {'🟩' if participant_id in active_goals else '⬜'}",
                     f"Шаги: {_steps_setup_symbol(configured_count)} {configured_count} из {PLANNED_STEP_COUNT}",
                     f"Фокус недели: {focus_text}",
-                    f"Выполнено: {closed_count} из {PLANNED_STEP_COUNT} — {percent}%",
-                    "■" * closed_count + "□" * (PLANNED_STEP_COUNT - closed_count),
+                    f"Выполнено: {_format_step_score(completed_score)} из {PLANNED_STEP_COUNT} — {percent}%",
+                    planned_steps_bar(statuses),
                 )
             )
         )
     return "\n\n".join(sections)
+
+
+def _format_step_score(value: float) -> str:
+    return str(int(value)) if value.is_integer() else str(value)
 
 
 def _valid_numbered_steps(rows: list[SheetRow]) -> dict[int, SheetRow]:
@@ -833,15 +836,20 @@ def _format_captain_steps(
     steps: dict[int, SheetRow],
 ) -> str:
     sections = [f"Шаги участника: {_safe_step_title(_display_name(participant))}"]
-    sections.extend(
-        f"{number}. {_step_status_symbol(step)} {_safe_step_title(step.get('step_title'))}"
-        for number, step in sorted(steps.items())
-    )
+    for number, step in sorted(steps.items()):
+        lines = [f"{number}. {_step_status_symbol(step)} {_safe_step_title(step.get('step_title'))}"]
+        if _normalized_string(step.get("step_description")):
+            lines.append(f"Суть: {_safe_goal_field(step.get('step_description'))}")
+        if _normalized_string(step.get("step_metric")):
+            lines.append(f"Метрика: {_safe_goal_field(step.get('step_metric'))}")
+        sections.append("\n".join(lines))
     return "\n\n".join(sections)
 
 
 def _step_status_symbol(step: SheetRow) -> str:
-    return "🟩" if _normalized_string(step.get("step_status")) == "closed" else "⬜"
+    return {"closed": "🟩", "partial": "🟦"}.get(
+        _normalized_string(step.get("step_status")), "⬜"
+    )
 
 
 def _safe_step_title(value: object) -> str:

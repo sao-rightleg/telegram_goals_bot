@@ -51,6 +51,7 @@ class PlannedStep:
     step_title: str
     step_description: str
     step_status: str
+    step_metric: str = ""
     closed_week_number: int | None = None
     closed_at: str | None = None
 

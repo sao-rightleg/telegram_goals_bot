@@ -23,6 +23,10 @@ from app.bot.menus import (
     GOAL_CANCEL_CALLBACK,
     GOAL_CONFIRM_CALLBACK,
     MENU_CALLBACK_PREFIX,
+    STEPS_CANCEL_CALLBACK,
+    STEPS_CONFIRM_CALLBACK,
+    STEPS_EDIT_CALLBACK_PREFIX,
+    WEEKLY_REPORT_METRIC_CALLBACK_PREFIX,
     WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX,
     MenuAction,
 )
@@ -1021,6 +1025,31 @@ def test_dispatcher_routes_goal_text_confirm_and_cancel(tmp_path: Path) -> None:
     assert services.participant.goal_cancels == 1
 
 
+def test_dispatcher_routes_step_setup_text_edit_confirm_and_cancel(tmp_path: Path) -> None:
+    dispatcher, services, _error_bot = _dispatcher(tmp_path)
+    _state(dispatcher.dialog_states, flow="steps_setup", step="awaiting_description_1")
+
+    dispatcher.dispatch_update(_message_update(text="Провести 10 встреч"))
+    dispatcher.dispatch_update(_callback_update(data=f"{STEPS_EDIT_CALLBACK_PREFIX}3"))
+    dispatcher.dispatch_update(_callback_update(data=STEPS_CONFIRM_CALLBACK))
+    dispatcher.dispatch_update(_callback_update(data=STEPS_CANCEL_CALLBACK))
+
+    assert services.participant.step_texts == ["Провести 10 встреч"]
+    assert services.participant.step_edits == [3]
+    assert services.participant.step_confirms == 1
+    assert services.participant.step_cancels == 1
+
+
+def test_dispatcher_routes_metric_result_callback(tmp_path: Path) -> None:
+    dispatcher, services, _error_bot = _dispatcher(tmp_path)
+
+    dispatcher.dispatch_update(
+        _callback_update(data=f"{WEEKLY_REPORT_METRIC_CALLBACK_PREFIX}partial")
+    )
+
+    assert services.weekly.metric_results == ["partial"]
+
+
 def test_polling_runner_reports_dispatch_error_and_continues_without_raw_update(tmp_path: Path) -> None:
     components = _runtime_components(tmp_path)
     dispatcher, services, _dispatcher_error_bot = _dispatcher(tmp_path)
@@ -1287,6 +1316,10 @@ class RecordingParticipantService:
         self.goal_texts: list[str] = []
         self.goal_confirms = 0
         self.goal_cancels = 0
+        self.step_texts: list[str] = []
+        self.step_edits: list[int] = []
+        self.step_confirms = 0
+        self.step_cancels = 0
 
     def handle_start(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
         self.starts.append((user, occurred_at))
@@ -1316,6 +1349,24 @@ class RecordingParticipantService:
         self.goal_cancels += 1
         return FlowResponse(chat_id=user.chat_id, text="goal cancelled")
 
+    def handle_steps_text(self, user: TelegramUserContext, text: str, *, occurred_at: str) -> FlowResponse:
+        self.step_texts.append(text)
+        return FlowResponse(chat_id=user.chat_id, text="step text")
+
+    def edit_step_draft(
+        self, user: TelegramUserContext, *, step_number: int, occurred_at: str
+    ) -> FlowResponse:
+        self.step_edits.append(step_number)
+        return FlowResponse(chat_id=user.chat_id, text="step edit")
+
+    def confirm_steps(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
+        self.step_confirms += 1
+        return FlowResponse(chat_id=user.chat_id, text="steps confirmed")
+
+    def cancel_steps(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
+        self.step_cancels += 1
+        return FlowResponse(chat_id=user.chat_id, text="steps cancelled")
+
 
 class RecordingWeeklyReportService:
     def __init__(self) -> None:
@@ -1323,6 +1374,7 @@ class RecordingWeeklyReportService:
         self.step_starts: list[tuple[TelegramUserContext, str]] = []
         self.text_messages: list[tuple[TelegramUserContext, str, int | None]] = []
         self.voices: list[tuple[TelegramUserContext, str, int, int | None]] = []
+        self.metric_results: list[str] = []
 
     def start_report(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
         self.starts.append(user)
@@ -1331,6 +1383,12 @@ class RecordingWeeklyReportService:
     def start_report_for_step(self, user: TelegramUserContext, *, step_id: str, now: datetime) -> FlowResponse:
         self.step_starts.append((user, step_id))
         return FlowResponse(chat_id=user.chat_id, text="weekly start for step")
+
+    def select_metric_result(
+        self, user: TelegramUserContext, metric_status: str, *, now: datetime
+    ) -> FlowResponse:
+        self.metric_results.append(metric_status)
+        return FlowResponse(chat_id=user.chat_id, text="metric selected")
 
     def add_text_message(
         self,

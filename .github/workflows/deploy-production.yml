@@ -130,6 +130,11 @@ jobs:
             "$APP_DIR/shared/backups/google_sheets_exports" \
             "$APP_DIR/shared/backups/pdf"
 
+          set -a
+          . "$APP_DIR/shared/.env"
+          set +a
+          ./.venv/bin/python scripts/migrate_business_schema.py
+
           ./.venv/bin/telegram-goals-bot --env-file "$APP_DIR/shared/.env" check-config
 
           ln -sfn "$RELEASE_DIR" "$APP_DIR/current"
