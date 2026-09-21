@@ -274,6 +274,8 @@ All schedule times use `Asia/Yekaterinburg`.
 - Self-registration opens at `kickoff_meeting_at`. The default window is seven days, and the administrator may explicitly extend `registration_closes_at` by up to ten additional days for late participants without changing the challenge calendar.
 - `registration_opens_at` equals `kickoff_meeting_at`; `registration_closes_at` must be later than `registration_opens_at`.
 - During this window, an unknown Telegram ID may start the consent and registration scenario for the active flow.
+- If registration completes after `goal_setup_end_date`, the participant enters late-onboarding mode until `registration_closes_at`. The bot immediately collects the goal, then exactly eight initial steps with metrics, then the current-week focus when a working week is active.
+- Late-onboarding access is based on the participant's authoritative `onboarding_completed_at`. It does not reopen goal or step setup for participants registered before the ordinary deadlines.
 - After `registration_closes_at`, `/start` from a Telegram ID that has no participant record for this flow receives: `Данный поток уже набран`.
 - A participant already registered in the flow continues to use the bot after the window closes.
 - An unfinished registration draft does not reserve a place after the deadline.
@@ -591,7 +593,7 @@ Rules:
 Out of MVP:
 - web form
 - PostgreSQL
-- participant-created steps
+- participant-created additional steps after the initial eight-step setup
 - participant editing past weeks
 - late status
 - public group comparison

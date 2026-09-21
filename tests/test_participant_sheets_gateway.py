@@ -2,6 +2,7 @@ import pytest
 
 from app.sheets.gateway import (
     FakeSheetsGateway,
+    GoogleSheetsError,
     GoogleSheetsGateway,
     GoogleSheetsSchemaError,
     validate_challenge_flows_schema,
@@ -196,6 +197,25 @@ def test_live_gateway_marks_participant_bot_started_once() -> None:
     assert row["bot_started_at"] == "2026-07-02T10:00:00+05:00"
     assert row["participant_stage"] == "onboarding"
     assert row["last_stage_updated_at"] == "2026-07-03T10:00:00+05:00"
+
+
+def test_live_gateway_weekly_focus_append_is_idempotent_and_rejects_conflict() -> None:
+    service = FakeSheetsService(minimal_live_sheets())
+    gateway = GoogleSheetsGateway(service=service, spreadsheet_id="sheet-id")
+    row = {
+        "focus_id": "WF:P001:week-01", "participant_id": "P001",
+        "goal_id": "G001", "step_id": "S001", "week_number": 1,
+        "week_start_date": "2026-09-21", "week_end_date": "2026-09-27",
+        "focus_status": "active", "selected_at": "2026-09-21T10:00:00+05:00",
+        "updated_at": "2026-09-21T10:00:00+05:00",
+    }
+
+    gateway.append_weekly_focus(row)
+    gateway.append_weekly_focus(row)
+
+    assert [title for title, _values in service.appended].count("WeeklyFocus") == 1
+    with pytest.raises(GoogleSheetsError, match="stable ID conflicts"):
+        gateway.append_weekly_focus({**row, "step_id": "S002"})
 
 
 def test_live_schema_validation_allows_extra_columns() -> None:

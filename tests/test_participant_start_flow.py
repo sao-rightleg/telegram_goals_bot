@@ -23,6 +23,7 @@ from app.storage.dialog_state import DialogStateRepository
 from app.storage.goal_drafts import GoalDraftRepository
 from app.storage.registration import RegistrationDraftRepository
 from app.storage.sqlite import initialize_schema
+from app.storage.step_drafts import StepDraftRepository
 
 
 REGISTRATION_OPEN = "2026-09-09T18:00:00+05:00"
@@ -81,9 +82,106 @@ def test_participant_creates_confirmed_goal_in_google_sheets_boundary(tmp_path: 
     assert repository.get(1001).flow == "idle"
 
 
+@pytest.mark.parametrize(
+    ("onboarding_at", "occurred_at"),
+    [
+        ("2026-09-14T00:00:00+05:00", "2026-09-14T00:00:00+05:00"),
+        ("2026-09-20T23:36:38+05:00", "2026-09-21T10:00:00+05:00"),
+        ("2026-09-20T23:36:38+05:00", "2026-09-26T00:00:00+05:00"),
+    ],
+)
+def test_late_registered_participant_can_create_goal_until_registration_closes(
+    tmp_path: Path, onboarding_at: str, occurred_at: str,
+) -> None:
+    participant = {
+        "flow_id": "FLOW_2", "participant_id": "P0EEA0473014F", "telegram_id": 1001,
+        "team_id": "T001", "role": "participant", "status": "active",
+        "consent_given": True,
+        "created_at": onboarding_at,
+        "onboarding_completed_at": onboarding_at,
+    }
+    flow = {
+        **_active_flow(),
+        "registration_closes_at": "2026-09-26T00:00:00+05:00",
+        "goal_setup_end_date": "2026-09-13",
+    }
+    service, *_ = _build_service(
+        tmp_path, participants=[participant], challenge_flows=[flow],
+        teams=[{
+            "flow_id": "FLOW_2", "team_id": "T001", "captain_id": "C001",
+            "is_active": True,
+        }],
+    )
+
+    response = service.handle_menu_action(
+        TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+        "view_goal",
+        occurred_at=occurred_at,
+    )
+
+    assert "Кратко напиши цель" in response.text
+
+
+@pytest.mark.parametrize(
+    ("onboarding_completed_at", "occurred_at"),
+    [
+        ("2026-09-10T10:00:00+05:00", "2026-09-21T10:00:00+05:00"),
+        ("2026-09-20T23:36:38+05:00", "2026-09-26T00:00:01+05:00"),
+    ],
+)
+def test_goal_deadline_is_not_extended_for_existing_or_too_late_participant(
+    tmp_path: Path, onboarding_completed_at: str, occurred_at: str,
+) -> None:
+    participant = {
+        "flow_id": "FLOW_2", "participant_id": "P0EEA0473014F", "telegram_id": 1001,
+        "team_id": "T001", "role": "participant", "status": "active",
+        "consent_given": True, "created_at": onboarding_completed_at,
+        "onboarding_completed_at": onboarding_completed_at,
+    }
+    flow = {
+        **_active_flow(),
+        "registration_closes_at": "2026-09-26T00:00:00+05:00",
+        "goal_setup_end_date": "2026-09-13",
+    }
+    service, *_ = _build_service(
+        tmp_path, participants=[participant], challenge_flows=[flow]
+    )
+
+    with pytest.raises(PermissionError, match="Goal setup stage is not active"):
+        service.handle_menu_action(
+            TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+            "view_goal",
+            occurred_at=occurred_at,
+        )
+
+
+def test_existing_participant_cannot_gain_late_mode_by_accepting_consent_late(
+    tmp_path: Path,
+) -> None:
+    participant = {
+        "flow_id": "FLOW_2", "participant_id": "P0EEA0473014F", "telegram_id": 1001,
+        "team_id": "T001", "role": "participant", "status": "active",
+        "consent_given": True, "created_at": "2026-09-09T10:00:00+05:00",
+        "onboarding_completed_at": "2026-09-21T10:00:00+05:00",
+    }
+    flow = {
+        **_active_flow(), "registration_closes_at": "2026-09-26T00:00:00+05:00",
+        "goal_setup_end_date": "2026-09-13",
+    }
+    service, *_ = _build_service(
+        tmp_path, participants=[participant], challenge_flows=[flow]
+    )
+
+    with pytest.raises(PermissionError, match="Goal setup stage is not active"):
+        service.handle_menu_action(
+            TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+            "view_goal", occurred_at="2026-09-21T10:00:01+05:00",
+        )
+
+
 def test_goal_creation_does_not_create_second_active_goal(tmp_path: Path) -> None:
     participant = {
-        "flow_id": "FLOW_2", "participant_id": "P001", "telegram_id": 1001,
+        "flow_id": "FLOW_2", "participant_id": "P0EEA0473014F", "telegram_id": 1001,
         "team_id": "T001", "role": "participant", "status": "active", "consent_given": True,
     }
     service, gateway, *_ = _build_service(
@@ -404,6 +502,88 @@ def test_registration_collects_name_and_creates_participant_after_confirmation(t
     )
     assert repository.get(404).flow == "idle"
     assert error_bot.sent_messages == []
+
+
+def test_late_registration_continues_directly_to_goal_and_then_steps(tmp_path: Path) -> None:
+    flow = {
+        **_active_flow(),
+        "registration_closes_at": "2026-09-26T00:00:00+05:00",
+        "goal_setup_end_date": "2026-09-13",
+    }
+    service, gateway, main_bot, _error_bot, _notification_bot, _repository = _build_service(
+        tmp_path,
+        participants=[{
+            "flow_id": "FLOW_2", "participant_id": "C001", "telegram_id": 1001,
+            "full_name": "Анна Иванова", "role": "captain", "team_id": "T001",
+            "status": "active", "consent_given": True,
+        }],
+        teams=[{
+            "flow_id": "FLOW_2", "team_id": "T001", "team_name": "Команда 1",
+            "captain_id": "C001", "is_active": True,
+        }],
+        challenge_flows=[flow],
+    )
+    user = TelegramUserContext(telegram_id=404, chat_id="chat-404")
+    late_now = "2026-09-21T10:00:00+05:00"
+    service.handle_start(user, occurred_at=late_now)
+    service.accept_consent(user, consent_given_at=late_now)
+    service.handle_registration_text(user, "Пётр", occurred_at=late_now)
+    service.handle_registration_text(user, "Петров", occurred_at=late_now)
+    service.select_registration_captain(user, captain_id="C001", occurred_at=late_now)
+
+    goal_prompt = service.confirm_registration(user, occurred_at=late_now)
+
+    assert "Кратко напиши цель" in goal_prompt.text
+    assert "успешно зарегистрирован" in main_bot.sent_messages[-2].text
+    participant = gateway.find_participant_by_telegram_id(404)
+    assert participant is not None
+    assert participant["onboarding_completed_at"] == late_now
+
+    for value in (
+        "Новая цель", "Получить результат", "10", "клиентов", "Заключены договоры",
+    ):
+        service.handle_goal_text(user, value, occurred_at=late_now)
+
+    steps_prompt = service.confirm_goal(user, occurred_at=late_now)
+
+    assert gateway.get_active_goal(str(participant["participant_id"])) is not None
+    assert main_bot.sent_messages[-2].text == "Цель сохранена."
+    assert steps_prompt.text.startswith("Сформулируем 8 шагов")
+
+
+def test_late_onboarding_retry_resumes_after_persisted_participant_and_goal(
+    tmp_path: Path,
+) -> None:
+    late_now = "2026-09-21T10:00:00+05:00"
+    participant = {
+        "flow_id": "FLOW_2", "participant_id": "P0EEA0473014F", "telegram_id": 1001,
+        "team_id": "T001", "role": "participant", "status": "active",
+        "consent_given": True, "created_at": late_now,
+        "onboarding_completed_at": late_now,
+    }
+    flow = {
+        **_active_flow(), "registration_closes_at": "2026-09-26T00:00:00+05:00",
+        "goal_setup_end_date": "2026-09-13",
+    }
+    service, gateway, *_ = _build_service(
+        tmp_path, participants=[participant], challenge_flows=[flow],
+        teams=[{
+            "flow_id": "FLOW_2", "team_id": "T001", "captain_id": "C001",
+            "is_active": True,
+        }],
+    )
+    user = TelegramUserContext(telegram_id=1001, chat_id="chat-1001")
+
+    goal_retry = service.confirm_registration(user, occurred_at=late_now)
+    assert "Кратко напиши цель" in goal_retry.text
+
+    gateway.append_goal({
+        "flow_id": "FLOW_2", "goal_id": "G001", "participant_id": "P0EEA0473014F",
+        "team_id": "T001", "goal_status": "active",
+    })
+    steps_retry = service.confirm_goal(user, occurred_at=late_now)
+
+    assert steps_retry.text.startswith("Сформулируем 8 шагов")
 
 
 def test_registration_loads_participants_and_teams_once_for_captain_buttons(
@@ -1027,6 +1207,7 @@ def _build_service(
             registration_flows=gateway,
             registration_drafts=RegistrationDraftRepository(db_path),
             goal_drafts=GoalDraftRepository(db_path),
+            step_drafts=StepDraftRepository(db_path),
         ),
         gateway,
         main_bot,

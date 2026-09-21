@@ -88,6 +88,18 @@ If user does not consent, bot must not continue.
 4. Bot shows both values for confirmation and allows either value to be corrected.
 5. Bot creates one participant record identified by `flow_id + telegram_id`.
 
+If registration completes after the ordinary goal setup deadline, the same Main Bot
+continues in late-onboarding mode:
+
+1. Show the successful registration message.
+2. Collect and confirm the goal.
+3. Collect exactly eight steps, each with an essence and achievement metric.
+4. If a working week is active, immediately request the current-week focus.
+
+This exception lasts only through `registration_closes_at` and applies only to a
+participant whose `onboarding_completed_at` is later than `goal_setup_end_date`.
+It does not reopen the ordinary goal or step setup windows for existing participants.
+
 Before the deadline, repeated `/start` resumes an unfinished registration draft or opens the menu for an already registered participant; it never creates a duplicate.
 
 ### New User After Registration Window
@@ -157,7 +169,9 @@ Bot shows:
 - current weekly focus marker after the focused step number and before the title
 - current progress percent
 
-No participant-created steps in MVP.
+Participants create exactly eight initial steps during ordinary setup or their
+authorized late-onboarding window. Adding further steps after that initial set is
+not available in MVP.
 
 Example:
 

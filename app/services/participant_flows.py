@@ -239,8 +239,14 @@ class ParticipantFlowService:
     def confirm_goal(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
         participant = self._eligible_goal_participant(user, occurred_at=occurred_at)
         participant_id = _string_value(participant.get("participant_id"))
-        if self.sheets.get_active_goal(participant_id) is not None:
+        existing_goal = self.sheets.get_active_goal(participant_id)
+        if existing_goal is not None:
             self._goal_repository().clear(user.telegram_id)
+            continuation = self._continue_late_onboarding_to_steps(
+                user, participant=participant, goal=existing_goal, occurred_at=occurred_at
+            )
+            if continuation is not None:
+                return continuation
             return self._send_simple_response(
                 user, participant=participant, text=GOAL_ALREADY_EXISTS_TEXT,
                 flow="idle", step="goal_exists", occurred_at=occurred_at,
@@ -266,9 +272,30 @@ class ParticipantFlowService:
             self._goal_repository().release(user.telegram_id, occurred_at=occurred_at)
             raise
         self._goal_repository().clear(user.telegram_id)
-        return self._send_simple_response(
+        saved_response = self._send_simple_response(
             user, participant=participant, text=GOAL_SAVED_TEXT,
             flow="idle", step="goal_saved", occurred_at=occurred_at,
+        )
+        goal = self.sheets.get_active_goal(participant_id)
+        continuation = self._continue_late_onboarding_to_steps(
+            user, participant=participant, goal=goal, occurred_at=occurred_at
+        )
+        if continuation is not None:
+            return continuation
+        return saved_response
+
+    def _continue_late_onboarding_to_steps(
+        self, user: TelegramUserContext, *, participant: SheetRow,
+        goal: SheetRow | None, occurred_at: str,
+    ) -> FlowResponse | None:
+        flow = self._active_registration_flow()
+        if (
+            self.step_drafts is None or flow is None or goal is None
+            or not self._late_onboarding_is_authorized(flow, participant, occurred_at)
+        ):
+            return None
+        return self._start_steps_creation(
+            user, participant=participant, goal=goal, occurred_at=occurred_at
         )
 
     def cancel_goal(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
@@ -403,10 +430,14 @@ class ParticipantFlowService:
             self._step_repository().release(user.telegram_id, occurred_at=occurred_at)
             raise
         self._step_repository().clear(user.telegram_id)
-        return self._steps_response(
+        saved_response = self._steps_response(
             user, participant=participant, text="Восемь шагов сохранены.",
             step="steps_saved", occurred_at=occurred_at, flow="idle",
         )
+        focus_response = self._maybe_prompt_weekly_focus(
+            user, participant=participant, occurred_at=occurred_at
+        )
+        return focus_response or saved_response
 
     def cancel_steps(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
         participant, _goal = self._eligible_steps_context(user, occurred_at=occurred_at)
@@ -499,8 +530,7 @@ class ParticipantFlowService:
     def confirm_registration(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
         participant = self._participant_for_current_flow(user.telegram_id)
         if participant is not None:
-            self._clear_completed_registration(user.telegram_id)
-            return self._show_menu(user, participant=participant, occurred_at=occurred_at)
+            return self._resume_completed_registration(user, participant=participant, occurred_at=occurred_at)
         draft = self._valid_registration_draft(user, occurred_at=occurred_at)
         state = self.dialog_states.get(user.telegram_id)
         if state is None or state.flow != "registration" or state.step != "awaiting_confirmation":
@@ -540,7 +570,28 @@ class ParticipantFlowService:
         self.dialog_states.upsert(
             _dialog_state_for(user=user, participant=participant, flow="idle", step="menu", occurred_at=occurred_at)
         )
-        return self._send_registration_response(user, success_text)
+        success_response = self._send_registration_response(user, success_text)
+        if self._late_onboarding_is_authorized(flow, participant, occurred_at):
+            return self._start_goal_creation(
+                user, participant=participant, occurred_at=occurred_at
+            )
+        return success_response
+
+    def _resume_completed_registration(
+        self, user: TelegramUserContext, *, participant: SheetRow, occurred_at: str,
+    ) -> FlowResponse:
+        self._clear_completed_registration(user.telegram_id)
+        flow = self._active_registration_flow()
+        participant_id = _string_value(participant.get("participant_id"))
+        if (
+            flow is not None and self.goal_drafts is not None
+            and self.sheets.get_active_goal(participant_id) is None
+            and self._late_onboarding_is_authorized(flow, participant, occurred_at)
+        ):
+            return self._start_goal_creation(
+                user, participant=participant, occurred_at=occurred_at
+            )
+        return self._show_menu(user, participant=participant, occurred_at=occurred_at)
 
     def _registration_claim_conflict(
         self, user: TelegramUserContext, *, occurred_at: str
@@ -675,11 +726,13 @@ class ParticipantFlowService:
         step_id: str,
         occurred_at: str,
     ) -> FlowResponse:
-        participant = self.sheets.find_participant_by_telegram_id(user.telegram_id)
+        participant = self._participant_for_current_flow(user.telegram_id)
         if participant is None:
             return self._handle_unknown_user(user, occurred_at=occurred_at)
         if not _consent_is_given(participant):
             return self._send_consent_response(user, participant=participant, occurred_at=occurred_at)
+        if not self._weekly_focus_participant_is_eligible(participant, occurred_at):
+            raise PermissionError("Weekly focus participant is not eligible")
 
         participant_id = _string_value(participant.get("participant_id"))
         goal_row = self.sheets.get_active_goal(participant_id)
@@ -703,6 +756,10 @@ class ParticipantFlowService:
                 step="weekly_focus_locked",
                 occurred_at=occurred_at,
             )
+
+        state = self.dialog_states.get(user.telegram_id)
+        if state is None or state.flow != "idle" or state.step != "weekly_focus":
+            raise PermissionError("Weekly focus selection was not requested")
 
         steps = [_planned_step_from_row(row) for row in self.sheets.list_planned_steps(participant_id, goal.goal_id)]
         selected_step = _step_by_id([step for step in steps if step.step_status != "closed"], step_id)
@@ -732,6 +789,29 @@ class ParticipantFlowService:
             flow="idle",
             step="weekly_focus_saved",
             occurred_at=occurred_at,
+        )
+
+    def _participant_has_active_team(self, participant: SheetRow) -> bool:
+        flow_id = _optional_string_value(participant.get("flow_id"))
+        team_id = _optional_string_value(participant.get("team_id"))
+        if not flow_id or not team_id:
+            return False
+        return any(
+            row.get("flow_id") == flow_id
+            and row.get("team_id") == team_id
+            and _truthy(row.get("is_active"))
+            for row in self.sheets.list_teams()
+        )
+
+    def _weekly_focus_participant_is_eligible(
+        self, participant: SheetRow, occurred_at: str,
+    ) -> bool:
+        return (
+            str(participant.get("status") or "").strip().lower() == "active"
+            and _role(participant) in {"participant", "captain"}
+            and _consent_is_given(participant)
+            and self._participant_has_active_team(participant)
+            and is_working_week(datetime.fromisoformat(occurred_at))
         )
 
     def handle_menu_action(
@@ -1040,6 +1120,8 @@ class ParticipantFlowService:
         participant: SheetRow,
         occurred_at: str,
     ) -> FlowResponse | None:
+        if not self._weekly_focus_participant_is_eligible(participant, occurred_at):
+            return None
         participant_id = _string_value(participant.get("participant_id"))
         goal_row = self.sheets.get_active_goal(participant_id)
         if goal_row is None:
@@ -1125,11 +1207,16 @@ class ParticipantFlowService:
     ) -> SheetRow:
         active_flow = self._active_registration_flow()
         flow_id = _optional_string_value(active_flow.get("flow_id")) if active_flow else None
-        if active_flow is None or not flow_id or not _goal_setup_is_open(active_flow, occurred_at):
+        if active_flow is None or not flow_id:
             raise PermissionError("Goal setup stage is not active")
         participant = self.sheets.find_participant_in_flow(flow_id, user.telegram_id)
         if participant is None:
             raise PermissionError("Goal participant is not available")
+        if not (
+            _goal_setup_is_open(active_flow, occurred_at)
+            or self._late_onboarding_is_authorized(active_flow, participant, occurred_at)
+        ):
+            raise PermissionError("Goal setup stage is not active")
         if not _consent_is_given(participant):
             raise PermissionError("Goal participant consent is missing")
         if _string_value(participant.get("status")).strip().lower() != "active":
@@ -1148,6 +1235,39 @@ class ParticipantFlowService:
             raise RuntimeError("Step draft repository is not configured")
         return self.step_drafts
 
+    def _late_onboarding_is_authorized(
+        self, flow: SheetRow, participant: SheetRow, occurred_at: str,
+    ) -> bool:
+        if not _late_onboarding_is_open(flow, participant, occurred_at):
+            return False
+        if (
+            _role(participant) != "participant"
+            or _string_value(participant.get("status")).strip().lower() != "active"
+            or not _consent_is_given(participant)
+        ):
+            return False
+        flow_id = _optional_string_value(participant.get("flow_id"))
+        team_id = _optional_string_value(participant.get("team_id"))
+        participant_id = _optional_string_value(participant.get("participant_id"))
+        telegram_id = participant.get("telegram_id")
+        if (
+            not flow_id or not team_id or not participant_id
+            or flow_id != _optional_string_value(flow.get("flow_id"))
+        ):
+            return False
+        try:
+            expected_participant_id = _registration_participant_id(flow_id, int(telegram_id))
+        except (TypeError, ValueError):
+            return False
+        if participant_id != expected_participant_id:
+            return False
+        return any(
+            row.get("flow_id") == flow_id
+            and row.get("team_id") == team_id
+            and _truthy(row.get("is_active"))
+            for row in self.sheets.list_teams()
+        )
+
     def _eligible_steps_context(
         self, user: TelegramUserContext, *, occurred_at: str
     ) -> tuple[SheetRow, SheetRow]:
@@ -1165,7 +1285,10 @@ class ParticipantFlowService:
             or _role(participant) not in {"participant", "captain"}
         ):
             raise PermissionError("Steps participant is not eligible")
-        if not _steps_setup_is_open(flow, occurred_at):
+        if not (
+            _steps_setup_is_open(flow, occurred_at)
+            or self._late_onboarding_is_authorized(flow, participant, occurred_at)
+        ):
             raise PermissionError("Steps setup stage is not active")
         goal = self.sheets.get_active_goal(_string_value(participant.get("participant_id")))
         if goal is None:
@@ -1177,7 +1300,10 @@ class ParticipantFlowService:
         goal: SheetRow, occurred_at: str,
     ) -> FlowResponse:
         flow = self._active_registration_flow()
-        if flow is None or not _steps_setup_is_open(flow, occurred_at):
+        if flow is None or not (
+            _steps_setup_is_open(flow, occurred_at)
+            or self._late_onboarding_is_authorized(flow, participant, occurred_at)
+        ):
             return self._steps_response(
                 user, participant=participant, text="Этап формирования шагов уже завершён.",
                 step="steps_closed", occurred_at=occurred_at, flow="idle",
@@ -1517,6 +1643,35 @@ def _goal_setup_is_open(flow: SheetRow, occurred_at: str) -> bool:
     start = datetime.fromisoformat(_string_value(flow.get("goal_setup_start_date"))).date()
     end = datetime.fromisoformat(_string_value(flow.get("goal_setup_end_date"))).date()
     return start <= current_date <= end
+
+
+def _late_onboarding_is_open(
+    flow: SheetRow, participant: SheetRow, occurred_at: str,
+) -> bool:
+    onboarding_value = _optional_string_value(participant.get("onboarding_completed_at"))
+    created_value = _optional_string_value(participant.get("created_at"))
+    if not onboarding_value or not created_value:
+        return False
+    try:
+        onboarding_at = datetime.fromisoformat(onboarding_value)
+        created_at = datetime.fromisoformat(created_value)
+        now = datetime.fromisoformat(occurred_at)
+        opens_at, closes_at = _registration_window(flow)
+        goal_deadline = _flow_date(flow, "goal_setup_end_date")
+    except (TypeError, ValueError):
+        return False
+    expected_offset = timedelta(hours=5)
+    if any(
+        value.tzinfo is None or value.utcoffset() != expected_offset
+        for value in (created_at, onboarding_at, now)
+    ):
+        return False
+    return (
+        created_at == onboarding_at
+        and onboarding_at.date() > goal_deadline
+        and opens_at <= onboarding_at <= closes_at
+        and onboarding_at <= now <= closes_at
+    )
 
 
 def _setup_progress_symbols(

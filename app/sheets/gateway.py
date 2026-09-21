@@ -696,6 +696,11 @@ class GoogleSheetsGateway:
         return None
 
     def append_weekly_focus(self, row: SheetRow) -> None:
+        if self._business_row_exists(
+            "WeeklyFocus", row, id_field="focus_id",
+            scope_fields=("participant_id", "goal_id", "step_id", "week_number"),
+        ):
+            return
         self._append_row("WeeklyFocus", row)
 
     def list_weekly_focus_for_week(self, week_number: int) -> list[SheetRow]:
@@ -1153,6 +1158,18 @@ class FakeSheetsGateway:
         return None
 
     def append_weekly_focus(self, row: SheetRow) -> None:
+        focus_id = str(row.get("focus_id") or "")
+        for existing in self._weekly_focus:
+            if str(existing.get("focus_id") or "") != focus_id:
+                continue
+            if (
+                existing.get("participant_id") == row.get("participant_id")
+                and existing.get("goal_id") == row.get("goal_id")
+                and existing.get("step_id") == row.get("step_id")
+                and existing.get("week_number") == row.get("week_number")
+            ):
+                return
+            raise GoogleSheetsError("WeeklyFocus stable ID conflicts with existing scope")
         self._weekly_focus.append(dict(row))
 
     def list_weekly_focus_for_week(self, week_number: int) -> list[SheetRow]:

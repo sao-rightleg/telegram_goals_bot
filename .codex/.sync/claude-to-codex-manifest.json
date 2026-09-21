@@ -147,18 +147,18 @@
     {
       "adapter": "project-skill",
       "adapter_version": "1",
-      "input_set_hash": "31cfc3fc63a4474d69657db6fabfdabb7762d5f1656c0f06e3d6ebcdef9635e8",
+      "input_set_hash": "bb0cf9f2da946828535ea7f83e243d9fc4b9faf11ed05d94a5bf487e63e75232",
       "outputs": [
         {
-          "output_sha256": "8d7ed0336d4284e69f6cd17fa4490af3264f2c7cd9b7f6571a5b6d822d5da5e7",
-          "source_sha256": "31cfc3fc63a4474d69657db6fabfdabb7762d5f1656c0f06e3d6ebcdef9635e8",
+          "output_sha256": "b9d744b02273d7b0bc184a9ad27942eb633846057ba531feedabfe4df54993bb",
+          "source_sha256": "bb0cf9f2da946828535ea7f83e243d9fc4b9faf11ed05d94a5bf487e63e75232",
           "sync_owned": true,
           "target": "/root/telegram_goals_bot/.codex/skills/project-knowledge/references/requirements.md"
         }
       ],
       "source": "/root/telegram_goals_bot/.claude/skills/project-knowledge/references/requirements.md",
       "transformer_version": "1",
-      "updated_at": "2026-09-20T14:09:51Z"
+      "updated_at": "2026-09-21T14:02:09Z"
     },
     {
       "adapter": "project-skill",

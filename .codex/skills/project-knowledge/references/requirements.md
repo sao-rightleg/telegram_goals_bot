@@ -28,6 +28,10 @@ Product decisions in `docs/02_open_questions.md` are resolved and must be follow
 - Audio files and PDF files are stored locally on VPS.
 - Participants create exactly eight initial planned steps in the main bot during
   the configured setup window; each step requires an essence and achievement metric.
+- A participant who completes self-registration after the ordinary goal setup
+  deadline receives a late-onboarding exception until `registration_closes_at`:
+  the main bot collects the goal, exactly eight initial steps with metrics, and
+  the current-week focus without extending the ordinary deadlines for existing participants.
 - Participants cannot edit previous weeks.
 - Late reports after Sunday 23:59 Yekaterinburg time do not change weekly status.
 - Do not use yellow late status.

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from app.bot.clients import BotPurpose, FakeBotClient
 from app.bot.menus import MenuAction, WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX, WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX
 from app.bot.messages import CONSENT_TEXT, MISSING_DATA_TEXT, NOT_AVAILABLE_TEXT, TELEGRAM_HTML_PARSE_MODE
@@ -132,6 +134,25 @@ def test_start_prompts_required_weekly_focus_before_menu(tmp_path: Path) -> None
     assert main_bot.sent_messages[-1].buttons == response.buttons
 
 
+def test_start_does_not_offer_focus_to_inactive_participant(tmp_path: Path) -> None:
+    participant = _participant("P001", 1001)
+    participant["status"] = "dropped"
+    service, gateway, *_ = _build_service(
+        tmp_path,
+        participants=[participant],
+        goals=[_goal("G001", "P001", "Моя цель")],
+        planned_steps=[_step("S004", "P001", "G001", 4, "Шаг 4", "open")],
+    )
+
+    response = service.handle_start(
+        TelegramUserContext(telegram_id=1001, chat_id="chat-1001"), occurred_at=NOW
+    )
+
+    assert response.buttons == ()
+    assert "Выбери обязательный фокус" not in response.text
+    assert gateway.find_weekly_focus("P001", week_number=4) is None
+
+
 def test_select_weekly_focus_saves_business_fact_and_locks_week(tmp_path: Path) -> None:
     service, gateway, _main_bot, _error_bot, _notification_bot = _build_service(
         tmp_path,
@@ -143,6 +164,7 @@ def test_select_weekly_focus_saves_business_fact_and_locks_week(tmp_path: Path) 
         ],
     )
     user = TelegramUserContext(telegram_id=1001, chat_id="chat-1001")
+    service.handle_start(user, occurred_at=NOW)
 
     response = service.select_weekly_focus(user, step_id="S004", occurred_at=NOW)
     locked = service.select_weekly_focus(user, step_id="S005", occurred_at=NOW)
@@ -161,6 +183,23 @@ def test_select_weekly_focus_saves_business_fact_and_locks_week(tmp_path: Path) 
         "selected_at": NOW,
         "updated_at": NOW,
     }
+
+
+def test_weekly_focus_rejects_forged_callback_without_issued_prompt(tmp_path: Path) -> None:
+    service, gateway, *_ = _build_service(
+        tmp_path,
+        participants=[_participant("P001", 1001)],
+        goals=[_goal("G001", "P001", "Моя цель")],
+        planned_steps=[_step("S004", "P001", "G001", 4, "Шаг 4", "open")],
+    )
+
+    with pytest.raises(PermissionError, match="was not requested"):
+        service.select_weekly_focus(
+            TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+            step_id="S004", occurred_at=NOW,
+        )
+
+    assert gateway.find_weekly_focus("P001", week_number=4) is None
 
 
 def test_steps_view_marks_current_week_focus_after_step_number(tmp_path: Path) -> None:
@@ -478,6 +517,10 @@ def _build_service(
     initialize_schema(db_path)
     gateway = FakeSheetsGateway(
         participants=participants or [],
+        teams=[{
+            "flow_id": "F001", "team_id": "T001", "captain_id": "C001",
+            "is_active": True,
+        }],
         goals=goals or [],
         planned_steps=planned_steps or [],
         weekly_reports=weekly_reports or [],
@@ -513,7 +556,9 @@ def _participant(
         "participant_id": participant_id,
         "telegram_id": telegram_id,
         "role": role,
+        "flow_id": "F001",
         "team_id": "T001",
+        "status": "active",
         "consent_given": consent_given,
     }
 

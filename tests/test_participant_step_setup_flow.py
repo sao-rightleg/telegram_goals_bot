@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,7 @@ from app.bot.menus import MenuAction
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
 from app.services.participant_flows import ParticipantFlowService
 from app.services.participant_models import TelegramUserContext
+from app.scheduler.calendar import DEFAULT_CHALLENGE_START_DATE, configure_challenge_calendar
 from app.sheets.gateway import FakeSheetsGateway
 from app.storage.dialog_state import DialogStateRepository
 from app.storage.sqlite import initialize_schema
@@ -86,6 +88,8 @@ def test_step_draft_can_edit_one_step_before_confirmation(tmp_path: Path) -> Non
 
 def test_steps_cannot_be_created_without_active_goal_or_outside_window(tmp_path: Path) -> None:
     service, gateway, drafts, _main_bot = _service(tmp_path)
+    gateway._participants[0]["participant_id"] = "P3FECBF0A6BC2"
+    gateway._goals[0]["participant_id"] = "P3FECBF0A6BC2"
     user = TelegramUserContext(telegram_id=1001, chat_id="1001")
     gateway._goals.clear()  # test boundary: simulate missing business prerequisite
 
@@ -97,6 +101,104 @@ def test_steps_cannot_be_created_without_active_goal_or_outside_window(tmp_path:
     closed = service.handle_menu_action(
         user, MenuAction.VIEW_STEPS, occurred_at="2026-09-27T00:00:00+05:00"
     )
+    assert closed.text == "Этап формирования шагов уже завершён."
+    assert drafts.get(1001) is None
+
+
+def test_late_registered_participant_can_create_steps_until_registration_closes(
+    tmp_path: Path,
+) -> None:
+    service, gateway, drafts, _main_bot = _service(tmp_path)
+    gateway._participants[0]["participant_id"] = "P3FECBF0A6BC2"
+    gateway._goals[0]["participant_id"] = "P3FECBF0A6BC2"
+    gateway._participants[0]["created_at"] = "2026-09-20T23:36:38+05:00"
+    gateway._participants[0]["onboarding_completed_at"] = "2026-09-20T23:36:38+05:00"
+    gateway._challenge_flows[0].update({
+        "kickoff_meeting_at": "2026-09-09T00:00:00+05:00",
+        "registration_opens_at": "2026-09-09T00:00:00+05:00",
+        "registration_closes_at": "2026-09-26T00:00:00+05:00",
+        "goal_setup_end_date": "2026-09-13",
+        "steps_setup_end_date": "2026-09-20",
+    })
+
+    response = service.handle_menu_action(
+        TelegramUserContext(telegram_id=1001, chat_id="1001"),
+        MenuAction.VIEW_STEPS,
+        occurred_at="2026-09-21T10:00:00+05:00",
+    )
+
+    assert response.text.startswith("Сформулируем 8 шагов")
+    assert drafts.get(1001) is not None
+
+
+def test_late_onboarding_prompts_first_week_focus_after_eight_steps(
+    tmp_path: Path,
+) -> None:
+    configure_challenge_calendar(
+        start_date=date(2026, 9, 9), working_start_date=date(2026, 9, 21)
+    )
+    try:
+        service, gateway, _drafts, main_bot = _service(tmp_path)
+        gateway._participants[0]["participant_id"] = "P3FECBF0A6BC2"
+        gateway._goals[0]["participant_id"] = "P3FECBF0A6BC2"
+        gateway._participants[0]["created_at"] = "2026-09-20T23:36:38+05:00"
+        gateway._participants[0]["onboarding_completed_at"] = "2026-09-20T23:36:38+05:00"
+        gateway._challenge_flows[0].update({
+            "kickoff_meeting_at": "2026-09-09T00:00:00+05:00",
+            "registration_opens_at": "2026-09-09T00:00:00+05:00",
+            "registration_closes_at": "2026-09-26T00:00:00+05:00",
+            "goal_setup_end_date": "2026-09-13",
+            "steps_setup_end_date": "2026-09-20",
+        })
+        user = TelegramUserContext(telegram_id=1001, chat_id="1001")
+        late_now = "2026-09-21T10:00:00+05:00"
+        service.handle_menu_action(user, MenuAction.VIEW_STEPS, occurred_at=late_now)
+        for number in range(1, 9):
+            service.handle_steps_text(user, f"Суть {number}", occurred_at=late_now)
+            service.handle_steps_text(user, f"Метрика {number}", occurred_at=late_now)
+
+        focus_prompt = service.confirm_steps(user, occurred_at=late_now)
+
+        assert main_bot.sent_messages[-2].text == "Восемь шагов сохранены."
+        assert focus_prompt.text == (
+            "Неделя 1: с 21.09.2026 по 27.09.2026.\n\n"
+            "Выбери обязательный фокус недели."
+        )
+        assert len(focus_prompt.buttons) == 8
+    finally:
+        configure_challenge_calendar(start_date=DEFAULT_CHALLENGE_START_DATE)
+
+
+@pytest.mark.parametrize(
+    ("onboarding_completed_at", "occurred_at"),
+    [
+        ("2026-09-10T10:00:00+05:00", "2026-09-21T10:00:00+05:00"),
+        ("2026-09-20T23:36:38+05:00", "2026-09-26T00:00:01+05:00"),
+    ],
+)
+def test_steps_deadline_is_not_extended_for_existing_or_too_late_participant(
+    tmp_path: Path, onboarding_completed_at: str, occurred_at: str,
+) -> None:
+    service, gateway, drafts, _main_bot = _service(tmp_path)
+    if onboarding_completed_at > "2026-09-13":
+        gateway._participants[0]["participant_id"] = "P3FECBF0A6BC2"
+        gateway._goals[0]["participant_id"] = "P3FECBF0A6BC2"
+    gateway._participants[0]["created_at"] = onboarding_completed_at
+    gateway._participants[0]["onboarding_completed_at"] = onboarding_completed_at
+    gateway._challenge_flows[0].update({
+        "kickoff_meeting_at": "2026-09-09T00:00:00+05:00",
+        "registration_opens_at": "2026-09-09T00:00:00+05:00",
+        "registration_closes_at": "2026-09-26T00:00:00+05:00",
+        "goal_setup_end_date": "2026-09-13",
+        "steps_setup_end_date": "2026-09-20",
+    })
+
+    closed = service.handle_menu_action(
+        TelegramUserContext(telegram_id=1001, chat_id="1001"),
+        MenuAction.VIEW_STEPS,
+        occurred_at=occurred_at,
+    )
+
     assert closed.text == "Этап формирования шагов уже завершён."
     assert drafts.get(1001) is None
 
@@ -262,6 +364,10 @@ def _service(tmp_path: Path):
             "consent_given": True,
         }],
         goals=[{"goal_id": "G001", "participant_id": "P001", "goal_status": "active"}],
+        teams=[{
+            "flow_id": "F001", "team_id": "T001", "captain_id": "C001",
+            "is_active": True,
+        }],
         challenge_flows=[{
             "flow_id": "F001", "flow_status": "active",
             "steps_setup_start_date": "2026-09-14",
