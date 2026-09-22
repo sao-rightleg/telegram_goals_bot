@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from app.bot.clients import BotClient, TelegramInlineButton
 from app.domain import PLANNED_STEP_COUNT
+from app.errors import ActionDiagnosticError, ActionDiagnosticKind
 from app.bot.menus import (
     MenuAction,
     STEPS_CANCEL_CALLBACK,
@@ -925,7 +926,7 @@ class ParticipantFlowService:
         if not _consent_is_given(participant):
             return self._send_consent_response(user, participant=participant, occurred_at=occurred_at)
         if not self._weekly_focus_participant_is_eligible(participant, occurred_at):
-            raise PermissionError("Weekly focus participant is not eligible")
+            raise ActionDiagnosticError(ActionDiagnosticKind.FOCUS_PARTICIPANT_NOT_ELIGIBLE)
 
         participant_id = _string_value(participant.get("participant_id"))
         goal_row = self.sheets.get_active_goal(participant_id)
@@ -952,7 +953,7 @@ class ParticipantFlowService:
 
         state = self.dialog_states.get(user.telegram_id)
         if state is None or state.flow != "idle" or state.step != "weekly_focus":
-            raise PermissionError("Weekly focus selection was not requested")
+            raise ActionDiagnosticError(ActionDiagnosticKind.FOCUS_SELECTION_NOT_REQUESTED)
 
         steps = [_planned_step_from_row(row) for row in self.sheets.list_planned_steps(participant_id, goal.goal_id)]
         selected_step = _step_by_id([step for step in steps if step.step_status != "closed"], step_id)
@@ -1401,19 +1402,19 @@ class ParticipantFlowService:
         active_flow = self._active_registration_flow()
         flow_id = _optional_string_value(active_flow.get("flow_id")) if active_flow else None
         if active_flow is None or not flow_id:
-            raise PermissionError("Goal setup stage is not active")
+            raise ActionDiagnosticError(ActionDiagnosticKind.GOAL_FLOW_UNAVAILABLE)
         participant = self.sheets.find_participant_in_flow(flow_id, user.telegram_id)
         if participant is None:
-            raise PermissionError("Goal participant is not available")
+            raise ActionDiagnosticError(ActionDiagnosticKind.GOAL_PARTICIPANT_NOT_FOUND)
         if not (
             _goal_setup_is_open(active_flow, occurred_at)
             or self._late_onboarding_is_authorized(active_flow, participant, occurred_at)
         ):
-            raise PermissionError("Goal setup stage is not active")
+            raise ActionDiagnosticError(ActionDiagnosticKind.GOAL_STAGE_CLOSED)
         if not _consent_is_given(participant):
-            raise PermissionError("Goal participant consent is missing")
+            raise ActionDiagnosticError(ActionDiagnosticKind.GOAL_CONSENT_MISSING)
         if _string_value(participant.get("status")).strip().lower() != "active":
-            raise PermissionError("Goal participant is not active")
+            raise ActionDiagnosticError(ActionDiagnosticKind.GOAL_PARTICIPANT_INACTIVE)
         if not _string_value(participant.get("participant_id")) or not _string_value(participant.get("flow_id")):
             raise ValueError("Goal participant scope is incomplete")
         return participant
@@ -1484,24 +1485,24 @@ class ParticipantFlowService:
         flow = self._active_registration_flow()
         flow_id = _optional_string_value(flow.get("flow_id")) if flow else None
         if flow is None or not flow_id:
-            raise PermissionError("Steps setup flow is unavailable")
+            raise ActionDiagnosticError(ActionDiagnosticKind.STEPS_FLOW_UNAVAILABLE)
         participant = self.sheets.find_participant_in_flow(flow_id, user.telegram_id)
         if participant is None:
-            raise PermissionError("Steps participant is unavailable")
+            raise ActionDiagnosticError(ActionDiagnosticKind.STEPS_PARTICIPANT_NOT_FOUND)
         if (
             not _consent_is_given(participant)
             or str(participant.get("status", "")).strip().lower() != "active"
             or _role(participant) not in {"participant", "captain"}
         ):
-            raise PermissionError("Steps participant is not eligible")
+            raise ActionDiagnosticError(ActionDiagnosticKind.STEPS_PARTICIPANT_NOT_ELIGIBLE)
         if not (
             _steps_setup_is_open(flow, occurred_at)
             or self._late_onboarding_is_authorized(flow, participant, occurred_at)
         ):
-            raise PermissionError("Steps setup stage is not active")
+            raise ActionDiagnosticError(ActionDiagnosticKind.STEPS_STAGE_CLOSED)
         goal = self.sheets.get_active_goal(_string_value(participant.get("participant_id")))
         if goal is None:
-            raise PermissionError("Active goal is required")
+            raise ActionDiagnosticError(ActionDiagnosticKind.STEPS_ACTIVE_GOAL_MISSING)
         return participant, goal
 
     def _start_steps_creation(

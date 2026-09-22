@@ -21,6 +21,7 @@ from app.logging import setup_logging
 from app.bot.dispatch import TelegramUpdateDispatcher
 from app.bot.rupor_dispatch import RuporUpdateDispatcher
 from app.config import ConfigurationError, Settings, load_settings
+from app.errors import ActionDiagnosticError, action_diagnostic_explanation
 from app.reports.delivery import ReportDeliveryService
 from app.reports.pdf import LocalPdfRenderer
 from app.reports.service import ReportService
@@ -1199,15 +1200,16 @@ def _notify_polling_error(
     update_id: int | None = None,
     consecutive_failures: int | None = None,
 ) -> bool:
-    parts = [event, f"error_type={type(error).__name__}"]
-    if update_id is not None:
-        parts.append(f"update_id={update_id}")
-    if consecutive_failures is not None:
-        parts.append(f"consecutive_failures={consecutive_failures}")
+    text = _polling_error_text(
+        event=event,
+        error=error,
+        update_id=update_id,
+        consecutive_failures=consecutive_failures,
+    )
     try:
         router.send(
             category=NotificationCategory.TECHNICAL_ERROR,
-            text=" ".join(parts),
+            text=text,
             recipients=(),
         )
         return True
@@ -1222,6 +1224,53 @@ def _notify_polling_error(
             },
         )
         return False
+
+
+def _polling_error_text(
+    *,
+    event: str,
+    error: Exception,
+    update_id: int | None,
+    consecutive_failures: int | None,
+) -> str:
+    parts = [event, f"error_type={type(error).__name__}"]
+    if isinstance(error, ActionDiagnosticError):
+        parts.extend(
+            (
+                f"action={error.action}",
+                f"reason={error.reason}",
+                f"hint={error.hint}",
+            )
+        )
+    elif event == "telegram_callback_ack_failed":
+        parts.extend(
+            (
+                "action=callback_acknowledgement",
+                "reason=telegram_api_unavailable",
+                "hint=check_telegram_connection_and_bot_token",
+            )
+        )
+    elif event == "telegram_get_updates_failed":
+        parts.extend(
+            (
+                "action=receive_updates",
+                "reason=telegram_api_unavailable",
+                "hint=check_telegram_connection_and_bot_token",
+            )
+        )
+    if update_id is not None:
+        parts.append(f"update_id={update_id}")
+    if consecutive_failures is not None:
+        parts.append(f"consecutive_failures={consecutive_failures}")
+    text = " ".join(parts)
+    if isinstance(error, ActionDiagnosticError):
+        text = f"{text}\n{action_diagnostic_explanation(error)}"
+    elif event in {"telegram_callback_ack_failed", "telegram_get_updates_failed"}:
+        text = (
+            f"{text}\nПричина: Telegram API не ответил на служебный запрос. "
+            "Что проверить: доступность Telegram и токен соответствующего бота."
+        )
+    return text
 
 
 def _notify_runtime_recovery(router: NotificationRouter, *, event: str) -> bool:

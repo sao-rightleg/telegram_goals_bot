@@ -2,6 +2,8 @@ from pathlib import Path
 
 import pytest
 
+from app.errors import ActionDiagnosticError, ActionDiagnosticKind
+
 from app.bot.clients import BotPurpose, FakeBotClient
 from app.bot.menus import CAPTAIN_MENU_LABELS, PARTICIPANT_MENU_LABELS
 from app.bot.messages import (
@@ -147,12 +149,26 @@ def test_goal_deadline_is_not_extended_for_existing_or_too_late_participant(
         tmp_path, participants=[participant], challenge_flows=[flow]
     )
 
-    with pytest.raises(PermissionError, match="Goal setup stage is not active"):
+    with pytest.raises(ActionDiagnosticError, match="Goal setup stage is not active") as exc_info:
         service.handle_menu_action(
             TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
             "view_goal",
             occurred_at=occurred_at,
         )
+    assert exc_info.value.kind is ActionDiagnosticKind.GOAL_STAGE_CLOSED
+
+
+def test_goal_diagnostic_distinguishes_missing_flow_from_closed_stage(tmp_path: Path) -> None:
+    service, *_ = _build_service(tmp_path)
+
+    with pytest.raises(ActionDiagnosticError) as exc_info:
+        service._eligible_goal_participant(
+            TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+            occurred_at="2026-09-12T10:00:00+05:00",
+        )
+
+    assert exc_info.value.kind is ActionDiagnosticKind.GOAL_FLOW_UNAVAILABLE
+    assert exc_info.value.reason == "flow_unavailable"
 
 
 def test_existing_participant_cannot_gain_late_mode_by_accepting_consent_late(
@@ -172,11 +188,12 @@ def test_existing_participant_cannot_gain_late_mode_by_accepting_consent_late(
         tmp_path, participants=[participant], challenge_flows=[flow]
     )
 
-    with pytest.raises(PermissionError, match="Goal setup stage is not active"):
+    with pytest.raises(ActionDiagnosticError, match="Goal setup stage is not active") as exc_info:
         service.handle_menu_action(
             TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
             "view_goal", occurred_at="2026-09-21T10:00:01+05:00",
         )
+    assert exc_info.value.kind is ActionDiagnosticKind.GOAL_STAGE_CLOSED
 
 
 def test_goal_creation_does_not_create_second_active_goal(tmp_path: Path) -> None:

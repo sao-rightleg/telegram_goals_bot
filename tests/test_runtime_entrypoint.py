@@ -41,6 +41,7 @@ from app.runtime import (
     TelegramPollingRunner,
     validate_runtime_readiness,
 )
+from app.errors import ActionDiagnosticError, ActionDiagnosticKind
 from app.sheets.gateway import FakeSheetsGateway, GoogleSheetsSchemaError
 from app.scheduler.calendar import TIMEZONE_NAME, configure_challenge_calendar, current_challenge_stage
 from app.scheduler.jobs import ReminderJobResult, WeekCloseResult
@@ -1079,6 +1080,33 @@ def test_polling_runner_reports_dispatch_error_and_continues_without_raw_update(
     assert services.participant.starts
 
 
+def test_polling_runner_reports_safe_action_reason_and_operator_hint(tmp_path: Path) -> None:
+    components = _runtime_components(tmp_path)
+    error_bot = FakeBotClient(BotPurpose.ERROR)
+    components = components.with_replacements(
+        main_bot=PollingBot(updates=[_message_update(text="личная цель", update_id=202)]),
+        error_bot=error_bot,
+        notification_router=_router(error_bot=error_bot),
+        dispatcher=DiagnosticFailingDispatcher(),
+    )
+    runner = TelegramPollingRunner(
+        poll_timeout_seconds=1,
+        poll_limit=100,
+        stop_event=StopAfterCalls(limit=1),
+    )
+
+    runner.run(components)
+
+    assert [message.text for message in error_bot.sent_messages] == [
+        "telegram_update_dispatch_failed error_type=ActionDiagnosticError "
+        "action=goal_setup reason=stage_closed "
+        "hint=check_flow_schedule_and_stage_dates update_id=202\n"
+        "Причина: участник пытался записать цель вне разрешённого этапа. "
+        "Что проверить: проверьте даты постановки цели и поздней регистрации."
+    ]
+    assert "личная цель" not in error_bot.sent_messages[0].text
+
+
 def test_polling_runner_acknowledges_callback_and_replies_when_dispatch_fails(tmp_path: Path) -> None:
     components = _runtime_components(tmp_path)
     dispatcher, _services, _dispatcher_error_bot = _dispatcher(tmp_path)
@@ -1105,6 +1133,36 @@ def test_polling_runner_acknowledges_callback_and_replies_when_dispatch_fails(tm
     assert "RuntimeError" not in main_bot.sent_messages[-1].text
     assert "personal report text" not in main_bot.sent_messages[-1].text
     assert events[:2] == ["ack", "dispatch"]
+
+
+def test_polling_runner_explains_callback_ack_failure_without_provider_details(tmp_path: Path) -> None:
+    components = _runtime_components(tmp_path)
+    error_bot = FakeBotClient(BotPurpose.ERROR)
+    main_bot = AckFailingPollingBot(
+        updates=[_callback_update(data=CONSENT_ACCEPT_CALLBACK)]
+    )
+    components = components.with_replacements(
+        main_bot=main_bot,
+        error_bot=error_bot,
+        notification_router=_router(error_bot=error_bot),
+        dispatcher=NoopDispatcher(),
+    )
+    runner = TelegramPollingRunner(
+        poll_timeout_seconds=1,
+        poll_limit=100,
+        stop_event=StopAfterCalls(limit=1),
+    )
+
+    runner.run(components)
+
+    assert [message.text for message in error_bot.sent_messages] == [
+        "telegram_callback_ack_failed error_type=TelegramApiError "
+        "action=callback_acknowledgement reason=telegram_api_unavailable "
+        "hint=check_telegram_connection_and_bot_token update_id=12\n"
+        "Причина: Telegram API не ответил на служебный запрос. "
+        "Что проверить: доступность Telegram и токен соответствующего бота."
+    ]
+    assert "secret-provider-detail" not in error_bot.sent_messages[0].text
 
 
 def test_polling_runner_survives_error_bot_send_failure(tmp_path: Path) -> None:
@@ -1150,9 +1208,15 @@ def test_polling_runner_alerts_once_per_failure_episode_and_reports_recovery(
 
     assert components.main_bot.offsets == [None] * 10
     assert [message.text for message in error_bot.sent_messages] == [
-        "telegram_get_updates_failed error_type=TelegramApiError consecutive_failures=3",
+        "telegram_get_updates_failed error_type=TelegramApiError action=receive_updates "
+        "reason=telegram_api_unavailable hint=check_telegram_connection_and_bot_token "
+        "consecutive_failures=3\nПричина: Telegram API не ответил на служебный запрос. "
+        "Что проверить: доступность Telegram и токен соответствующего бота.",
         "telegram_get_updates_recovered",
-        "telegram_get_updates_failed error_type=TelegramApiError consecutive_failures=3",
+        "telegram_get_updates_failed error_type=TelegramApiError action=receive_updates "
+        "reason=telegram_api_unavailable hint=check_telegram_connection_and_bot_token "
+        "consecutive_failures=3\nПричина: Telegram API не ответил на служебный запрос. "
+        "Что проверить: доступность Telegram и токен соответствующего бота.",
         "telegram_get_updates_recovered",
     ]
     assert all("poll-token-123" not in message.text for message in error_bot.sent_messages)
@@ -1179,7 +1243,10 @@ def test_polling_runner_retries_alert_when_error_bot_was_temporarily_unavailable
 
     assert error_bot.send_attempts == 3
     assert [message.text for message in error_bot.sent_messages] == [
-        "telegram_get_updates_failed error_type=TelegramApiError consecutive_failures=4",
+        "telegram_get_updates_failed error_type=TelegramApiError action=receive_updates "
+        "reason=telegram_api_unavailable hint=check_telegram_connection_and_bot_token "
+        "consecutive_failures=4\nПричина: Telegram API не ответил на служебный запрос. "
+        "Что проверить: доступность Telegram и токен соответствующего бота.",
         "telegram_get_updates_recovered",
     ]
 
@@ -1202,7 +1269,10 @@ def test_polling_runner_retries_recovery_until_error_bot_accepts_it(tmp_path: Pa
 
     assert error_bot.send_attempts == 3
     assert [message.text for message in error_bot.sent_messages] == [
-        "telegram_get_updates_failed error_type=TelegramApiError consecutive_failures=3",
+        "telegram_get_updates_failed error_type=TelegramApiError action=receive_updates "
+        "reason=telegram_api_unavailable hint=check_telegram_connection_and_bot_token "
+        "consecutive_failures=3\nПричина: Telegram API не ответил на служебный запрос. "
+        "Что проверить: доступность Telegram и токен соответствующего бота.",
         "telegram_get_updates_recovered",
     ]
 
@@ -1546,6 +1616,11 @@ class PollingBot(FakeBotClient):
         super().answer_callback_query(callback_query_id)
 
 
+class AckFailingPollingBot(PollingBot):
+    def answer_callback_query(self, callback_query_id: str) -> None:
+        raise TelegramApiError("secret-provider-detail")
+
+
 class FailingPollingBot(FakeBotClient):
     def __init__(self) -> None:
         super().__init__(BotPurpose.MAIN)
@@ -1617,6 +1692,18 @@ class FailingOnceDispatcher:
             self.failed = True
             raise RuntimeError("personal report text /boom")
         return self.delegate.dispatch_update(payload)
+
+
+class DiagnosticFailingDispatcher:
+    def dispatch_update(self, payload: dict[str, object]) -> FlowResponse | None:
+        raise ActionDiagnosticError(
+            ActionDiagnosticKind.GOAL_STAGE_CLOSED,
+        )
+
+
+class NoopDispatcher:
+    def dispatch_update(self, payload: dict[str, object]) -> FlowResponse | None:
+        return None
 
 
 class RecordingPollingRunner:
