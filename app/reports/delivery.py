@@ -5,7 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from app.reports.models import AllTeamsReportData, ReportDeliveryItem, ReportRecipient, ReportType, TeamReportData
+from app.reports.models import (
+    AllTeamsReportData,
+    ReportDeliveryItem,
+    ReportRecipient,
+    ReportRunResult,
+    ReportType,
+    TeamReportData,
+)
 from app.services.notifications import (
     NotificationCategory,
     NotificationRouter,
@@ -48,12 +55,15 @@ class ReportDeliveryPlanner:
         participants: list[SheetRow],
         teams: list[SheetRow],
         trackers: list[SheetRow],
+        team_captains: list[SheetRow] | None = None,
     ) -> ReportDeliveryPlan:
         items: list[ReportDeliveryItem] = []
         problems: list[ReportDeliveryProblem] = []
         participants_by_id = {str(row.get("participant_id")): row for row in participants}
-        team_rows_by_id = {str(row.get("team_id")): row for row in teams}
-        self._append_captain_reports(items, problems, report, participants_by_id, team_rows_by_id)
+        self._append_captain_reports(
+            items, problems, report, participants_by_id,
+            team_captains or _legacy_team_captains(teams),
+        )
         self._append_tracker_reports(items, problems, trackers)
         self._append_global_reports(items, problems, participants)
         return ReportDeliveryPlan(items=items, problems=problems)
@@ -61,19 +71,36 @@ class ReportDeliveryPlanner:
     def _append_captain_reports(
         self, items: list[ReportDeliveryItem], problems: list[ReportDeliveryProblem],
         report: AllTeamsReportData, participants_by_id: dict[str, SheetRow],
-        team_rows_by_id: dict[str, SheetRow],
+        team_captains: list[SheetRow],
     ) -> None:
         for team in report.teams:
-            captain_id = team.captain_id or str(team_rows_by_id.get(team.team_id, {}).get("captain_id") or "")
-            captain = participants_by_id.get(captain_id)
-            self._append_team_items(
-                items=items,
-                problems=problems,
-                team=team,
-                recipient_type="captain",
-                recipient_id=captain_id,
-                chat_id=_chat_id(captain),
-            )
+            assignments = [
+                row for row in team_captains
+                if str(row.get("team_id") or "") == team.team_id
+                and row.get("is_active") is True
+                and (
+                    not self.flow_id
+                    or str(row.get("flow_id") or "") == self.flow_id
+                    or (
+                        not row.get("flow_id")
+                        and row.get("_assignment_source") == "legacy_teams"
+                    )
+                )
+            ]
+            for assignment in assignments:
+                captain_id = str(assignment.get("captain_id") or "")
+                captain = participants_by_id.get(captain_id)
+                if not _eligible_captain(captain, team_id=team.team_id, flow_id=self.flow_id):
+                    problems.append(ReportDeliveryProblem(
+                        "ineligible_captain", "captain", captain_id,
+                        self._scope(f"team:{team.team_id}"),
+                    ))
+                    continue
+                self._append_team_items(
+                    items=items, problems=problems, team=team,
+                    recipient_type="captain", recipient_id=captain_id,
+                    chat_id=_chat_id(captain),
+                )
 
     def _append_tracker_reports(
         self, items: list[ReportDeliveryItem], problems: list[ReportDeliveryProblem],
@@ -269,6 +296,20 @@ def _chat_id(row: SheetRow | None) -> str | None:
     return str(value) if value not in (None, "") else None
 
 
+def _eligible_captain(
+    row: SheetRow | None, *, team_id: str, flow_id: str | None
+) -> bool:
+    if row is None:
+        return False
+    return (
+        row.get("role") == "captain"
+        and str(row.get("status") or "").strip().lower() == "active"
+        and row.get("consent_given") is True
+        and str(row.get("team_id") or "") == team_id
+        and (not flow_id or str(row.get("flow_id") or "") == flow_id)
+    )
+
+
 def _is_active(row: SheetRow) -> bool:
     value = row.get("is_active")
     return value is not False and value != "false"
@@ -285,9 +326,7 @@ class ReportDeliveryService:
         week_number: int,
         plan: ReportDeliveryPlan,
         sent_at: str,
-    ) -> "ReportRunResult":
-        from app.reports.models import ReportRunResult
-
+    ) -> ReportRunResult:
         failed_count = self._report_planning_problems(plan.problems)
         sent_count = skipped_count = 0
         for item in plan.items:
@@ -375,3 +414,17 @@ def _safe_admin_error(message: str) -> str:
     if "личный отчёт" in compact:
         compact = compact.replace("личный отчёт", "personal_report")
     return compact[:300]
+
+
+def _legacy_team_captains(teams: list[SheetRow]) -> list[SheetRow]:
+    return [
+        {
+            "flow_id": team.get("flow_id", ""),
+            "team_id": team.get("team_id", ""),
+            "captain_id": team.get("captain_id", ""),
+            "is_primary": True,
+            "is_active": team.get("is_active", True) is not False,
+        }
+        for team in teams
+        if team.get("captain_id")
+    ]

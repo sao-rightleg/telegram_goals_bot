@@ -208,8 +208,8 @@ def _service(
 def _gateway(*, trackers: list[dict[str, object]] | None = None) -> FakeSheetsGateway:
     return FakeSheetsGateway(
         teams=[
-            {"team_id": "T001", "team_name": "Команда А", "gender": "male", "captain_id": "C001"},
-            {"team_id": "T002", "team_name": "Команда Б", "gender": "female", "captain_id": "C002"},
+            {"flow_id": "FLOW_TEST", "team_id": "T001", "team_name": "Команда А", "gender": "male", "captain_id": "C001", "is_active": True},
+            {"flow_id": "FLOW_TEST", "team_id": "T002", "team_name": "Команда Б", "gender": "female", "captain_id": "C002", "is_active": True},
         ],
         participants=[
             _participant("P001", "Анна Иванова", "participant", "T001", "active"),
@@ -252,6 +252,7 @@ def _participant(
 ) -> dict[str, object]:
     return {
         "participant_id": participant_id,
+        "flow_id": "FLOW_TEST",
         "telegram_id": telegram_id,
         "username": participant_id.lower(),
         "full_name": full_name,
@@ -261,6 +262,7 @@ def _participant(
         "captain_id": "C001",
         "tracker_id": "TR001",
         "status": status,
+        "consent_given": True,
     }
 
 

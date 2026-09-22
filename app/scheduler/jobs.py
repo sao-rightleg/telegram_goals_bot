@@ -16,6 +16,10 @@ from app.scheduler.calendar import (
     is_working_week,
 )
 from app.services.notifications import NotificationCategory, NotificationRouter, Recipient, RecipientType
+from app.services.team_captains import (
+    active_team_captain_assignments,
+    list_team_captain_assignments,
+)
 from app.sheets.gateway import SheetsGateway
 from app.storage.scheduler import SchedulerJobRepository
 
@@ -132,6 +136,7 @@ class SchedulerService:
             role=recipient_role,
             participants=participants,
             teams=teams,
+            team_captains=list_team_captain_assignments(self.sheets),
             trackers=self.sheets.list_trackers(),
             admin_telegram_id=self.admin_telegram_id,
             sitnikov_telegram_id=self.sitnikov_telegram_id,
@@ -418,29 +423,12 @@ class SchedulerService:
             if team.get("is_active") is False:
                 continue
             team_id = _string_value(team.get("team_id"))
-            captain_id = _string_value(team.get("captain_id"))
-            captain = self.sheets.get_participant(captain_id) if captain_id else None
-            chat_id = _chat_id(captain or {})
             team_flow_id = _string_value(team.get("flow_id"))
-            if not _captain_is_eligible(captain, team_id=team_id, flow_id=team_flow_id) or chat_id is None:
-                skipped_count += 1
-                continue
             delivery_event_id = (
                 f"{team_flow_id or flow_id or 'flow'}:{event_id}"
                 if event_id
                 else f"{team_flow_id or 'flow'}:W{week_number:02d}_FOCUS_SUMMARY_CAPTAIN"
             )
-            if not self.repository.claim_event_delivery(
-                event_id=delivery_event_id,
-                recipient_id=captain_id,
-                week_number=week_number,
-                scheduled_for=now.isoformat(),
-                updated_at=now.isoformat(),
-                stale_before=(now - timedelta(minutes=10)).isoformat(),
-            ):
-                skipped_count += 1
-                continue
-
             participants = [
                 row
                 for row in self.sheets.list_participants_by_team(team_id)
@@ -456,39 +444,50 @@ class SchedulerService:
                 focuses=focuses,
                 steps=steps,
             )
-            try:
-                self.notification_router.send(
-                    category=NotificationCategory.OPERATIONAL_NOTIFICATION,
-                    text=text,
-                    recipients=(Recipient(RecipientType.CAPTAIN, chat_id),),
-                )
-                self.repository.record_event_delivery(
-                    event_id=delivery_event_id,
-                    recipient_id=captain_id,
-                    week_number=week_number,
-                    scheduled_for=now.isoformat(),
-                    status="sent",
+            for assignment in active_team_captain_assignments(
+                self.sheets, flow_id=team_flow_id, team_id=team_id
+            ):
+                captain_id = _string_value(assignment.get("captain_id"))
+                captain = self.sheets.get_participant(captain_id) if captain_id else None
+                chat_id = _chat_id(captain or {})
+                if not _captain_is_eligible(
+                    captain, team_id=team_id, flow_id=team_flow_id
+                ) or chat_id is None:
+                    skipped_count += 1
+                    continue
+                if not self.repository.claim_event_delivery(
+                    event_id=delivery_event_id, recipient_id=captain_id,
+                    week_number=week_number, scheduled_for=now.isoformat(),
                     updated_at=now.isoformat(),
-                )
-                sent_count += 1
-            except Exception as exc:  # pragma: no cover - concrete bot exception belongs to adapter
-                self.repository.record_event_delivery(
-                    event_id=delivery_event_id,
-                    recipient_id=captain_id,
-                    week_number=week_number,
-                    scheduled_for=now.isoformat(),
-                    status="failed",
-                    updated_at=now.isoformat(),
-                    error_message=type(exc).__name__,
-                )
-                failed_count += 1
-                self._notify_admin_error(
-                    "weekly_focus_summary_send_failed",
-                    f"weekly_focus_summary_send_failed team_id={team_id}",
-                    participant_id=captain_id,
-                    team_id=team_id,
-                    now=now,
-                )
+                    stale_before=(now - timedelta(minutes=10)).isoformat(),
+                ):
+                    skipped_count += 1
+                    continue
+                try:
+                    self.notification_router.send(
+                        category=NotificationCategory.OPERATIONAL_NOTIFICATION,
+                        text=text,
+                        recipients=(Recipient(RecipientType.CAPTAIN, chat_id),),
+                    )
+                    self.repository.record_event_delivery(
+                        event_id=delivery_event_id, recipient_id=captain_id,
+                        week_number=week_number, scheduled_for=now.isoformat(),
+                        status="sent", updated_at=now.isoformat(),
+                    )
+                    sent_count += 1
+                except Exception as exc:  # pragma: no cover
+                    self.repository.record_event_delivery(
+                        event_id=delivery_event_id, recipient_id=captain_id,
+                        week_number=week_number, scheduled_for=now.isoformat(),
+                        status="failed", updated_at=now.isoformat(),
+                        error_message=type(exc).__name__,
+                    )
+                    failed_count += 1
+                    self._notify_admin_error(
+                        "weekly_focus_summary_send_failed",
+                        f"weekly_focus_summary_send_failed team_id={team_id}",
+                        participant_id=captain_id, team_id=team_id, now=now,
+                    )
 
         return ReminderJobResult(
             sent_count=sent_count,
@@ -838,8 +837,12 @@ class SchedulerService:
         team: dict[str, object],
     ) -> tuple[tuple[dict[str, object], RecipientType, str], ...]:
         recipients: list[tuple[dict[str, object], RecipientType, str]] = []
-        captain_id = _string_value(team.get("captain_id"))
-        if captain_id:
+        flow_id = _string_value(team.get("flow_id"))
+        team_id = _string_value(team.get("team_id"))
+        for assignment in active_team_captain_assignments(
+            self.sheets, flow_id=flow_id, team_id=team_id
+        ):
+            captain_id = _string_value(assignment.get("captain_id"))
             captain = self.sheets.get_participant(captain_id)
             if captain is not None:
                 recipients.append((captain, RecipientType.CAPTAIN, "silent_notification_send_failed"))
@@ -975,6 +978,7 @@ def _steps_summary_recipients(
     role: str,
     participants: list[dict[str, object]],
     teams: list[dict[str, object]],
+    team_captains: list[dict[str, object]],
     trackers: list[dict[str, object]],
     admin_telegram_id: int | None,
     sitnikov_telegram_id: int | None,
@@ -986,16 +990,19 @@ def _steps_summary_recipients(
             _string_value(row.get("participant_id")): row for row in participants
         }
         result = []
-        for team in teams:
-            captain_id = _string_value(team.get("captain_id"))
+        active_team_ids = {_string_value(team.get("team_id")) for team in teams}
+        for assignment in team_captains:
+            team_id = _string_value(assignment.get("team_id"))
+            if assignment.get("is_active") is not True or team_id not in active_team_ids:
+                continue
+            captain_id = _string_value(assignment.get("captain_id"))
             captain = participants_by_id.get(captain_id)
             chat_id = _chat_id(captain or {})
             if captain and chat_id and _captain_is_eligible(
-                captain,
-                team_id=_string_value(team.get("team_id")),
-                flow_id=_string_value(team.get("flow_id")),
+                captain, team_id=team_id,
+                flow_id=_string_value(assignment.get("flow_id")),
             ):
-                result.append((captain_id, chat_id, {_string_value(team.get("team_id"))}, RecipientType.CAPTAIN))
+                result.append((captain_id, chat_id, {team_id}, RecipientType.CAPTAIN))
         return result
     if normalized_role in {"трекер", "tracker"}:
         eligible_trackers = [

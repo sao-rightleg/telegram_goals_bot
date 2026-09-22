@@ -63,6 +63,10 @@ from app.scheduler.calendar import (
     working_weeks_start_date,
 )
 from app.services.notifications import NotificationCategory, NotificationRouter
+from app.services.team_captains import (
+    active_team_captain_assignments,
+    list_team_captain_assignments,
+)
 from app.services.participant_models import (
     FlowResponse,
     Goal,
@@ -471,7 +475,67 @@ class ParticipantFlowService:
                 last_name=value,
                 updated_at=occurred_at,
             )
-            return self._show_registration_captains(user, draft=draft, occurred_at=occurred_at)
+            teams = self.sheets.list_teams()
+            assignments_source = list_team_captain_assignments(self.sheets, teams=teams)
+            assignments = self._captain_team_assignments(
+                draft.flow_id, user.telegram_id, assignments=assignments_source
+            )
+            if len(assignments) > 1:
+                return self._handle_missing_registration_data(
+                    user, draft=draft, occurred_at=occurred_at
+                )
+            if assignments:
+                assignment = assignments[0]
+                if not _captain_assignment_is_unique(assignment, assignments_source):
+                    return self._handle_missing_registration_data(
+                        user, draft=draft, occurred_at=occurred_at
+                    )
+                team = next(
+                    (
+                        row for row in teams
+                        if row.get("flow_id") == draft.flow_id
+                        and row.get("team_id") == assignment.get("team_id")
+                        and _truthy(row.get("is_active"))
+                    ),
+                    None,
+                )
+                if team is None:
+                    return self._handle_missing_registration_data(
+                        user, draft=draft, occurred_at=occurred_at
+                    )
+                primary = [
+                    row for row in assignments_source
+                    if row.get("flow_id") == draft.flow_id
+                    and row.get("team_id") == assignment.get("team_id")
+                    and row.get("is_active") is True
+                    and row.get("is_primary") is True
+                ]
+                if len(primary) != 1:
+                    return self._handle_missing_registration_data(
+                        user, draft=draft, occurred_at=occurred_at
+                    )
+                draft = self._registration_repository().update(
+                    user.telegram_id,
+                    captain_id=_string_value(assignment.get("captain_id")),
+                    updated_at=occurred_at,
+                )
+                captain_team = {
+                    **team,
+                    "captain_id": assignment.get("captain_id"),
+                    "captain_telegram_id": assignment.get("captain_telegram_id"),
+                    "primary_captain_id": primary[0].get("captain_id"),
+                }
+                return self._show_registration_confirmation(
+                    user,
+                    draft=draft,
+                    captain=_draft_captain_row(draft, captain_team),
+                    team=captain_team,
+                    occurred_at=occurred_at,
+                )
+            return self._show_registration_captains(
+                user, draft=draft, occurred_at=occurred_at, teams=teams,
+                assignments=assignments_source,
+            )
         return self._send_registration_response(user, "Продолжи регистрацию кнопками в предыдущем сообщении.")
 
     def select_registration_captain(
@@ -496,11 +560,34 @@ class ParticipantFlowService:
             captain_id=captain_id,
             updated_at=occurred_at,
         )
+        team = self._team_for_captain(draft.flow_id, captain_id)
+        if team is None:
+            return self._show_registration_captains(user, draft=draft, occurred_at=occurred_at)
+        captain = self._with_team_captain_names(
+            captain, flow_id=draft.flow_id,
+            team_id=_string_value(team.get("team_id")), draft=draft,
+        )
+        return self._show_registration_confirmation(
+            user, draft=draft, captain=captain, team=team, occurred_at=occurred_at
+        )
+
+    def _show_registration_confirmation(
+        self,
+        user: TelegramUserContext,
+        *,
+        draft: RegistrationDraft,
+        captain: SheetRow,
+        team: SheetRow,
+        occurred_at: str,
+    ) -> FlowResponse:
         self._set_registration_state(user, step="awaiting_confirmation", draft=draft, occurred_at=occurred_at)
+        captain_names = _captain_names(captain)
+        captain_label = "Капитаны" if len(captain_names) > 1 else "Капитан"
         text = (
             "Проверь данные:\n\n"
             f"Имя и фамилия: {draft.first_name} {draft.last_name}\n"
-            f"Капитан: {_participant_name(captain)}"
+            f"{captain_label}: {', '.join(captain_names)}\n"
+            f"Команда: {_optional_string_value(team.get('team_name')) or 'не указана'}"
         )
         buttons = (
             TelegramInlineButton("✅ Подтвердить", "registration:confirm"),
@@ -611,21 +698,127 @@ class ParticipantFlowService:
     def _registration_team_context(
         self, draft: RegistrationDraft
     ) -> tuple[SheetRow, SheetRow] | None:
+        teams = self.sheets.list_teams()
+        assignment_rows = list_team_captain_assignments(self.sheets)
+        assignments = self._captain_team_assignments(
+            draft.flow_id, draft.telegram_id, assignments=assignment_rows
+        )
+        if (
+            len(assignments) == 1
+            and assignments[0].get("captain_id") == draft.captain_id
+            and _captain_assignment_is_unique(assignments[0], assignment_rows)
+        ):
+            team = next(
+                (
+                    row for row in teams
+                    if row.get("flow_id") == draft.flow_id
+                    and row.get("team_id") == assignments[0].get("team_id")
+                    and _truthy(row.get("is_active"))
+                ),
+                None,
+            )
+            if team is None:
+                return None
+            assignment = assignments[0]
+            if self.sheets.get_participant(_string_value(assignment.get("captain_id"))) is not None:
+                return None
+            primary = [
+                row for row in assignment_rows
+                if row.get("flow_id") == draft.flow_id
+                and row.get("team_id") == assignment.get("team_id")
+                and row.get("is_active") is True
+                and row.get("is_primary") is True
+            ]
+            if len(primary) != 1:
+                return None
+            captain_team = {
+                **team,
+                "captain_id": assignment.get("captain_id"),
+                "captain_telegram_id": assignment.get("captain_telegram_id"),
+                "primary_captain_id": primary[0].get("captain_id"),
+            }
+            captain = _draft_captain_row(draft, captain_team)
+            return self._with_team_captain_names(
+                captain, flow_id=draft.flow_id,
+                team_id=_string_value(captain_team.get("team_id")), draft=draft,
+            ), captain_team
         captain = self._captain_for_flow(draft.flow_id, draft.captain_id or "")
         if captain is None:
             return None
-        team_id = _string_value(captain.get("team_id"))
-        team = next(
+        team = self._team_for_captain(draft.flow_id, draft.captain_id or "")
+        if team is None:
+            return None
+        return self._with_team_captain_names(
+            captain, flow_id=draft.flow_id,
+            team_id=_string_value(team.get("team_id")), draft=draft,
+        ), team
+
+    def _with_team_captain_names(
+        self,
+        captain: SheetRow,
+        *,
+        flow_id: str,
+        team_id: str,
+        draft: RegistrationDraft,
+    ) -> SheetRow:
+        assignments = active_team_captain_assignments(
+            self.sheets, flow_id=flow_id, team_id=team_id
+        )
+        assignments.sort(key=lambda row: row.get("is_primary") is not True)
+        participants = {
+            _optional_string_value(row.get("participant_id")): row
+            for row in self.sheets.list_participants()
+            if row.get("flow_id") == flow_id
+        }
+        names: list[str] = []
+        for assignment in assignments:
+            captain_id = _optional_string_value(assignment.get("captain_id"))
+            row = participants.get(captain_id)
+            if row is not None:
+                name = _participant_name(row)
+            elif captain_id == draft.captain_id:
+                name = " ".join(filter(None, (draft.first_name, draft.last_name)))
+            else:
+                continue
+            if name and name not in names:
+                names.append(name)
+        return {**captain, "captain_names": tuple(names) or (_participant_name(captain),)}
+
+    def _captain_team_assignments(
+        self,
+        flow_id: str,
+        telegram_id: int,
+        *,
+        assignments: list[SheetRow] | None = None,
+    ) -> list[SheetRow]:
+        source = assignments if assignments is not None else list_team_captain_assignments(self.sheets)
+        return [
+            team
+            for team in source
+            if team.get("flow_id") == flow_id
+            and _telegram_id_matches(team.get("captain_telegram_id"), telegram_id)
+            and _optional_string_value(team.get("captain_id"))
+            and _optional_string_value(team.get("team_id"))
+            and _truthy(team.get("is_active"))
+        ]
+
+    def _team_for_captain(self, flow_id: str, captain_id: str) -> SheetRow | None:
+        assignments = [
+            row for row in active_team_captain_assignments(self.sheets, flow_id=flow_id)
+            if row.get("captain_id") == captain_id
+        ]
+        if len(assignments) != 1:
+            return None
+        team_id = assignments[0].get("team_id")
+        return next(
             (
-                row for row in self.sheets.list_teams()
-                if row.get("flow_id") == draft.flow_id
-                and row.get("team_id") == team_id
-                and row.get("captain_id") == draft.captain_id
-                and _truthy(row.get("is_active"))
+                team for team in self.sheets.list_teams()
+                if team.get("flow_id") == flow_id
+                and team.get("team_id") == team_id
+                and _truthy(team.get("is_active"))
             ),
             None,
         )
-        return (captain, team) if team is not None else None
 
     def _write_registered_participant(
         self,
@@ -1241,7 +1434,7 @@ class ParticipantFlowService:
         if not _late_onboarding_is_open(flow, participant, occurred_at):
             return False
         if (
-            _role(participant) != "participant"
+            _role(participant) not in {"participant", "captain"}
             or _string_value(participant.get("status")).strip().lower() != "active"
             or not _consent_is_given(participant)
         ):
@@ -1255,17 +1448,33 @@ class ParticipantFlowService:
             or flow_id != _optional_string_value(flow.get("flow_id"))
         ):
             return False
+        teams = [
+            row
+            for row in self.sheets.list_teams()
+            if row.get("flow_id") == flow_id
+            and row.get("team_id") == team_id
+            and _truthy(row.get("is_active"))
+        ]
+        if len(teams) != 1:
+            return False
+        if _role(participant) == "captain":
+            assignments = active_team_captain_assignments(
+                self.sheets, flow_id=flow_id, team_id=team_id
+            )
+            return any(
+                row.get("captain_id") == participant_id
+                and _telegram_id_matches(row.get("captain_telegram_id"), telegram_id)
+                for row in assignments
+            )
         try:
             expected_participant_id = _registration_participant_id(flow_id, int(telegram_id))
         except (TypeError, ValueError):
             return False
-        if participant_id != expected_participant_id:
-            return False
-        return any(
+        return participant_id == expected_participant_id and any(
             row.get("flow_id") == flow_id
             and row.get("team_id") == team_id
             and _truthy(row.get("is_active"))
-            for row in self.sheets.list_teams()
+            for row in teams
         )
 
     def _eligible_steps_context(
@@ -1417,9 +1626,14 @@ class ParticipantFlowService:
         elif draft.captain_id is None:
             return self._show_registration_captains(user, draft=draft, occurred_at=occurred_at)
         else:
-            return self.select_registration_captain(
-                user,
-                captain_id=draft.captain_id,
+            context = self._registration_team_context(draft)
+            if context is None:
+                return self._show_registration_captains(
+                    user, draft=draft, occurred_at=occurred_at
+                )
+            captain, team = context
+            return self._show_registration_confirmation(
+                user, draft=draft, captain=captain, team=team,
                 occurred_at=occurred_at,
             )
         self._set_registration_state(user, step=step, draft=draft, occurred_at=occurred_at)
@@ -1459,13 +1673,35 @@ class ParticipantFlowService:
         *,
         draft: RegistrationDraft,
         occurred_at: str,
+        teams: list[SheetRow] | None = None,
+        assignments: list[SheetRow] | None = None,
     ) -> FlowResponse:
+        team_rows = teams if teams is not None else self.sheets.list_teams()
+        assignment_rows = (
+            assignments if assignments is not None else list_team_captain_assignments(self.sheets)
+        )
+        primary_counts: dict[str, int] = {}
+        for row in assignment_rows:
+            if (
+                row.get("flow_id") == draft.flow_id
+                and _truthy(row.get("is_active"))
+                and row.get("is_primary") is True
+            ):
+                team_id = str(row.get("team_id") or "")
+                primary_counts[team_id] = primary_counts.get(team_id, 0) + 1
         active_captain_teams = {
             (str(row.get("captain_id", "")), str(row.get("team_id", "")))
-            for row in self.sheets.list_teams()
+            for row in assignment_rows
             if row.get("flow_id") == draft.flow_id
             and row.get("captain_id")
             and _truthy(row.get("is_active"))
+            and row.get("is_primary") is True
+            and primary_counts.get(str(row.get("team_id") or "")) == 1
+        }
+        team_names = {
+            str(row.get("team_id") or ""): str(row.get("team_name") or "Команда")
+            for row in team_rows
+            if row.get("flow_id") == draft.flow_id and _truthy(row.get("is_active"))
         }
         captains = [
             row
@@ -1477,14 +1713,17 @@ class ParticipantFlowService:
             and _captain_matches_team(row, active_captain_teams)
         ]
         buttons = tuple(
-            TelegramInlineButton(_participant_name(captain), f"registration:captain:{captain['participant_id']}")
+            TelegramInlineButton(
+                team_names.get(str(captain.get("team_id") or ""), "Команда"),
+                f"registration:captain:{captain['participant_id']}",
+            )
             for captain in captains
             if captain.get("participant_id")
         )
         if not buttons:
             return self._handle_missing_registration_data(user, draft=draft, occurred_at=occurred_at)
         self._set_registration_state(user, step="awaiting_captain", draft=draft, occurred_at=occurred_at)
-        return self._send_registration_response(user, "Выбери капитана своей команды.", buttons=buttons)
+        return self._send_registration_response(user, "Выбери свою команду.", buttons=buttons)
 
     def _captain_for_flow(self, flow_id: str, captain_id: str) -> SheetRow | None:
         captain = self.sheets.get_participant(captain_id)
@@ -1493,18 +1732,10 @@ class ParticipantFlowService:
         if str(captain.get("status", "active")) != "active" or not _consent_is_given(captain):
             return None
         team_id = _optional_string_value(captain.get("team_id"))
-        team = next(
-            (
-                row
-                for row in self.sheets.list_teams()
-                if row.get("flow_id") == flow_id
-                and row.get("team_id") == team_id
-                and row.get("captain_id") == captain_id
-                and _truthy(row.get("is_active"))
-            ),
-            None,
+        assignments = active_team_captain_assignments(
+            self.sheets, flow_id=flow_id, team_id=team_id
         )
-        if team is None:
+        if not any(row.get("captain_id") == captain_id for row in assignments):
             return None
         return captain
 
@@ -1822,6 +2053,51 @@ def _captain_matches_team(
     return (captain_id, team_id) in active_captain_teams
 
 
+def _telegram_id_matches(value: object, expected: object) -> bool:
+    try:
+        return int(str(value).strip()) == int(str(expected).strip())
+    except (TypeError, ValueError):
+        return False
+
+
+def _captain_assignment_is_unique(team: SheetRow, teams: list[SheetRow]) -> bool:
+    captain_id = _optional_string_value(team.get("captain_id"))
+    telegram_id = team.get("captain_telegram_id")
+    if not captain_id or not _telegram_id_matches(telegram_id, telegram_id):
+        return False
+    active_flow_teams = [
+        row
+        for row in teams
+        if row.get("flow_id") == team.get("flow_id") and _truthy(row.get("is_active"))
+    ]
+    id_matches = [row for row in active_flow_teams if row.get("captain_id") == captain_id]
+    telegram_matches = [
+        row
+        for row in active_flow_teams
+        if _telegram_id_matches(row.get("captain_telegram_id"), telegram_id)
+    ]
+    return len(id_matches) == 1 and len(telegram_matches) == 1
+
+
+def _draft_captain_row(draft: RegistrationDraft, team: SheetRow) -> SheetRow:
+    return {
+        "flow_id": draft.flow_id,
+        "participant_id": team.get("captain_id", ""),
+        "telegram_id": draft.telegram_id,
+        "first_name": draft.first_name or "",
+        "last_name": draft.last_name or "",
+        "full_name": " ".join(
+            value for value in (draft.first_name, draft.last_name) if value
+        ),
+        "role": "captain",
+        "team_id": team.get("team_id", ""),
+        "team_name": team.get("team_name", ""),
+        "captain_id": team.get("captain_id", ""),
+        "status": "active",
+        "consent_given": True,
+    }
+
+
 def _registration_participant_id(flow_id: str, telegram_id: int) -> str:
     digest = sha256(f"{flow_id}:{telegram_id}".encode("utf-8")).hexdigest()[:12].upper()
     return f"P{digest}"
@@ -1834,18 +2110,28 @@ def _registration_participant_row(
     team: SheetRow,
     occurred_at: str,
 ) -> SheetRow:
+    is_captain = (
+        _telegram_id_matches(team.get("captain_telegram_id"), user.telegram_id)
+        and _optional_string_value(team.get("captain_id")) == draft.captain_id
+    )
     return {
         "flow_id": draft.flow_id,
-        "participant_id": _registration_participant_id(draft.flow_id, user.telegram_id),
+        "participant_id": (
+            draft.captain_id
+            if is_captain
+            else _registration_participant_id(draft.flow_id, user.telegram_id)
+        ),
         "telegram_id": user.telegram_id,
         "username": user.username or "",
         "first_name": draft.first_name,
         "last_name": draft.last_name,
         "full_name": f"{draft.first_name} {draft.last_name}",
-        "role": "participant",
+        "role": "captain" if is_captain else "participant",
         "team_id": team.get("team_id", ""),
         "team_name": team.get("team_name", ""),
-        "captain_id": draft.captain_id,
+        "captain_id": (
+            team.get("primary_captain_id", "") if is_captain else draft.captain_id
+        ),
         "tracker_id": team.get("tracker_id", ""),
         "status": "active",
         "participant_stage": "goal_setup",
@@ -1862,18 +2148,28 @@ def _registration_participant_row(
 
 def _registration_success_text(participant: SheetRow, captain: SheetRow, flow: SheetRow) -> str:
     first_name = _optional_string_value(participant.get("first_name")) or "Участник"
-    captain_name = _participant_name(captain) or "не указан"
+    captain_names = _captain_names(captain)
+    captain_label = "Твои капитаны" if len(captain_names) > 1 else "Твой капитан"
     team_name = _optional_string_value(participant.get("team_name")) or "не указана"
     lines = [
         f"{first_name}, ты успешно зарегистрирован в проекте «Смерть иллюзий».",
         "",
-        f"Твой капитан — {captain_name}.",
+        f"{captain_label} — {', '.join(captain_names)}.",
         f"Твоя команда — {team_name}.",
     ]
     schedule = _registration_schedule_lines(flow)
     if schedule:
         lines.extend(("", "Краткое расписание:", *schedule))
     return "\n".join(lines)
+
+
+def _captain_names(captain: SheetRow) -> tuple[str, ...]:
+    configured = captain.get("captain_names")
+    if isinstance(configured, (list, tuple)):
+        names = tuple(str(value).strip() for value in configured if str(value).strip())
+        if names:
+            return names
+    return (_participant_name(captain) or "не указан",)
 
 
 def _registration_schedule_lines(flow: SheetRow) -> tuple[str, ...]:

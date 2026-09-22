@@ -47,6 +47,12 @@ class _Spreadsheets:
         def apply():
             id_to_name = {index: name for index, name in enumerate(self.api.headers, start=1)}
             for request in body["requests"]:
+                add_sheet = request.get("addSheet")
+                if add_sheet:
+                    title = add_sheet["properties"]["title"]
+                    self.api.headers[title] = []
+                    id_to_name[len(self.api.headers)] = title
+                    continue
                 update = request.get("updateCells")
                 if not update:
                     continue
@@ -92,6 +98,34 @@ def test_business_schema_migration_adds_missing_headers_and_second_run_is_noop(
     assert api.batch_calls == 1
 
 
+def test_business_schema_migration_adds_captain_telegram_id_once(
+    monkeypatch,
+) -> None:
+    headers = {
+        name: list(required)
+        for name, required in migration.REQUIRED_HEADERS.items()
+    }
+    headers["Teams"] = ["flow_id"]
+    api = _SheetsApi(headers)
+    monkeypatch.setenv("GOOGLE_SHEETS_ID", "sheet-id")
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/private/credentials.json")
+    monkeypatch.setattr(
+        migration.Credentials, "from_service_account_file",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(migration, "build", lambda *_args, **_kwargs: api)
+
+    migration.main()
+
+    assert api.headers["Teams"] == ["flow_id", "captain_telegram_id"]
+    assert api.headers["Teams"].count("captain_telegram_id") == 1
+    assert api.batch_calls == 1
+
+    migration.main()
+    assert api.headers["Teams"] == ["flow_id", "captain_telegram_id"]
+    assert api.batch_calls == 1
+
+
 def test_business_schema_migration_fails_before_write_when_sheet_is_missing(
     monkeypatch,
 ) -> None:
@@ -110,3 +144,21 @@ def test_business_schema_migration_fails_before_write_when_sheet_is_missing(
     with pytest.raises(SystemExit, match="Missing required sheets"):
         migration.main()
     assert api.batch_calls == 0
+
+
+def test_business_schema_migration_creates_team_captains_sheet(monkeypatch) -> None:
+    headers = {name: list(required) for name, required in migration.REQUIRED_HEADERS.items()}
+    del headers["TeamCaptains"]
+    api = _SheetsApi(headers)
+    monkeypatch.setenv("GOOGLE_SHEETS_ID", "sheet-id")
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/private/credentials.json")
+    monkeypatch.setattr(
+        migration.Credentials, "from_service_account_file",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(migration, "build", lambda *_args, **_kwargs: api)
+
+    migration.main()
+
+    assert api.headers["TeamCaptains"] == list(migration.REQUIRED_HEADERS["TeamCaptains"])
+    assert api.batch_calls == 2

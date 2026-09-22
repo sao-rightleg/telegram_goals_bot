@@ -213,6 +213,7 @@ Columns:
 - `team_name`
 - `gender`
 - `captain_id`
+- `captain_telegram_id`
 - `tracker_id`
 - `is_active`
 - `created_at`
@@ -221,6 +222,30 @@ Columns:
 Allowed `gender` values:
 - `male`
 - `female`
+
+`captain_telegram_id` is filled before team onboarding. It lets the captain be
+the first person from the team to register. The bot creates that captain's
+`Participants` row with `role = captain` and `participant_id = captain_id`.
+
+`captain_id` and `captain_telegram_id` in `Teams` are retained temporarily for
+backward compatibility. New multi-captain configuration uses `TeamCaptains`.
+
+## TeamCaptains
+
+Stores one row per captain assignment. A team may have multiple active captains.
+
+Columns:
+- `flow_id`
+- `team_id`
+- `captain_id`
+- `captain_telegram_id`
+- `is_primary`
+- `is_active`
+- `created_at`
+- `updated_at`
+
+Exactly one active captain per active team must have `is_primary = TRUE`.
+All active captains receive team-scoped captain notifications and reports.
 
 ## Trackers
 

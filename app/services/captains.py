@@ -39,6 +39,7 @@ from app.bot.messages import (
 )
 from app.scheduler.calendar import current_challenge_week_number, is_weekly_report_open, is_working_week
 from app.services.notifications import NotificationCategory, NotificationRouter
+from app.services.team_captains import active_team_captain_assignments
 from app.services.participant_models import FlowResponse, TelegramUserContext
 from app.services.weekly_report_models import WeeklyReportStatus
 from app.sheets.gateway import SheetRow, SheetsGateway
@@ -53,34 +54,12 @@ class CaptainService:
     drafts: WeeklyReportDraftRepository | None = None
 
     def show_team(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
-        captain = self.sheets.find_participant_by_telegram_id(user.telegram_id)
-        if captain is None:
-            return self._handle_unknown_user(user, occurred_at=occurred_at)
-
-        if not _consent_is_given(captain):
-            response = FlowResponse(
-                chat_id=user.chat_id,
-                text=CONSENT_TEXT,
-                buttons=(CONSENT_ACCEPT_BUTTON, CONSENT_DECLINE_BUTTON),
-            )
-            self.main_bot.send_message(
-                chat_id=user.chat_id,
-                text=response.text,
-                buttons=response.buttons,
-            )
-            return response
-
-        if _role(captain) != "captain":
-            return self._send_response(user, text=CAPTAIN_ONLY_TEXT)
-
-        team_id = _optional_string_value(captain.get("team_id"))
-        if team_id is None:
-            return self._handle_missing_data(
-                user,
-                participant=captain,
-                missing_type="team_id",
-                occurred_at=occurred_at,
-            )
+        if user.chat_id != str(user.telegram_id):
+            return self._send_response(user, text=CAPTAIN_PRIVATE_CHAT_ONLY_TEXT)
+        context = self._resolve_captain(user, occurred_at=occurred_at)
+        if isinstance(context, FlowResponse):
+            return context
+        _captain, _captain_id, team_id = context
 
         team_members = self.sheets.list_participants_by_team(team_id)
         return self._send_response(user, text=_format_team_view(team_members))
@@ -490,11 +469,10 @@ class CaptainService:
         if _normalized_string(captain.get("status")) != "active" or not captain_id or not flow_id:
             return self._send_response(user, text=CAPTAIN_ONLY_TEXT)
         has_active_assignment = any(
-            team.get("is_active") is True
-            and _string_value(team.get("team_id")) == team_id
-            and _string_value(team.get("captain_id")) == captain_id
-            and _string_value(team.get("flow_id")) == flow_id
-            for team in self.sheets.list_teams()
+            assignment.get("captain_id") == captain_id
+            for assignment in active_team_captain_assignments(
+                self.sheets, flow_id=flow_id, team_id=team_id
+            )
         )
         if not has_active_assignment:
             return self._send_response(user, text=CAPTAIN_ONLY_TEXT)
@@ -521,7 +499,9 @@ class CaptainService:
 
         target_id = _string_value(target.get("participant_id"))
         target_team_id = _optional_string_value(target.get("team_id"))
-        if target_team_id != team_id:
+        captain_flow_id = _optional_string_value(captain.get("flow_id"))
+        target_flow_id = _optional_string_value(target.get("flow_id"))
+        if target_team_id != team_id or target_flow_id != captain_flow_id:
             return self._send_response(user, text=CAPTAIN_FORBIDDEN_PARTICIPANT_TEXT)
         if _is_dropped(target):
             return self._send_response(user, text=CAPTAIN_DROPPED_PARTICIPANT_TEXT)
@@ -561,13 +541,21 @@ class CaptainService:
 
         captain_id = _string_value(captain.get("participant_id"))
         team_id = _optional_string_value(captain.get("team_id"))
-        if team_id is None:
+        flow_id = _optional_string_value(captain.get("flow_id"))
+        if team_id is None or flow_id is None:
             return self._handle_missing_data(
                 user,
                 participant=captain,
                 missing_type="team_id",
                 occurred_at=occurred_at,
             )
+        if _normalized_string(captain.get("status")) != "active" or not any(
+            assignment.get("captain_id") == captain_id
+            for assignment in active_team_captain_assignments(
+                self.sheets, flow_id=flow_id, team_id=team_id
+            )
+        ):
+            return self._send_response(user, text=CAPTAIN_ONLY_TEXT)
         return captain, captain_id, team_id
 
     def _selected_steps_are_valid(

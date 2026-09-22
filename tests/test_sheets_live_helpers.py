@@ -169,7 +169,14 @@ def minimal_live_sheets(**overrides: list[list[object]]) -> dict[str, list[list[
                 "2026-05-20T10:00:00+05:00",
             ],
         ],
-        "Teams": [["flow_id", "team_id", "team_name", "gender", "captain_id", "tracker_id", "is_active"]],
+        "Teams": [[
+            "flow_id", "team_id", "team_name", "gender", "captain_id",
+            "captain_telegram_id", "tracker_id", "is_active",
+        ]],
+        "TeamCaptains": [[
+            "flow_id", "team_id", "captain_id", "captain_telegram_id",
+            "is_primary", "is_active", "created_at", "updated_at",
+        ]],
         "Trackers": [["tracker_id", "telegram_id", "full_name", "gender_scope", "role", "is_active"]],
         "Goals": [["goal_id", "participant_id", "goal_status"], ["G001", "P001", "active"]],
         "PlannedSteps": [

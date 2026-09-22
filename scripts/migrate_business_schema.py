@@ -13,7 +13,11 @@ REQUIRED_HEADERS = {
         "bot_started_at", "consent_status", "flow_id",
         "last_stage_updated_at", "onboarding_completed_at", "participant_stage",
     ),
-    "Teams": ("flow_id",),
+    "Teams": ("flow_id", "captain_telegram_id"),
+    "TeamCaptains": (
+        "flow_id", "team_id", "captain_id", "captain_telegram_id",
+        "is_primary", "is_active", "created_at", "updated_at",
+    ),
     "PlannedSteps": (
         "step_number", "step_title", "step_description", "step_metric",
         "updated_at", "created_at",
@@ -37,6 +41,19 @@ def main() -> None:
         item["properties"]["title"]: item["properties"]
         for item in metadata.get("sheets", [])
     }
+    if "TeamCaptains" not in properties:
+        sheets.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"requests": [{"addSheet": {"properties": {"title": "TeamCaptains"}}}]},
+        ).execute()
+        metadata = sheets.spreadsheets().get(
+            spreadsheetId=spreadsheet_id,
+            fields="sheets.properties(sheetId,title,gridProperties.columnCount)",
+        ).execute()
+        properties = {
+            item["properties"]["title"]: item["properties"]
+            for item in metadata.get("sheets", [])
+        }
     missing_sheets = [name for name in REQUIRED_HEADERS if name not in properties]
     if missing_sheets:
         raise SystemExit(f"Missing required sheets: {missing_sheets}")

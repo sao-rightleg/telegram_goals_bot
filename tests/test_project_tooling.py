@@ -112,33 +112,11 @@ def test_deploy_test_workflow_has_bounded_business_schema_migration() -> None:
     job = workflow[job_start:job_end]
     assert "if: inputs.mode == 'migrate_business_schema'" in job
     assert "environment: test" in job
-    assert 'spreadsheet_id = os.environ["GOOGLE_SHEETS_ID"]' in job
-    assert "https://www.googleapis.com/auth/spreadsheets" in job
-    for header in (
-        "bot_started_at",
-        "consent_status",
-        "flow_id",
-        "last_stage_updated_at",
-        "onboarding_completed_at",
-        "participant_stage",
-        "step_description",
-        "step_metric",
-        "created_at",
-        "metric_status",
-        "metric_result_text",
-    ):
-        assert f'"{header}"' in job
-    assert '"Teams": ("flow_id",)' in job
-    assert 'range=f"\'{sheet_name}\'"' in job
-    assert 'valueRenderOption="FORMULA"' in job
-    assert "used_width = max((len(row) for row in rows), default=0)" in job
-    assert "start = max(len(headers), used_width)" in job
-    assert "missing_sheets" in job
-    assert "plans.append((sheet_name, missing, start, end))" in job
-    assert "if requests:" in job
-    assert "for header in required[sheet_name] if header not in verified" in job
-    assert '"pasteType": "PASTE_FORMAT"' in job
-    assert "Schema verification failed" in job
+    assert '. "$TEST_APP_DIR/shared/.env"' in job
+    assert (
+        '"$TEST_APP_DIR/current/.venv/bin/python" '
+        'scripts/migrate_business_schema.py'
+    ) in job
 
 
 def test_production_deploy_runs_shared_business_schema_migration_before_config_check() -> None:
@@ -148,11 +126,28 @@ def test_production_deploy_runs_shared_business_schema_migration_before_config_c
     config_check = './.venv/bin/telegram-goals-bot --env-file "$APP_DIR/shared/.env" check-config'
     assert migration_call in workflow
     assert workflow.index(migration_call) < workflow.index(config_check)
-    for header in ("step_description", "step_metric", "metric_status", "metric_result_text"):
+    for header in (
+        "captain_telegram_id", "step_description", "step_metric",
+        "metric_status", "metric_result_text",
+    ):
         assert f'"{header}"' in migration
     assert "valueRenderOption=\"FORMULA\"" in migration
     assert '"pasteType": "PASTE_FORMAT"' in migration
     assert "Schema verification failed" in migration
+
+
+def test_test_deploy_runs_shared_business_schema_migration_before_config_check() -> None:
+    workflow = DEPLOY_TEST_WORKFLOW.read_text(encoding="utf-8")
+    migration_call = './.venv/bin/python scripts/migrate_business_schema.py'
+    config_check = (
+        './.venv/bin/telegram-goals-bot --env-file '
+        '"$TEST_APP_DIR/shared/.env" check-config'
+    )
+    deploy_job = workflow[: workflow.index("\n  inspect-business-sheet:")]
+
+    assert '. "$TEST_APP_DIR/shared/.env"' in deploy_job
+    assert migration_call in deploy_job
+    assert deploy_job.index(migration_call) < deploy_job.index(config_check)
 
 
 def test_deploy_test_workflow_can_create_idempotent_smoke_flow_copy() -> None:

@@ -161,6 +161,7 @@ def test_steps_stage_reminds_incomplete_participants_and_sends_scoped_role_summa
         {**_participant("P002", 1002, consent=True, team_id="T001", full_name="Не готов Один"), "flow_id": "FLOW_1"},
         {**_participant("P003", 1003, consent=True, team_id="T002", full_name="Не готов Два"), "flow_id": "FLOW_1"},
         {**_participant("C001", 2001, consent=True, role="captain", team_id="T001", full_name="Капитан Один"), "flow_id": "FLOW_1"},
+        {**_participant("C003", 2003, consent=True, role="captain", team_id="T001", full_name="Второй капитан"), "flow_id": "FLOW_1"},
         {**_participant("C002", 2002, consent=True, role="captain", team_id="T002", full_name="Капитан Два"), "flow_id": "FLOW_1"},
     ]
     goals = [_goal("G001", "P001"), _goal("G002", "P002"), _goal("GC1", "C001"), _goal("GC2", "C002")]
@@ -176,6 +177,10 @@ def test_steps_stage_reminds_incomplete_participants_and_sends_scoped_role_summa
         teams=[
             {"flow_id": "FLOW_1", "team_id": "T001", "team_name": "Первая", "captain_id": "C001", "tracker_id": "TR001", "is_active": True},
             {"flow_id": "FLOW_1", "team_id": "T002", "team_name": "Вторая", "captain_id": "C002", "tracker_id": "TR002", "is_active": True},
+        ],
+        team_captains=[
+            {"flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C001", "is_primary": True, "is_active": True},
+            {"flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C003", "is_primary": False, "is_active": True},
         ],
         trackers=[
             {"tracker_id": "TR001", "telegram_id": 3001, "role": "tracker", "is_active": True},
@@ -206,13 +211,18 @@ def test_steps_stage_reminds_incomplete_participants_and_sends_scoped_role_summa
             recipient_role=role, now=GOAL_SETUP_START, flow_id="FLOW_1", event_id=event_id,
         )
 
-    assert result == ReminderJobResult(sent_count=4, skipped_count=1, failed_count=0)
-    assert [message.chat_id for message in main_bot.sent_messages] == ["1002", "1003", "2001", "2002"]
+    assert result == ReminderJobResult(sent_count=5, skipped_count=1, failed_count=0)
+    assert [message.chat_id for message in main_bot.sent_messages] == [
+        "1002", "1003", "2001", "2003", "2002",
+    ]
     messages = service.notification_router.notification_bot.sent_messages
-    assert [message.chat_id for message in messages] == ["2001", "2002", "3001", "3002", "4001", "5001"]
+    assert [message.chat_id for message in messages] == [
+        "2001", "2003", "2002", "3001", "3002", "4001", "5001",
+    ]
     assert "Команда «Первая»" in messages[0].text and "Команда «Вторая»" not in messages[0].text
-    assert "Команда «Вторая»" in messages[3].text and "Команда «Первая»" not in messages[3].text
-    assert "1/5 (20%)" in messages[-1].text
+    assert messages[0].text == messages[1].text
+    assert "Команда «Вторая»" in messages[4].text and "Команда «Первая»" not in messages[4].text
+    assert "1/6 (16,7%)" in messages[-1].text
 
 
 def test_reminder_sends_only_to_active_consenting_participants_without_report(tmp_path: Path) -> None:
@@ -453,6 +463,39 @@ def test_weekly_focus_summary_to_captain_contains_team_percentages_and_selected_
     assert "Неактивный Участник" not in message.text
     assert "Трекер Команды" not in message.text
     assert message.buttons == ()
+
+
+def test_captain_operational_messages_are_sent_to_both_team_captains(
+    tmp_path: Path,
+) -> None:
+    participants = [
+        _participant("C001", 9001, consent=True, role="captain", full_name="Первый"),
+        _participant("C002", 9002, consent=True, role="captain", full_name="Второй"),
+        _participant("P001", 1001, consent=True, full_name="Участник"),
+    ]
+    for participant in participants:
+        participant["flow_id"] = "FLOW_1"
+    team = {"flow_id": "FLOW_1", "team_id": "T001", "team_name": "Команда"}
+    assignments = [
+        {"flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C001", "is_primary": True, "is_active": True},
+        {"flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C002", "is_primary": False, "is_active": True},
+    ]
+    service, _gateway, _main_bot, _error_bot, notification_bot = _service_with_notification_bot(
+        tmp_path, participants=participants, teams=[team], team_captains=assignments,
+        trackers=[], weekly_focus=[],
+    )
+
+    summary = service.send_weekly_focus_summary_to_captains(
+        now=MONDAY_START.replace(hour=21), flow_id="FLOW_1"
+    )
+
+    assert summary.sent_count == 2
+    assert [message.chat_id for message in notification_bot.sent_messages] == ["9001", "9002"]
+
+    notification_bot.sent_messages.clear()
+    closed = service.close_week(now=NOW)
+    assert closed.notified_team_count == 1
+    assert [message.chat_id for message in notification_bot.sent_messages] == ["9001", "9002"]
 
 
 def test_weekly_focus_summary_does_not_mix_participants_from_another_flow(
@@ -1056,6 +1099,7 @@ def _service_with_notification_bot(
     participants: list[dict[str, object]],
     teams: list[dict[str, object]],
     trackers: list[dict[str, object]],
+    team_captains: list[dict[str, object]] | None = None,
     goals: list[dict[str, object]] | None = None,
     planned_steps: list[dict[str, object]] | None = None,
     weekly_focus: list[dict[str, object]] | None = None,
@@ -1066,6 +1110,7 @@ def _service_with_notification_bot(
         gateway=FakeSheetsGateway(
             participants=participants,
             teams=teams,
+            team_captains=team_captains or [],
             trackers=trackers,
             goals=goals or [],
             planned_steps=planned_steps or [],

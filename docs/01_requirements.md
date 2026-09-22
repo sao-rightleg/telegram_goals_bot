@@ -89,6 +89,14 @@ Participant cannot:
 
 Captain is also a participant.
 
+Captain may be the first person from a new team to register. Admin pre-fills an
+active `Teams` row and one or more `TeamCaptains` rows with stable captain and
+Telegram IDs. On `/start`, the bot registers each matching Telegram user
+directly as that team's captain without showing captain selection. Exactly one
+captain is primary. Every active captain receives the same team-scoped
+notifications, Telegram reports, and PDF reports and can use all captain menu
+actions. Captains use the same goal, eight-step, and weekly-focus flows as participants.
+
 Captain has additional responsibilities:
 - receives notifications about silent participants in own team
 - manually adds reports for participants in own team

@@ -1,7 +1,12 @@
 from pathlib import Path
 
 from app.bot.clients import BotPurpose, FakeBotClient, OutgoingMessage
-from app.reports.delivery import ReportDeliveryPlanner
+from app.reports.delivery import (
+    ReportDeliveryPlan,
+    ReportDeliveryPlanner,
+    ReportDeliveryProblem,
+    ReportDeliveryService,
+)
 from app.reports.models import (
     AllTeamsReportData,
     ReportDeliveryItem,
@@ -29,6 +34,72 @@ def test_captain_plan_contains_only_own_team_summary_and_pdf() -> None:
     ]
     assert all(item.recipient.recipient_id == "C001" for item in captain_items)
     assert all(item.recipient.chat_id == "2001" for item in captain_items)
+
+
+def test_same_team_summary_and_pdf_are_delivered_to_both_captains() -> None:
+    participants = _participants() + [
+        {
+            "participant_id": "C003", "role": "captain", "team_id": "T001",
+            "telegram_id": 2003, "status": "active", "consent_given": True,
+        }
+    ]
+    assignments = [
+        {"team_id": "T001", "captain_id": "C001", "is_primary": True, "is_active": True},
+        {"team_id": "T001", "captain_id": "C003", "is_primary": False, "is_active": True},
+        {"team_id": "T002", "captain_id": "C002", "is_primary": True, "is_active": True},
+    ]
+
+    plan = _planner().build_plan(
+        _report_data(), participants=participants, teams=_teams(), trackers=[],
+        team_captains=assignments,
+    )
+    team_one = [item for item in plan.items if item.scope_id == "T001"]
+
+    assert {
+        (item.recipient.recipient_id, item.recipient.chat_id, item.report_type)
+        for item in team_one
+    } == {
+        ("C001", "2001", ReportType.TELEGRAM_TEAM_SUMMARY),
+        ("C001", "2001", ReportType.PDF_TEAM_REPORT),
+        ("C003", "2003", ReportType.TELEGRAM_TEAM_SUMMARY),
+        ("C003", "2003", ReportType.PDF_TEAM_REPORT),
+    }
+
+
+def test_ineligible_or_cross_flow_captain_assignments_receive_no_report() -> None:
+    planner = ReportDeliveryPlanner(**{**_planner().__dict__, "flow_id": "FLOW_1"})
+    participants = [
+        {
+            "participant_id": "C001", "role": "participant", "team_id": "T001",
+            "flow_id": "FLOW_1", "telegram_id": 2001,
+            "status": "active", "consent_given": True,
+        },
+        {
+            "participant_id": "C003", "role": "captain", "team_id": "T001",
+            "flow_id": "FLOW_1", "telegram_id": 2003,
+            "status": "active", "consent_given": True,
+        },
+    ]
+    assignments = [
+        {
+            "flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C001",
+            "is_primary": True, "is_active": True,
+        },
+        {
+            "flow_id": "FLOW_2", "team_id": "T001", "captain_id": "C003",
+            "is_primary": False, "is_active": True,
+        },
+    ]
+
+    plan = planner.build_plan(
+        _report_data(), participants=participants, teams=_teams(), trackers=[],
+        team_captains=assignments,
+    )
+
+    assert [item for item in plan.items if item.recipient.recipient_type == "captain"] == []
+    assert [(problem.reason, problem.recipient_id) for problem in plan.problems] == [
+        ("ineligible_captain", "C001")
+    ]
 
 
 def test_tracker_plan_contains_only_assigned_team_reports() -> None:
@@ -127,6 +198,8 @@ def test_missing_chat_id_is_planned_as_problem_not_delivery_item() -> None:
             "role": "captain",
             "team_id": "T001",
             "full_name": "Капитан без чата",
+            "status": "active",
+            "consent_given": True,
         }
     ]
 
@@ -142,8 +215,6 @@ def test_missing_chat_id_is_planned_as_problem_not_delivery_item() -> None:
 
 
 def test_delivery_sends_text_and_documents_through_notification_bot(tmp_path: Path) -> None:
-    from app.reports.delivery import ReportDeliveryService
-
     service, _repository, _main_bot, _error_bot, notification_bot = _delivery_service(tmp_path)
     captains_only = [row for row in _participants() if row["role"] == "captain"]
     plan = _planner().build_plan(_report_data(), participants=captains_only, teams=_teams(), trackers=[])
@@ -156,8 +227,6 @@ def test_delivery_sends_text_and_documents_through_notification_bot(tmp_path: Pa
 
 
 def test_delivery_skips_already_successful_items(tmp_path: Path) -> None:
-    from app.reports.delivery import ReportDeliveryService
-
     service, repository, _main_bot, _error_bot, notification_bot = _delivery_service(tmp_path)
     plan = _single_item_plan()
     repository.record_delivery_attempt(
@@ -178,8 +247,6 @@ def test_delivery_skips_already_successful_items(tmp_path: Path) -> None:
 
 
 def test_delivery_records_sent_items_in_repository(tmp_path: Path) -> None:
-    from app.reports.delivery import ReportDeliveryService
-
     service, repository, _main_bot, _error_bot, _notification_bot = _delivery_service(tmp_path)
 
     service.deliver_plan(week_number=5, plan=_single_item_plan(), sent_at="2026-07-12T23:59:00+05:00")
@@ -194,8 +261,6 @@ def test_delivery_records_sent_items_in_repository(tmp_path: Path) -> None:
 
 
 def test_missing_chat_id_notifies_admin_and_continues(tmp_path: Path) -> None:
-    from app.reports.delivery import ReportDeliveryProblem, ReportDeliveryPlan, ReportDeliveryService
-
     service, _repository, _main_bot, error_bot, notification_bot = _delivery_service(tmp_path)
     plan = ReportDeliveryPlan(
         items=_single_item_plan().items,
@@ -219,8 +284,6 @@ def test_missing_chat_id_notifies_admin_and_continues(tmp_path: Path) -> None:
 
 
 def test_send_failure_notifies_admin_records_failure_and_continues(tmp_path: Path) -> None:
-    from app.reports.delivery import ReportDeliveryService
-
     service, _repository, _main_bot, error_bot, notification_bot = _delivery_service(
         tmp_path,
         notification_bot=FailingOnceBot(BotPurpose.NOTIFICATION),
@@ -236,8 +299,6 @@ def test_send_failure_notifies_admin_records_failure_and_continues(tmp_path: Pat
 
 
 def test_admin_error_is_sanitized(tmp_path: Path) -> None:
-    from app.reports.delivery import ReportDeliveryService
-
     service, _repository, _main_bot, error_bot, _notification_bot = _delivery_service(
         tmp_path,
         notification_bot=AlwaysFailingBot(BotPurpose.NOTIFICATION),
@@ -280,9 +341,7 @@ def _delivery_service(
     tmp_path: Path,
     *,
     notification_bot: FakeBotClient | None = None,
-) -> tuple[object, ReportStateRepository, FakeBotClient, FakeBotClient, FakeBotClient]:
-    from app.reports.delivery import ReportDeliveryService
-
+) -> tuple[ReportDeliveryService, ReportStateRepository, FakeBotClient, FakeBotClient, FakeBotClient]:
     db_path = tmp_path / "state.sqlite3"
     initialize_schema(db_path)
     repository = ReportStateRepository(db_path)
@@ -375,8 +434,14 @@ def _team(team_id: str, name: str, captain_id: str) -> TeamReportData:
 
 def _participants() -> list[dict[str, object]]:
     return [
-        {"participant_id": "C001", "role": "captain", "team_id": "T001", "telegram_id": 2001},
-        {"participant_id": "C002", "role": "captain", "team_id": "T002", "telegram_id": 2002},
+        {
+            "participant_id": "C001", "role": "captain", "team_id": "T001",
+            "telegram_id": 2001, "status": "active", "consent_given": True,
+        },
+        {
+            "participant_id": "C002", "role": "captain", "team_id": "T002",
+            "telegram_id": 2002, "status": "active", "consent_given": True,
+        },
         {"participant_id": "A001", "role": "admin", "telegram_id": 9001},
         {"participant_id": "S001", "role": "sitnikov", "telegram_id": 9002},
     ]

@@ -203,6 +203,10 @@ def _service(
     drafts = WeeklyReportDraftRepository(db_path)
     gateway = FakeSheetsGateway(
         participants=participants if participants is not None else [_captain(), _participant()],
+        teams=[{
+            "flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C001",
+            "captain_telegram_id": 2001, "is_active": True,
+        }],
         goals=goals if goals is not None else [_goal()],
         planned_steps=planned_steps if planned_steps is not None else _planned_steps(),
         weekly_reports=weekly_reports or [],
@@ -237,6 +241,7 @@ def _captain_user() -> TelegramUserContext:
 def _captain() -> dict[str, object]:
     return {
         "participant_id": "C001",
+        "flow_id": "FLOW_1",
         "telegram_id": 2001,
         "role": "captain",
         "team_id": "T001",
@@ -249,6 +254,7 @@ def _captain() -> dict[str, object]:
 def _participant() -> dict[str, object]:
     return {
         "participant_id": "P001",
+        "flow_id": "FLOW_1",
         "telegram_id": 1001,
         "role": "participant",
         "team_id": "T001",

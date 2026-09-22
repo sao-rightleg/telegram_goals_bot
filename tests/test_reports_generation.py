@@ -31,6 +31,28 @@ def test_aggregation_builds_team_report_from_final_sheets_rows() -> None:
     assert anna.insights == ("Лучше фиксировать договорённости.",)
 
 
+def test_aggregation_lists_both_explicit_team_captains_primary_first() -> None:
+    gateway = _gateway()
+    gateway._participants.append(  # noqa: SLF001 - focused fake-gateway fixture
+        _participant("C002", "Антон Второй", "active", role="captain")
+    )
+    gateway._team_captains.extend([  # noqa: SLF001 - focused fake-gateway fixture
+        {
+            "flow_id": "", "team_id": "T001", "captain_id": "C002",
+            "is_primary": False, "is_active": True,
+        },
+        {
+            "flow_id": "", "team_id": "T001", "captain_id": "C001",
+            "is_primary": True, "is_active": True,
+        },
+    ])
+
+    team = build_all_teams_report(gateway, week_number=5).teams[0]
+
+    assert team.captain_id == "C001"
+    assert team.captain_name == "Ирина Капитан, Антон Второй"
+
+
 def test_weekly_victory_percent_excludes_dropped_participants() -> None:
     gateway = _gateway(
         weekly_reports=[

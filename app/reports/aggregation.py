@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from app.domain import planned_steps_bar, planned_steps_percent
 from app.reports.models import AllTeamsReportData, ParticipantReportSection, TeamReportData
 from app.sheets.gateway import SheetsGateway, SheetRow
+from app.services.team_captains import list_team_captain_assignments
 
 
 STATUS_CODES = ("green", "blue", "red", "gray")
@@ -25,14 +26,22 @@ STATUS_SCORES = {
 }
 
 
-def build_all_teams_report(gateway: SheetsGateway, *, week_number: int) -> AllTeamsReportData:
-    teams = gateway.list_teams()
-    participants = gateway.list_participants()
+def build_all_teams_report(
+    gateway: SheetsGateway, *, week_number: int, flow_id: str | None = None
+) -> AllTeamsReportData:
+    teams = [row for row in gateway.list_teams() if _row_in_flow(row, flow_id)]
+    participants = [
+        row for row in gateway.list_participants() if _row_in_flow(row, flow_id)
+    ]
     goals = gateway.list_goals()
     planned_steps = gateway.list_planned_steps_all()
     weekly_reports = gateway.list_weekly_reports_for_week(week_number)
     weekly_focus = gateway.list_weekly_focus_for_week(week_number)
     insights = gateway.list_insights_for_week(week_number)
+    captain_assignments = [
+        row for row in list_team_captain_assignments(gateway, teams=teams)
+        if _row_in_flow(row, flow_id)
+    ]
 
     participants_by_team = _group_by(participants, "team_id")
     participants_by_id = {str(row.get("participant_id")): row for row in participants}
@@ -52,6 +61,7 @@ def build_all_teams_report(gateway: SheetsGateway, *, week_number: int) -> AllTe
             reports_by_participant=reports_by_participant,
             focus_by_participant=focus_by_participant,
             insights_by_participant=insights_by_participant,
+            captain_assignments=captain_assignments,
             week_number=week_number,
         )
         for team in teams
@@ -80,6 +90,7 @@ def _build_team_report(
     reports_by_participant: dict[str, SheetRow],
     focus_by_participant: dict[str, SheetRow],
     insights_by_participant: dict[str, list[SheetRow]],
+    captain_assignments: list[SheetRow],
     week_number: int,
 ) -> TeamReportData:
     participant_sections = tuple(
@@ -99,13 +110,24 @@ def _build_team_report(
     for section in active_sections:
         status_distribution[_status_code_from_symbol(section.status)] += 1
 
-    captain = participants_by_id.get(str(team.get("captain_id")), {})
+    team_id = str(team.get("team_id", ""))
+    active_captains = sorted([
+        row for row in captain_assignments
+        if str(row.get("team_id") or "") == team_id and row.get("is_active") is True
+    ], key=lambda row: row.get("is_primary") is not True)
+    primary = [row for row in active_captains if row.get("is_primary") is True]
+    primary_id = str(primary[0].get("captain_id") or "") if len(primary) == 1 else None
+    captain_names = [
+        str(participants_by_id.get(str(row.get("captain_id") or ""), {}).get("full_name") or "")
+        for row in active_captains
+    ]
+    captain_names = [name for name in captain_names if name]
     return TeamReportData(
         week_number=week_number,
-        team_id=str(team.get("team_id", "")),
+        team_id=team_id,
         team_name=str(team.get("team_name") or team.get("name") or "Команда без названия"),
-        captain_id=_optional_str(team.get("captain_id")),
-        captain_name=str(captain.get("full_name") or "Капитан не указан"),
+        captain_id=primary_id,
+        captain_name=", ".join(captain_names) or "Капитан не указан",
         active_count=len(active_sections),
         dropped_count=len(participant_sections) - len(active_sections),
         status_distribution=status_distribution,
@@ -169,6 +191,13 @@ def _group_by(rows: Iterable[SheetRow], key: str) -> dict[str, list[SheetRow]]:
         if value is not None:
             grouped[str(value)].append(row)
     return dict(grouped)
+
+
+def _row_in_flow(row: SheetRow, flow_id: str | None) -> bool:
+    if not flow_id:
+        return True
+    row_flow_id = str(row.get("flow_id") or "")
+    return not row_flow_id or row_flow_id == flow_id
 
 
 def _active_goal(goals: list[SheetRow]) -> SheetRow:

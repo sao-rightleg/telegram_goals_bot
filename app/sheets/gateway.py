@@ -50,6 +50,9 @@ class SheetsGateway(Protocol):
     def list_teams(self) -> list[SheetRow]:
         """Return team rows used to resolve captain/tracker recipients."""
 
+    def list_team_captains(self) -> list[SheetRow]:
+        """Return team-to-captain assignments."""
+
     def get_tracker(self, tracker_id: str) -> SheetRow | None:
         """Return one tracker row by stable tracker ID."""
 
@@ -253,7 +256,30 @@ REQUIRED_SHEET_COLUMNS: dict[str, frozenset[str]] = {
             "updated_at",
         }
     ),
-    "Teams": frozenset({"flow_id", "team_id", "team_name", "gender", "captain_id", "tracker_id", "is_active"}),
+    "Teams": frozenset(
+        {
+            "flow_id",
+            "team_id",
+            "team_name",
+            "gender",
+            "captain_id",
+            "captain_telegram_id",
+            "tracker_id",
+            "is_active",
+        }
+    ),
+    "TeamCaptains": frozenset(
+        {
+            "flow_id",
+            "team_id",
+            "captain_id",
+            "captain_telegram_id",
+            "is_primary",
+            "is_active",
+            "created_at",
+            "updated_at",
+        }
+    ),
     "Trackers": frozenset({"tracker_id", "telegram_id", "full_name", "gender_scope", "role", "is_active"}),
     "Goals": frozenset({"goal_id", "participant_id", "goal_status"}),
     "PlannedSteps": frozenset(
@@ -365,6 +391,9 @@ class GoogleSheetsGateway:
 
     def list_teams(self) -> list[SheetRow]:
         return self._list_rows("Teams")
+
+    def list_team_captains(self) -> list[SheetRow]:
+        return self._list_rows("TeamCaptains")
 
     def get_tracker(self, tracker_id: str) -> SheetRow | None:
         for row in self.list_trackers():
@@ -839,6 +868,7 @@ class FakeSheetsGateway:
         *,
         participants: Iterable[SheetRow] = (),
         teams: Iterable[SheetRow] = (),
+        team_captains: Iterable[SheetRow] = (),
         trackers: Iterable[SheetRow] = (),
         goals: Iterable[SheetRow] = (),
         planned_steps: Iterable[SheetRow] = (),
@@ -851,6 +881,7 @@ class FakeSheetsGateway:
     ) -> None:
         self._participants = _copy_rows(participants)
         self._teams = _copy_rows(teams)
+        self._team_captains = _copy_rows(team_captains)
         self._trackers = _copy_rows(trackers)
         self._goals = _copy_rows(goals)
         self._planned_steps = _copy_rows(planned_steps)
@@ -892,6 +923,9 @@ class FakeSheetsGateway:
 
     def list_teams(self) -> list[SheetRow]:
         return [dict(row) for row in self._teams]
+
+    def list_team_captains(self) -> list[SheetRow]:
+        return [dict(row) for row in self._team_captains]
 
     def get_tracker(self, tracker_id: str) -> SheetRow | None:
         for row in self._trackers:

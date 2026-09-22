@@ -47,7 +47,7 @@ def test_captain_can_view_only_own_team() -> None:
     )
 
     response = service.show_team(
-        TelegramUserContext(telegram_id=2001, chat_id="chat-2001"),
+        TelegramUserContext(telegram_id=2001, chat_id="2001"),
         occurred_at=NOW,
     )
 
@@ -724,7 +724,7 @@ def test_non_captain_cannot_view_team() -> None:
     )
 
     response = service.show_team(
-        TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
+        TelegramUserContext(telegram_id=1001, chat_id="1001"),
         occurred_at=NOW,
     )
 
@@ -938,7 +938,7 @@ def test_captain_without_team_routes_missing_data_to_admin() -> None:
     )
 
     response = service.show_team(
-        TelegramUserContext(telegram_id=2001, chat_id="chat-2001"),
+        TelegramUserContext(telegram_id=2001, chat_id="2001"),
         occurred_at=NOW,
     )
 
@@ -956,7 +956,7 @@ def test_unknown_user_keeps_existing_unknown_user_behavior() -> None:
     service, _gateway, main_bot, error_bot, notification_bot = _build_service(participants=[])
 
     response = service.show_team(
-        TelegramUserContext(telegram_id=9999, chat_id="chat-9999", username="unknown_user"),
+        TelegramUserContext(telegram_id=9999, chat_id="9999", username="unknown_user"),
         occurred_at=NOW,
     )
 
@@ -978,7 +978,7 @@ def test_captain_without_consent_gets_consent_prompt_without_team_data() -> None
     )
 
     response = service.show_team(
-        TelegramUserContext(telegram_id=2001, chat_id="chat-2001"),
+        TelegramUserContext(telegram_id=2001, chat_id="2001"),
         occurred_at=NOW,
     )
 
@@ -989,6 +989,65 @@ def test_captain_without_consent_gets_consent_prompt_without_team_data() -> None
     assert error_bot.sent_messages == []
 
 
+def test_both_active_team_captains_can_view_the_same_team() -> None:
+    captains = [
+        _participant("C001", 2001, role="captain", full_name="Первый капитан"),
+        _participant("C002", 2002, role="captain", full_name="Второй капитан"),
+    ]
+    service, _gateway, *_ = _build_service(
+        participants=[*captains, _participant("P001", 1001, full_name="Участник команды")],
+        teams=[{
+            "flow_id": "FLOW_1", "team_id": "T001",
+            "team_name": "Команда", "is_active": True,
+        }],
+        team_captains=[
+            {
+                "flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C001",
+                "captain_telegram_id": 2001, "is_primary": True, "is_active": True,
+            },
+            {
+                "flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C002",
+                "captain_telegram_id": 2002, "is_primary": False, "is_active": True,
+            },
+        ],
+    )
+
+    first = service.show_team(
+        TelegramUserContext(telegram_id=2001, chat_id="2001"), occurred_at=NOW
+    )
+    second = service.show_team(
+        TelegramUserContext(telegram_id=2002, chat_id="2002"), occurred_at=NOW
+    )
+
+    assert "Участник команды" in first.text
+    assert "Участник команды" in second.text
+
+
+def test_revoked_team_captain_cannot_view_team_or_start_manual_report() -> None:
+    service, _gateway, *_ = _build_service(
+        participants=[
+            _participant("C001", 2001, role="captain", full_name="Отозванный капитан"),
+            _participant("P001", 1001, full_name="Участник команды"),
+        ],
+        teams=[{
+            "flow_id": "FLOW_1", "team_id": "T001",
+            "team_name": "Команда", "is_active": True,
+        }],
+        team_captains=[{
+            "flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C001",
+            "captain_telegram_id": 2001, "is_primary": True, "is_active": False,
+        }],
+    )
+    user = TelegramUserContext(telegram_id=2001, chat_id="2001")
+
+    team = service.show_team(user, occurred_at=NOW)
+    manual = service.start_manual_report(user, "P001", now=datetime.fromisoformat(NOW))
+
+    assert team.text == CAPTAIN_ONLY_TEXT
+    assert manual.text == CAPTAIN_ONLY_TEXT
+    assert "Участник команды" not in team.text
+
+
 def _build_service(
     *,
     participants: list[dict[str, object]],
@@ -996,6 +1055,7 @@ def _build_service(
     planned_steps: list[dict[str, object]] | None = None,
     weekly_focus: list[dict[str, object]] | None = None,
     teams: list[dict[str, object]] | None = None,
+    team_captains: list[dict[str, object]] | None = None,
 ) -> tuple[CaptainService, FakeSheetsGateway, FakeBotClient, FakeBotClient, FakeBotClient]:
     gateway = FakeSheetsGateway(
         participants=participants,
@@ -1011,6 +1071,7 @@ def _build_service(
             "captain_id": "C001",
             "is_active": True,
         }],
+        team_captains=team_captains or [],
     )
     main_bot = FakeBotClient(BotPurpose.MAIN)
     error_bot = FakeBotClient(BotPurpose.ERROR)

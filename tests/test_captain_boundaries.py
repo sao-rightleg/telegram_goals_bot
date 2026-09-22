@@ -167,6 +167,10 @@ def _service(
     drafts = WeeklyReportDraftRepository(db_path)
     gateway = FakeSheetsGateway(
         participants=participants if participants is not None else [_captain(), _target()],
+        teams=[{
+            "flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C001",
+            "captain_telegram_id": 2001, "is_active": True,
+        }],
         goals=goals if goals is not None else [_goal("G001", "P001")],
         planned_steps=planned_steps if planned_steps is not None else _planned_steps(),
         weekly_reports=weekly_reports or [],
@@ -217,6 +221,7 @@ def _participant(
 ) -> dict[str, object]:
     return {
         "participant_id": participant_id,
+        "flow_id": "FLOW_1",
         "telegram_id": telegram_id,
         "role": role,
         "team_id": team_id,

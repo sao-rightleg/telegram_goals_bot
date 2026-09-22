@@ -262,6 +262,20 @@ def test_live_schema_validation_fails_for_missing_required_column() -> None:
     assert "role" in str(error.value)
 
 
+def test_live_schema_validation_requires_captain_telegram_id_in_teams() -> None:
+    sheets = minimal_live_sheets()
+    teams_headers = sheets["Teams"][0]
+    sheets["Teams"] = [[
+        header for header in teams_headers if header != "captain_telegram_id"
+    ]]
+
+    with pytest.raises(GoogleSheetsSchemaError) as error:
+        validate_required_schema(FakeSheetsService(sheets), spreadsheet_id="sheet-id")
+
+    assert "Teams" in str(error.value)
+    assert "captain_telegram_id" in str(error.value)
+
+
 def test_challenge_flows_schema_validation_uses_separate_spreadsheet() -> None:
     service = FakeSheetsService(
         minimal_live_sheets(),

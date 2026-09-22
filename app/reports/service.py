@@ -16,6 +16,7 @@ from app.reports.formatting import (
 )
 from app.reports.models import AllTeamsReportData, ReportRunResult, TeamReportData
 from app.reports.pdf import LocalPdfRenderer
+from app.services.team_captains import list_team_captain_assignments
 from app.sheets.gateway import SheetsGateway
 from app.storage.reports import ReportStateRepository
 
@@ -40,7 +41,9 @@ class ReportService:
             started_at=started_at,
         )
         try:
-            report = build_all_teams_report(self.sheets_gateway, week_number=week_number)
+            report = build_all_teams_report(
+                self.sheets_gateway, week_number=week_number, flow_id=self.flow_id
+            )
             teams = self.sheets_gateway.list_teams()
             raw_trackers = self.sheets_gateway.list_trackers() if hasattr(self.sheets_gateway, "list_trackers") else []
             trackers, duplicate_tracker_ids = _unique_active_trackers(raw_trackers)
@@ -78,6 +81,9 @@ class ReportService:
                 participants=participants,
                 teams=teams,
                 trackers=trackers,
+                team_captains=list_team_captain_assignments(
+                    self.sheets_gateway, teams=teams, default_flow_id=self.flow_id
+                ),
             )
             delivery_result = self.delivery_service.deliver_plan(
                 week_number=week_number,
