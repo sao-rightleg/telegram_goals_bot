@@ -279,7 +279,7 @@ All schedule times use `Asia/Yekaterinburg`.
 
 ### Participant registration window
 
-- Self-registration opens at `kickoff_meeting_at`. The default window is seven days, and the administrator may explicitly extend `registration_closes_at` by up to ten additional days for late participants without changing the challenge calendar.
+- Self-registration opens at `kickoff_meeting_at`. The default window is seven days, and the administrator may explicitly extend `registration_closes_at` by up to twenty additional days for late participants without changing the challenge calendar.
 - `registration_opens_at` equals `kickoff_meeting_at`; `registration_closes_at` must be later than `registration_opens_at`.
 - During this window, an unknown Telegram ID may start the consent and registration scenario for the active flow.
 - If registration completes after `goal_setup_end_date`, the participant enters late-onboarding mode until `registration_closes_at`. The bot immediately collects the goal, then exactly eight initial steps with metrics, then the current-week focus when a working week is active.

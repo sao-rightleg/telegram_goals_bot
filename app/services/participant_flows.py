@@ -88,6 +88,7 @@ class RegistrationClosedError(RuntimeError):
 
 
 _REGISTRATION_FINALIZATION_LOCK = RLock()
+MAX_REGISTRATION_WINDOW_DAYS = 27
 
 
 @dataclass(frozen=True)
@@ -2024,8 +2025,8 @@ def _registration_window(flow: SheetRow) -> tuple[datetime, datetime]:
         raise ValueError("Registration window must start at kickoff")
     if closes_at <= opens_at:
         raise ValueError("Registration window must close after it opens")
-    if closes_at - opens_at > timedelta(days=17):
-        raise ValueError("Registration window cannot exceed seventeen days")
+    if closes_at - opens_at > timedelta(days=MAX_REGISTRATION_WINDOW_DAYS):
+        raise ValueError("Registration window cannot exceed twenty-seven days")
     return opens_at, closes_at
 
 
