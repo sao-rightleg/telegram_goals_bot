@@ -82,7 +82,8 @@ def test_report_rerun_does_not_duplicate_successful_delivery_items(tmp_path: Pat
     second = service.generate_and_send_week(5, now=NOW)
 
     assert first.sent_count > 0
-    assert second.skipped_count == first.sent_count
+    assert second.skipped_count == 1
+    assert second.generated_count == 0
     assert len(notification_bot.sent_messages) == sent_messages_after_first
     assert len(notification_bot.sent_documents) == sent_documents_after_first
 

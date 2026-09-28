@@ -797,17 +797,7 @@ class LiveSchedulerRunner:
             return
 
         if job_type == "weekly_reports":
-            if not is_working_week(scheduled_at - timedelta(days=1)):
-                return
-            week_number = closed_challenge_week_count(scheduled_at)
-            if week_number == 0 or components.report_service is None:
-                return
-            result = components.report_service.generate_and_send_week(
-                week_number,
-                now=scheduled_at,
-            )
-            if result.failed_count:
-                raise RuntimeError("weekly report generation or delivery incomplete")
+            self._run_weekly_reports_job(components, scheduled_at=scheduled_at)
             return
 
         result = components.scheduler_service.run_reminder(job_type, now=scheduled_at)
@@ -815,6 +805,30 @@ class LiveSchedulerRunner:
             "scheduler reminder completed",
             extra={
                 "job_type": job_type,
+                "scheduled_at": scheduled_at.isoformat(),
+                "sent_count": result.sent_count,
+                "skipped_count": result.skipped_count,
+                "failed_count": result.failed_count,
+            },
+        )
+
+    def _run_weekly_reports_job(
+        self, components: RuntimeComponents, *, scheduled_at: datetime
+    ) -> None:
+        if not is_working_week(scheduled_at - timedelta(days=1)):
+            return
+        week_number = closed_challenge_week_count(scheduled_at)
+        if week_number == 0 or components.report_service is None:
+            return
+        result = components.report_service.generate_and_send_week(
+            week_number, now=scheduled_at
+        )
+        if result.retryable:
+            raise RuntimeError("weekly report generation failed before delivery")
+        logger.info(
+            "scheduler weekly reports completed",
+            extra={
+                "job_type": "weekly_reports",
                 "scheduled_at": scheduled_at.isoformat(),
                 "sent_count": result.sent_count,
                 "skipped_count": result.skipped_count,

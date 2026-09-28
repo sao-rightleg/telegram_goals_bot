@@ -136,6 +136,17 @@ class TelegramFileDownloader(Protocol):
 class TelegramApiError(RuntimeError):
     """Raised when Telegram Bot API returns an error or malformed response."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        retry_after: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.retry_after = retry_after
+
 
 @dataclass(frozen=True)
 class LiveTelegramBotClient:
@@ -274,6 +285,8 @@ class LiveTelegramBotClient:
                 _api_url(self.api_base_url, self.token, method), **kwargs
             )
             response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise _telegram_http_error(exc, method=method, token=self.token) from exc
         except httpx.HTTPError as exc:
             raise TelegramApiError(
                 f"Telegram {method} request failed: {_sanitize_token(str(exc), self.token)}"
@@ -494,10 +507,39 @@ def _parse_telegram_json(
         description = payload.get("description")
         if not isinstance(description, str):
             description = "unknown Telegram API error"
+        error_code = payload.get("error_code")
+        parameters = payload.get("parameters")
+        retry_after = parameters.get("retry_after") if isinstance(parameters, dict) else None
         raise TelegramApiError(
-            f"Telegram {method} failed: {_sanitize_token(description, token)}"
+            f"Telegram {method} failed: {_sanitize_token(description, token)}",
+            status_code=error_code if isinstance(error_code, int) else None,
+            retry_after=retry_after if isinstance(retry_after, int) else None,
         )
     return payload
+
+
+def _telegram_http_error(
+    error: httpx.HTTPStatusError, *, method: str, token: str
+) -> TelegramApiError:
+    response = error.response
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    description = None
+    retry_after = None
+    if isinstance(payload, dict):
+        raw_description = payload.get("description")
+        description = raw_description if isinstance(raw_description, str) else None
+        parameters = payload.get("parameters")
+        if isinstance(parameters, dict) and isinstance(parameters.get("retry_after"), int):
+            retry_after = parameters["retry_after"]
+    safe_detail = description or str(error)
+    return TelegramApiError(
+        f"Telegram {method} request failed: {_sanitize_token(safe_detail, token)}",
+        status_code=response.status_code,
+        retry_after=retry_after,
+    )
 
 
 def _sanitize_token(text: str, token: str) -> str:

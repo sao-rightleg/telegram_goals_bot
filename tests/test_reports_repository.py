@@ -64,6 +64,66 @@ def test_report_job_run_idempotency_key_is_unique(tmp_path: Path) -> None:
     assert run_count == 1
 
 
+def test_report_job_claim_is_durable_and_failed_run_can_be_reclaimed(tmp_path: Path) -> None:
+    db_path = tmp_path / "state.sqlite3"
+    initialize_schema(db_path)
+    repository = ReportStateRepository(db_path)
+
+    run_id, first_claimed = repository.claim_job_run(
+        week_number=5,
+        idempotency_key="reports:FLOW_1:week_05",
+        started_at="2026-07-12T23:59:00+05:00",
+    )
+    same_run_id, concurrent_claimed = repository.claim_job_run(
+        week_number=5,
+        idempotency_key="reports:FLOW_1:week_05",
+        started_at="2026-07-12T23:59:01+05:00",
+    )
+    repository.finish_job_run(
+        run_id,
+        status="failed",
+        finished_at="2026-07-12T23:59:02+05:00",
+    )
+    retry_run_id, retry_claimed = repository.claim_job_run(
+        week_number=5,
+        idempotency_key="reports:FLOW_1:week_05",
+        started_at="2026-07-12T23:59:03+05:00",
+    )
+
+    assert first_claimed is True
+    assert same_run_id == run_id
+    assert concurrent_claimed is False
+    assert retry_run_id == run_id
+    assert retry_claimed is True
+
+
+def test_delivery_claim_blocks_parallel_or_ambiguous_resend(tmp_path: Path) -> None:
+    db_path = tmp_path / "state.sqlite3"
+    initialize_schema(db_path)
+    repository = ReportStateRepository(db_path)
+    identity = {
+        "week_number": 5,
+        "report_type": "telegram_team_summary",
+        "scope_id": "FLOW_1:T001",
+        "recipient_type": "captain",
+        "recipient_id": "C001",
+        "chat_id": "1001",
+        "sent_at": "2026-07-12T23:59:03+05:00",
+    }
+
+    assert repository.claim_delivery(**identity) is True
+    assert repository.claim_delivery(**identity) is False
+
+    with sqlite3.connect(db_path) as connection:
+        row = connection.execute(
+            """
+            SELECT status, error_message, attempt_count
+            FROM report_delivery_log WHERE recipient_id = 'C001'
+            """
+        ).fetchone()
+    assert row == ("skipped", "delivery_outcome_unknown", 1)
+
+
 def test_delivery_log_prevents_duplicate_successful_send(tmp_path: Path) -> None:
     db_path = tmp_path / "state.sqlite3"
     initialize_schema(db_path)

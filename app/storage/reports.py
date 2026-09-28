@@ -33,6 +33,47 @@ class ReportStateRepository:
             ).fetchone()
         return int(row[0])
 
+    def claim_job_run(
+        self,
+        *,
+        week_number: int,
+        idempotency_key: str,
+        started_at: str,
+    ) -> tuple[int, bool]:
+        with sqlite3.connect(self._db_path) as connection:
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO report_job_runs (
+                    week_number, job_type, idempotency_key, started_at, status
+                )
+                VALUES (?, 'report_generate_send', ?, ?, 'running')
+                """,
+                (week_number, idempotency_key, started_at),
+            )
+            row = connection.execute(
+                """
+                SELECT report_job_run_id, status
+                FROM report_job_runs
+                WHERE idempotency_key = ?
+                """,
+                (idempotency_key,),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("Report job claim was not persisted")
+            claimed = cursor.rowcount == 1
+            if not claimed and row[1] == "failed":
+                retry = connection.execute(
+                    """
+                    UPDATE report_job_runs
+                    SET status = 'running', started_at = ?, finished_at = NULL,
+                        error_message = NULL
+                    WHERE report_job_run_id = ? AND status = 'failed'
+                    """,
+                    (started_at, row[0]),
+                )
+                claimed = retry.rowcount == 1
+        return int(row[0]), claimed
+
     def finish_job_run(
         self,
         report_job_run_id: int,
@@ -78,6 +119,63 @@ class ReportStateRepository:
             ).fetchone()
         return row is not None
 
+    def claim_delivery(
+        self,
+        *,
+        week_number: int,
+        report_type: str,
+        scope_id: str,
+        recipient_type: str,
+        recipient_id: str,
+        chat_id: str,
+        sent_at: str,
+        file_path: str | None = None,
+    ) -> bool:
+        values = (
+            week_number,
+            report_type,
+            scope_id,
+            recipient_type,
+            recipient_id,
+            chat_id,
+            sent_at,
+            file_path,
+        )
+        with sqlite3.connect(self._db_path) as connection:
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO report_delivery_log (
+                    week_number, report_type, scope_id, recipient_type, recipient_id,
+                    chat_id, status, sent_at, file_path, error_message, attempt_count
+                )
+                VALUES (?, ?, ?, ?, ?, ?, 'skipped', ?, ?, 'delivery_outcome_unknown', 1)
+                """,
+                values,
+            )
+            if cursor.rowcount == 1:
+                return True
+            retry = connection.execute(
+                """
+                UPDATE report_delivery_log
+                SET chat_id = ?, status = 'skipped', sent_at = ?, file_path = ?,
+                    error_message = 'delivery_outcome_unknown',
+                    attempt_count = attempt_count + 1
+                WHERE week_number = ? AND report_type = ? AND scope_id = ?
+                    AND recipient_type = ? AND recipient_id = ? AND status = 'failed'
+                """,
+                (
+                    chat_id,
+                    sent_at,
+                    file_path,
+                    week_number,
+                    report_type,
+                    scope_id,
+                    recipient_type,
+                    recipient_id,
+                ),
+            )
+        return retry.rowcount == 1
+
     def record_delivery_attempt(
         self,
         *,
@@ -110,7 +208,12 @@ class ReportStateRepository:
                     telegram_message_id = excluded.telegram_message_id,
                     file_path = excluded.file_path,
                     error_message = excluded.error_message,
-                    attempt_count = report_delivery_log.attempt_count + 1
+                    attempt_count = CASE
+                        WHEN report_delivery_log.status = 'skipped'
+                            AND report_delivery_log.error_message = 'delivery_outcome_unknown'
+                        THEN report_delivery_log.attempt_count
+                        ELSE report_delivery_log.attempt_count + 1
+                    END
                 """,
                 (
                     week_number,

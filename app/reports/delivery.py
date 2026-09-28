@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
+from time import sleep as default_sleep
+from typing import Callable
 
+from app.bot.clients import TelegramApiError
 from app.reports.models import (
     AllTeamsReportData,
     ReportDeliveryItem,
@@ -29,6 +33,7 @@ class ReportDeliveryProblem:
     recipient_type: str
     recipient_id: str
     scope_id: str
+    report_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -319,6 +324,9 @@ def _is_active(row: SheetRow) -> bool:
 class ReportDeliveryService:
     repository: ReportStateRepository
     notification_router: NotificationRouter
+    rate_limit_retry_budget: int = 2
+    default_rate_limit_delay: float = 5.0
+    sleep: Callable[[float], None] = default_sleep
 
     def deliver_plan(
         self,
@@ -327,58 +335,87 @@ class ReportDeliveryService:
         plan: ReportDeliveryPlan,
         sent_at: str,
     ) -> ReportRunResult:
-        failed_count = self._report_planning_problems(plan.problems)
+        issues = list(plan.problems)
+        rate_limit_retry_budget = [self.rate_limit_retry_budget]
         sent_count = skipped_count = 0
         for item in plan.items:
-            outcome = self._deliver_item(week_number=week_number, item=item, sent_at=sent_at)
+            outcome, issue = self._deliver_item(
+                week_number=week_number,
+                item=item,
+                sent_at=sent_at,
+                rate_limit_retry_budget=rate_limit_retry_budget,
+            )
             sent_count += outcome == "sent"
             skipped_count += outcome == "skipped"
-            failed_count += outcome == "failed"
+            if issue is not None:
+                issues.append(issue)
+        if issues:
+            self._notify_admin(
+                "report_delivery_summary",
+                _delivery_issue_summary(week_number, issues),
+            )
         return ReportRunResult(
             generated_count=len(plan.items), sent_count=sent_count,
-            skipped_count=skipped_count, failed_count=failed_count,
+            skipped_count=skipped_count, failed_count=len(issues),
         )
 
-    def _report_planning_problems(self, problems: list[ReportDeliveryProblem]) -> int:
-        for problem in problems:
-            self._notify_admin(
-                "report_delivery_problem",
-                (
-                    f"report_delivery_problem reason={problem.reason} "
-                    f"recipient_type={problem.recipient_type} "
-                    f"recipient_id={problem.recipient_id} scope_id={problem.scope_id}"
-                ),
-            )
-        return len(problems)
-
-    def _deliver_item(self, *, week_number: int, item: ReportDeliveryItem, sent_at: str) -> str:
+    def _deliver_item(
+        self,
+        *,
+        week_number: int,
+        item: ReportDeliveryItem,
+        sent_at: str,
+        rate_limit_retry_budget: list[int],
+    ) -> tuple[str, ReportDeliveryProblem | None]:
         identity = dict(
             week_number=week_number, report_type=item.report_type.value, scope_id=item.scope_id,
             recipient_type=item.recipient.recipient_type, recipient_id=item.recipient.recipient_id,
         )
-        if self.repository.has_successful_delivery(**identity):
-            return "skipped"
+        if not self.repository.claim_delivery(
+            **identity,
+            chat_id=item.recipient.chat_id,
+            sent_at=sent_at,
+            file_path=str(item.file_path) if item.file_path else None,
+        ):
+            return "skipped", None
 
         try:
-            self._send_item(item)
+            self._send_item_with_retry(item, rate_limit_retry_budget)
         except Exception as exc:  # noqa: BLE001 - boundary isolates Telegram failures.
+            reason = _delivery_failure_reason(exc)
             self.repository.record_delivery_attempt(
                 **identity, chat_id=item.recipient.chat_id, status="failed", sent_at=sent_at,
                 file_path=str(item.file_path) if item.file_path else None,
-                error_message=_safe_admin_error(str(exc)),
+                error_message=reason,
             )
-            self._notify_admin(
-                "report_delivery_failed",
-                f"report_delivery_failed report_type={item.report_type.value} scope_id={item.scope_id} "
-                f"recipient_type={item.recipient.recipient_type} recipient_id={item.recipient.recipient_id} "
-                f"error={_safe_admin_error(str(exc))}",
+            return "failed", ReportDeliveryProblem(
+                reason=reason,
+                recipient_type=item.recipient.recipient_type,
+                recipient_id=item.recipient.recipient_id,
+                scope_id=item.scope_id,
+                report_type=item.report_type.value,
             )
-            return "failed"
         self.repository.record_delivery_attempt(
             **identity, chat_id=item.recipient.chat_id, status="sent", sent_at=sent_at,
             file_path=str(item.file_path) if item.file_path else None,
         )
-        return "sent"
+        return "sent", None
+
+    def _send_item_with_retry(
+        self, item: ReportDeliveryItem, rate_limit_retry_budget: list[int]
+    ) -> None:
+        while True:
+            try:
+                self._send_item(item)
+                return
+            except Exception as exc:  # noqa: BLE001 - classify external boundary failures.
+                if _delivery_failure_reason(exc) != "telegram_rate_limited":
+                    raise
+                if rate_limit_retry_budget[0] <= 0:
+                    raise
+                rate_limit_retry_budget[0] -= 1
+                retry_after = exc.retry_after if isinstance(exc, TelegramApiError) else None
+                self.sleep(float(retry_after or self.default_rate_limit_delay))
 
     def _send_item(self, item: ReportDeliveryItem) -> None:
         recipient = NotificationRecipient(
@@ -413,7 +450,57 @@ def _safe_admin_error(message: str) -> str:
     compact = compact.replace("token=", "redacted=")
     if "личный отчёт" in compact:
         compact = compact.replace("личный отчёт", "personal_report")
-    return compact[:300]
+    return compact[:1000]
+
+
+def _delivery_failure_reason(error: Exception) -> str:
+    if isinstance(error, TelegramApiError):
+        message = str(error).lower()
+        if error.status_code == 429 or "429" in message or "too many requests" in message:
+            return "telegram_rate_limited"
+        if "chat not found" in message or "bot was blocked by the user" in message:
+            return "telegram_chat_unavailable"
+        if error.status_code == 400 or "400" in message or "bad request" in message:
+            return "telegram_bad_request"
+        return "telegram_api_error"
+    return "delivery_error"
+
+
+def _delivery_issue_summary(
+    week_number: int, issues: list[ReportDeliveryProblem]
+) -> str:
+    counts = Counter(issue.reason for issue in issues)
+    grouped_ids: dict[str, list[str]] = {}
+    for issue in issues:
+        recipient = f"{issue.recipient_type}:{issue.recipient_id}"
+        if issue.report_type:
+            recipient = f"{recipient}/{issue.report_type}"
+        recipients = grouped_ids.setdefault(issue.reason, [])
+        if recipient not in recipients and len(recipients) < 8:
+            recipients.append(recipient)
+    details = "; ".join(
+        f"{reason}={count} [{','.join(grouped_ids[reason])}]"
+        for reason, count in sorted(counts.items())
+    )
+    hints = {
+        "missing_chat_id": "заполнить Telegram ID",
+        "ineligible_captain": "проверить роль, статус, согласие и команду капитана",
+        "telegram_chat_unavailable": "получатель должен запустить Notification-бот и не блокировать его",
+        "telegram_bad_request": "проверить адресата, размер и формат сообщения или PDF",
+        "telegram_rate_limited": "Telegram ограничил частоту; попытки исчерпаны",
+        "telegram_api_error": "проверить доступность Telegram",
+        "delivery_error": "проверить техническую ошибку доставки",
+        "missing_pdf": "проверить создание PDF",
+        "missing_text": "проверить шаблон сообщения",
+    }
+    actions = "; ".join(
+        f"{reason}: {hints.get(reason, 'проверить конфигурацию получателя')}"
+        for reason in sorted(counts)
+    )
+    return (
+        f"week={week_number} issues={len(issues)}; {details}. "
+        f"Действия: {actions}. Повтор всего отчётного запуска отключён."
+    )
 
 
 def _legacy_team_captains(teams: list[SheetRow]) -> list[SheetRow]:

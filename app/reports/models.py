@@ -89,3 +89,4 @@ class ReportRunResult:
     sent_count: int
     skipped_count: int
     failed_count: int
+    retryable: bool = False

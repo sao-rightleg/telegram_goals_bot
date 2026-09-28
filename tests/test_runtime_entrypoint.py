@@ -501,8 +501,8 @@ def test_live_scheduler_runner_generates_previous_week_reports_after_close(tmp_p
     ]
 
 
-def test_live_scheduler_runner_retries_incomplete_weekly_reports(tmp_path: Path) -> None:
-    report_service = RecordingReportService(failed_counts=[1, 0])
+def test_live_scheduler_runner_does_not_repeat_incomplete_weekly_reports(tmp_path: Path) -> None:
+    report_service = RecordingReportService(failed_counts=[1])
     components = _runtime_components(tmp_path).with_replacements(
         scheduler_service=RecordingSchedulerService(),
         report_service=report_service,
@@ -510,7 +510,24 @@ def test_live_scheduler_runner_retries_incomplete_weekly_reports(tmp_path: Path)
     runner = LiveSchedulerRunner(stop_event=Event())
     now = datetime(2026, 6, 15, 0, 20, tzinfo=ZoneInfo(TIMEZONE_NAME))
 
-    with pytest.raises(RuntimeError, match="weekly report generation or delivery incomplete"):
+    runner.run_due_jobs_once(components, now=now)
+    runner.run_due_jobs_once(components, now=now)
+
+    assert report_service.calls == [
+        (1, datetime(2026, 6, 15, 0, 15, tzinfo=ZoneInfo(TIMEZONE_NAME))),
+    ]
+
+
+def test_live_scheduler_runner_retries_pre_delivery_report_failure(tmp_path: Path) -> None:
+    report_service = RecordingReportService(failed_counts=[1, 0], retryable_counts=[True, False])
+    components = _runtime_components(tmp_path).with_replacements(
+        scheduler_service=RecordingSchedulerService(),
+        report_service=report_service,
+    )
+    runner = LiveSchedulerRunner(stop_event=Event())
+    now = datetime(2026, 6, 15, 0, 20, tzinfo=ZoneInfo(TIMEZONE_NAME))
+
+    with pytest.raises(RuntimeError, match="generation failed before delivery"):
         runner.run_due_jobs_once(components, now=now)
     runner.run_due_jobs_once(components, now=now)
 
@@ -1800,14 +1817,29 @@ class RecordingSchedulerService:
 
 
 class RecordingReportService:
-    def __init__(self, failed_counts: list[int] | None = None) -> None:
+    def __init__(
+        self,
+        failed_counts: list[int] | None = None,
+        retryable_counts: list[bool] | None = None,
+    ) -> None:
         self.calls: list[tuple[int, datetime]] = []
         self.failed_counts = list(failed_counts or [0])
+        self.retryable_counts = list(retryable_counts or [False])
 
     def generate_and_send_week(self, week_number: int, *, now: datetime) -> object:
         self.calls.append((week_number, now))
         failed_count = self.failed_counts.pop(0) if self.failed_counts else 0
-        return type("ReportResult", (), {"failed_count": failed_count})()
+        retryable = self.retryable_counts.pop(0) if self.retryable_counts else False
+        return type(
+            "ReportResult",
+            (),
+            {
+                "sent_count": 0,
+                "skipped_count": 0,
+                "failed_count": failed_count,
+                "retryable": retryable,
+            },
+        )()
 
 
 def test_live_scheduler_routes_steps_messages_and_all_summary_roles(tmp_path: Path) -> None:

@@ -1,6 +1,7 @@
 from pathlib import Path
+import sqlite3
 
-from app.bot.clients import BotPurpose, FakeBotClient, OutgoingMessage
+from app.bot.clients import BotPurpose, FakeBotClient, OutgoingMessage, TelegramApiError
 from app.reports.delivery import (
     ReportDeliveryPlan,
     ReportDeliveryPlanner,
@@ -270,17 +271,26 @@ def test_missing_chat_id_notifies_admin_and_continues(tmp_path: Path) -> None:
                 recipient_type="captain",
                 recipient_id="C404",
                 scope_id="T404",
-            )
+            ),
+            ReportDeliveryProblem(
+                reason="missing_chat_id",
+                recipient_type="captain",
+                recipient_id="C405",
+                scope_id="T405",
+            ),
         ],
     )
 
     result = service.deliver_plan(week_number=5, plan=plan, sent_at="2026-07-12T23:59:00+05:00")
 
     assert result.sent_count == 1
-    assert result.failed_count == 1
+    assert result.failed_count == 2
     assert len(notification_bot.sent_messages) == 1
-    assert "report_delivery_problem" in error_bot.sent_messages[0].text
+    assert len(error_bot.sent_messages) == 1
+    assert "report_delivery_summary" in error_bot.sent_messages[0].text
+    assert "missing_chat_id=2" in error_bot.sent_messages[0].text
     assert "C404" in error_bot.sent_messages[0].text
+    assert "C405" in error_bot.sent_messages[0].text
 
 
 def test_send_failure_notifies_admin_records_failure_and_continues(tmp_path: Path) -> None:
@@ -295,7 +305,124 @@ def test_send_failure_notifies_admin_records_failure_and_continues(tmp_path: Pat
     assert result.sent_count == 1
     assert result.failed_count == 1
     assert len(notification_bot.sent_messages) == 1
-    assert "report_delivery_failed" in error_bot.sent_messages[0].text
+    assert len(error_bot.sent_messages) == 1
+    assert "report_delivery_summary" in error_bot.sent_messages[0].text
+
+
+def test_bad_request_is_not_retried_and_is_reported_once(tmp_path: Path) -> None:
+    notification_bot = CountingFailingBot(
+        BotPurpose.NOTIFICATION,
+        errors=[TelegramApiError(
+            "Telegram sendMessage request failed: 400 Bad Request",
+            status_code=400,
+        )],
+    )
+    service, _repository, _main_bot, error_bot, _ = _delivery_service(
+        tmp_path, notification_bot=notification_bot,
+    )
+
+    result = service.deliver_plan(
+        week_number=5,
+        plan=_single_item_plan(),
+        sent_at="2026-07-12T23:59:00+05:00",
+    )
+
+    assert result.failed_count == 1
+    assert notification_bot.attempt_count == 1
+    assert len(error_bot.sent_messages) == 1
+    assert "telegram_bad_request=1" in error_bot.sent_messages[0].text
+
+
+def test_rate_limit_is_retried_within_same_report_run(tmp_path: Path) -> None:
+    notification_bot = CountingFailingBot(
+        BotPurpose.NOTIFICATION,
+        errors=[
+            TelegramApiError("Telegram sendMessage request failed: 429 Too Many Requests"),
+            TelegramApiError("Telegram sendMessage request failed: 429 Too Many Requests"),
+        ],
+    )
+    service, _repository, _main_bot, error_bot, _ = _delivery_service(
+        tmp_path, notification_bot=notification_bot,
+    )
+    object.__setattr__(service, "default_rate_limit_delay", 0.0)
+
+    result = service.deliver_plan(
+        week_number=5,
+        plan=_single_item_plan(),
+        sent_at="2026-07-12T23:59:00+05:00",
+    )
+
+    assert result.sent_count == 1
+    assert result.failed_count == 0
+    assert notification_bot.attempt_count == 3
+    assert error_bot.sent_messages == []
+
+
+def test_persistent_rate_limit_stops_and_persists_failed_delivery(tmp_path: Path) -> None:
+    notification_bot = CountingFailingBot(
+        BotPurpose.NOTIFICATION,
+        errors=[
+            TelegramApiError(
+                "Telegram sendMessage request failed: 429 Too Many Requests",
+                status_code=429,
+                retry_after=0,
+            )
+            for _ in range(10)
+        ],
+    )
+    service, repository, _main_bot, error_bot, _ = _delivery_service(
+        tmp_path, notification_bot=notification_bot,
+    )
+    object.__setattr__(service, "default_rate_limit_delay", 0.0)
+
+    result = service.deliver_plan(
+        week_number=5,
+        plan=_single_item_plan(),
+        sent_at="2026-07-12T23:59:00+05:00",
+    )
+
+    assert result.failed_count == 1
+    assert notification_bot.attempt_count == 3
+    assert len(error_bot.sent_messages) == 1
+    assert "telegram_rate_limited=1" in error_bot.sent_messages[0].text
+    with sqlite3.connect(repository._db_path) as connection:
+        stored = connection.execute(
+            """
+            SELECT status, attempt_count, error_message
+            FROM report_delivery_log
+            WHERE recipient_id = 'C001'
+            """
+        ).fetchone()
+    assert stored is not None
+    assert stored[0:2] == ("failed", 1)
+    assert stored[2] == "telegram_rate_limited"
+
+
+def test_rate_limit_retry_budget_is_shared_across_delivery_plan(tmp_path: Path) -> None:
+    notification_bot = CountingFailingBot(
+        BotPurpose.NOTIFICATION,
+        errors=[
+            TelegramApiError(
+                "Telegram sendMessage request failed: rate limited",
+                status_code=429,
+                retry_after=0,
+            )
+            for _ in range(10)
+        ],
+    )
+    service, _repository, _main_bot, _error_bot, _ = _delivery_service(
+        tmp_path, notification_bot=notification_bot,
+    )
+    object.__setattr__(service, "default_rate_limit_delay", 0.0)
+
+    result = service.deliver_plan(
+        week_number=5,
+        plan=_two_text_items_plan(),
+        sent_at="2026-07-12T23:59:00+05:00",
+    )
+
+    assert result.failed_count == 2
+    assert notification_bot.attempt_count == 4
 
 
 def test_admin_error_is_sanitized(tmp_path: Path) -> None:
@@ -476,3 +603,16 @@ class FailingOnceBot(FakeBotClient):
 class AlwaysFailingBot(FakeBotClient):
     def send_message(self, *, chat_id: str, text: str) -> OutgoingMessage:
         raise RuntimeError("telegram token=secret unavailable")
+
+
+class CountingFailingBot(FakeBotClient):
+    def __init__(self, purpose: BotPurpose, *, errors: list[Exception]) -> None:
+        super().__init__(purpose)
+        self.errors = list(errors)
+        self.attempt_count = 0
+
+    def send_message(self, *, chat_id: str, text: str) -> OutgoingMessage:
+        self.attempt_count += 1
+        if self.errors:
+            raise self.errors.pop(0)
+        return super().send_message(chat_id=chat_id, text=text)

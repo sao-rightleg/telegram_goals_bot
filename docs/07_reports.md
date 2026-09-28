@@ -282,6 +282,15 @@ If Telegram summary sending fails:
 If one recipient is missing Telegram ID or sending fails:
 - notify admin
 - continue sending to other authorized recipients
+- aggregate all recipient and delivery issues from one report run into one
+  technical notification instead of sending one error message per item
+- do not repeat the complete weekly report job for permanent recipient or
+  Telegram `400` errors
+- honor Telegram `retry_after` for `429` responses with one shared bounded
+  retry budget for the complete delivery plan
+- use durable SQLite claims for the weekly report job and each delivery item;
+  ambiguous outcomes are not resent automatically because duplicate summaries
+  and PDFs are more harmful than a manual retry
 
 ## MVP PDF Style
 

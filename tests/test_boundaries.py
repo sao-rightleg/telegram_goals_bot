@@ -437,6 +437,32 @@ def test_live_telegram_errors_are_sanitized() -> None:
     assert "bad [REDACTED] request" in message
 
 
+def test_live_telegram_rate_limit_exposes_safe_retry_after() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            429,
+            json={
+                "ok": False,
+                "error_code": 429,
+                "description": "Too Many Requests: retry later",
+                "parameters": {"retry_after": 7},
+            },
+        )
+
+    client = LiveTelegramBotClient(
+        purpose=BotPurpose.NOTIFICATION,
+        token="secret-token-123",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(TelegramApiError) as error:
+        client.send_message(chat_id="1001", text="test")
+
+    assert error.value.status_code == 429
+    assert error.value.retry_after == 7
+    assert "secret-token-123" not in str(error.value)
+
+
 def test_boundary_modules_do_not_import_live_sdks() -> None:
     forbidden_roots = {
         "aiogram",

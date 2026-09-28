@@ -80,7 +80,8 @@ def test_report_service_returns_generated_sent_skipped_failed_counts(tmp_path: P
     second = service.generate_and_send_week(5, now=NOW)
 
     assert first.sent_count > 0
-    assert second.skipped_count == first.sent_count
+    assert second.skipped_count == 1
+    assert second.generated_count == 0
     assert second.failed_count == 0
 
 

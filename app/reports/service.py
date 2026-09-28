@@ -35,11 +35,15 @@ class ReportService:
 
     def generate_and_send_week(self, week_number: int, *, now: datetime) -> ReportRunResult:
         started_at = now.isoformat()
-        run_id = self.report_repository.start_job_run(
+        run_id, claimed = self.report_repository.claim_job_run(
             week_number=week_number,
             idempotency_key=f"reports:{self.flow_id}:week_{week_number:02d}",
             started_at=started_at,
         )
+        if not claimed:
+            return ReportRunResult(
+                generated_count=0, sent_count=0, skipped_count=1, failed_count=0
+            )
         try:
             report = build_all_teams_report(
                 self.sheets_gateway, week_number=week_number, flow_id=self.flow_id
@@ -96,12 +100,15 @@ class ReportService:
                 skipped_count=delivery_result.skipped_count,
                 failed_count=delivery_result.failed_count + artifacts.failure_count,
             )
-            status = "completed" if result.failed_count == 0 else "failed"
             self.report_repository.finish_job_run(
                 run_id,
-                status=status,
+                status="completed",
                 finished_at=started_at,
-                error_message=None if status == "completed" else "report generation completed with failures",
+                error_message=(
+                    None
+                    if result.failed_count == 0
+                    else f"completed with {result.failed_count} delivery issues"
+                ),
             )
             return result
         except Exception as exc:  # noqa: BLE001 - job lifecycle must capture unrecoverable failures.
@@ -116,6 +123,7 @@ class ReportService:
                 sent_count=0,
                 skipped_count=0,
                 failed_count=1,
+                retryable=True,
             )
 
     def _generate_pdfs(
