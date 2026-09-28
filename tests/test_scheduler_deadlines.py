@@ -179,8 +179,9 @@ def test_steps_stage_reminds_incomplete_participants_and_sends_scoped_role_summa
             {"flow_id": "FLOW_1", "team_id": "T002", "team_name": "Вторая", "captain_id": "C002", "tracker_id": "TR002", "is_active": True},
         ],
         team_captains=[
-            {"flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C001", "is_primary": True, "is_active": True},
-            {"flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C003", "is_primary": False, "is_active": True},
+                {"flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C001", "captain_telegram_id": 2001, "notification_bot_chat_id": "2001", "notification_bot_status": "active", "is_primary": True, "is_active": True},
+                {"flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C003", "captain_telegram_id": 2003, "notification_bot_chat_id": "2003", "notification_bot_status": "active", "is_primary": False, "is_active": True},
+                {"flow_id": "FLOW_1", "team_id": "T002", "captain_id": "C002", "captain_telegram_id": 2002, "notification_bot_chat_id": "2002", "notification_bot_status": "active", "is_primary": True, "is_active": True},
         ],
         trackers=[
             {"tracker_id": "TR001", "telegram_id": 3001, "role": "tracker", "is_active": True},
@@ -477,8 +478,8 @@ def test_captain_operational_messages_are_sent_to_both_team_captains(
         participant["flow_id"] = "FLOW_1"
     team = {"flow_id": "FLOW_1", "team_id": "T001", "team_name": "Команда"}
     assignments = [
-        {"flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C001", "is_primary": True, "is_active": True},
-        {"flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C002", "is_primary": False, "is_active": True},
+        {"flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C001", "captain_telegram_id": 9001, "notification_bot_chat_id": "9001", "notification_bot_status": "active", "is_primary": True, "is_active": True},
+        {"flow_id": "FLOW_1", "team_id": "T001", "captain_id": "C002", "captain_telegram_id": 9002, "notification_bot_chat_id": "9002", "notification_bot_status": "active", "is_primary": False, "is_active": True},
     ]
     service, _gateway, _main_bot, _error_bot, notification_bot = _service_with_notification_bot(
         tmp_path, participants=participants, teams=[team], team_captains=assignments,
@@ -1104,13 +1105,33 @@ def _service_with_notification_bot(
     planned_steps: list[dict[str, object]] | None = None,
     weekly_focus: list[dict[str, object]] | None = None,
 ) -> tuple[SchedulerService, FakeSheetsGateway, FailingBotClient, FakeBotClient, FakeBotClient]:
+    if team_captains is None:
+        participants_by_id = {
+            str(row.get("participant_id") or ""): row for row in participants
+        }
+        team_captains = []
+        for team in teams:
+            captain_id = str(team.get("captain_id") or "")
+            captain = participants_by_id.get(captain_id, {})
+            telegram_id = captain.get("telegram_id")
+            if captain_id and telegram_id:
+                team_captains.append({
+                    "flow_id": team.get("flow_id", ""),
+                    "team_id": team.get("team_id", ""),
+                    "captain_id": captain_id,
+                    "captain_telegram_id": telegram_id,
+                    "notification_bot_chat_id": str(telegram_id),
+                    "notification_bot_status": "active",
+                    "is_primary": True,
+                    "is_active": True,
+                })
     service, gateway, main_bot, error_bot = _service(
         tmp_path,
         participants=participants,
         gateway=FakeSheetsGateway(
             participants=participants,
             teams=teams,
-            team_captains=team_captains or [],
+            team_captains=team_captains,
             trackers=trackers,
             goals=goals or [],
             planned_steps=planned_steps or [],

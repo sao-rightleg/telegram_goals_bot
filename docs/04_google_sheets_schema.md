@@ -243,9 +243,20 @@ Columns:
 - `is_active`
 - `created_at`
 - `updated_at`
+- `captain_full_name` — human-readable captain name for administrators; never used as an identifier or authorization source
+- `notification_bot_chat_id` — verified private chat used for captain notifications
+- `notification_bot_started_at` — first successful `/start` in the Notification bot
+- `notification_bot_status` — `active` after a verified start; blank means not connected
 
 Exactly one active captain per active team must have `is_primary = TRUE`.
 All active captains receive team-scoped captain notifications and reports.
+Bot logic resolves an assignment by `captain_telegram_id` and stores the stable
+`captain_id` in `Participants`; `captain_full_name` is display-only metadata.
+The Notification bot accepts `/start` only from the assignment's
+`captain_telegram_id` in a private chat and updates all active assignments for
+that captain inside the bound flow. For an unmigrated primary captain, the first
+verified `/start` materializes the corresponding `TeamCaptains` row. Captain
+notifications are not routed through legacy participant chat fields.
 
 ## Trackers
 

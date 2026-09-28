@@ -19,6 +19,7 @@ import httpx
 from app.bot.clients import BotCommand, BotPurpose, LiveTelegramBotClient, LiveTelegramFileDownloader
 from app.logging import setup_logging
 from app.bot.dispatch import TelegramUpdateDispatcher
+from app.bot.notification_dispatch import NotificationBotUpdateDispatcher
 from app.bot.rupor_dispatch import RuporUpdateDispatcher
 from app.config import ConfigurationError, Settings, load_settings
 from app.errors import ActionDiagnosticError, action_diagnostic_explanation
@@ -37,6 +38,7 @@ from app.scheduler.jobs import SchedulerService
 from app.services.captains import CaptainService
 from app.services.insights import InsightService
 from app.services.notifications import NotificationCategory, NotificationRouter, Recipient, RecipientType
+from app.services.notification_bot import NotificationBotStartService
 from app.services.participant_flows import ParticipantFlowService
 from app.services.rupor import RuporService
 from app.services.voice_messages import VoiceMessageService
@@ -91,6 +93,7 @@ class RuntimeComponents:
     voice_service: VoiceMessageService
     scheduler_service: SchedulerService
     report_service: ReportService | None = None
+    notification_bot_dispatcher: NotificationBotUpdateDispatcher | None = None
     rupor_bot: LiveTelegramBotClient | None = None
     rupor_dispatcher: RuporUpdateDispatcher | None = None
 
@@ -293,6 +296,13 @@ def compose_runtime(
     rupor_dispatcher = _build_rupor_dispatcher(
         settings, sheets_gateway, bots, notification_router
     )
+    notification_bot_dispatcher = NotificationBotUpdateDispatcher(
+        service=NotificationBotStartService(
+            sheets=sheets_gateway,
+            notification_bot=bots.notification,
+            flow_id=str(bound_flow.get("flow_id", "")).strip(),
+        )
+    )
     return RuntimeComponents(
         main_bot=bots.main,
         error_bot=bots.error,
@@ -307,6 +317,7 @@ def compose_runtime(
         voice_service=voice_service,
         scheduler_service=scheduler_service,
         report_service=report_service,
+        notification_bot_dispatcher=notification_bot_dispatcher,
         rupor_bot=bots.rupor,
         rupor_dispatcher=rupor_dispatcher,
     )
@@ -578,6 +589,90 @@ class RuporPollingRunner:
                     error=exc,
                 )
                 self.stop_event.wait(RUNTIME_RETRY_BASE_SECONDS)
+
+
+@dataclass
+class NotificationBotPollingRunner:
+    poll_timeout_seconds: int
+    poll_limit: int
+    stop_event: Event
+
+    def run(self, components: RuntimeComponents) -> None:
+        if components.notification_bot_dispatcher is None:
+            return
+        offset: int | None = None
+        failed_update_id: int | None = None
+        dispatch_failure_reported = False
+        dispatch_failure_count = 0
+        consecutive_poll_failures = 0
+        polling_failure_alerted = False
+        while not self.stop_event.is_set():
+            try:
+                updates = components.notification_bot.get_updates(
+                    offset=offset,
+                    timeout_seconds=self.poll_timeout_seconds,
+                    limit=self.poll_limit,
+                )
+                for update in updates:
+                    update_id = update.get("update_id")
+                    try:
+                        components.notification_bot_dispatcher.dispatch_update(update)
+                    except Exception as exc:
+                        normalized_id = update_id if isinstance(update_id, int) else None
+                        if not dispatch_failure_reported or failed_update_id != normalized_id:
+                            _notify_polling_error(
+                                components.notification_router,
+                                event="notification_bot_update_dispatch_failed",
+                                error=exc,
+                                update_id=normalized_id,
+                            )
+                        failed_update_id = normalized_id
+                        dispatch_failure_reported = True
+                        dispatch_failure_count += 1
+                        if dispatch_failure_count >= RUNTIME_FAILURE_ALERT_THRESHOLD:
+                            _notify_polling_error(
+                                components.notification_router,
+                                event="notification_bot_update_abandoned",
+                                error=exc,
+                                update_id=normalized_id,
+                                consecutive_failures=dispatch_failure_count,
+                            )
+                            offset = (
+                                normalized_id + 1
+                                if normalized_id is not None
+                                else (offset or 0) + 1
+                            )
+                            failed_update_id = None
+                            dispatch_failure_reported = False
+                            dispatch_failure_count = 0
+                            continue
+                        self.stop_event.wait(RUNTIME_RETRY_MAX_SECONDS)
+                        break
+                    if isinstance(update_id, int):
+                        offset = update_id + 1
+                    failed_update_id = None
+                    dispatch_failure_reported = False
+                    dispatch_failure_count = 0
+                if polling_failure_alerted:
+                    recovery_sent = _notify_runtime_recovery(
+                        components.notification_router,
+                        event="notification_bot_get_updates_recovered",
+                    )
+                    polling_failure_alerted = not recovery_sent
+                consecutive_poll_failures = 0
+            except Exception as exc:
+                consecutive_poll_failures += 1
+                if (
+                    consecutive_poll_failures >= RUNTIME_FAILURE_ALERT_THRESHOLD
+                    and not polling_failure_alerted
+                ):
+                    polling_failure_alerted = _notify_polling_error(
+                        components.notification_router,
+                        event="notification_bot_get_updates_failed",
+                        error=exc,
+                        consecutive_failures=consecutive_poll_failures,
+                    )
+                self.stop_event.wait(RUNTIME_RETRY_MAX_SECONDS)
 
 def _callback_context(update: dict[str, object]) -> tuple[str | None, str | None]:
     callback = update.get("callback_query")
@@ -938,9 +1033,15 @@ def run_bot(
     components = components_factory(settings)
     register_main_bot_commands(components)
     scheduler_started = False
-    rupor_thread: Thread | None = None
+    auxiliary_threads: tuple[Thread, ...] = ()
+    auxiliary_stop_event: Event | None = None
     if polling_runner is None:
-        polling_runner, scheduler_runner, rupor_thread = _create_default_runners(
+        (
+            polling_runner,
+            scheduler_runner,
+            auxiliary_threads,
+            auxiliary_stop_event,
+        ) = _create_default_runners(
             settings, components, scheduler_runner=scheduler_runner
         )
 
@@ -950,10 +1051,12 @@ def run_bot(
             scheduler_started = True
         polling_runner.run(components)
     finally:
+        if auxiliary_stop_event is not None:
+            auxiliary_stop_event.set()
         if scheduler_started:
             scheduler_runner.stop()
-        if rupor_thread is not None:
-            rupor_thread.join(timeout=settings.telegram_runtime.poll_timeout_seconds + 2)
+        for thread in auxiliary_threads:
+            thread.join(timeout=settings.telegram_runtime.poll_timeout_seconds + 2)
 
 
 def _create_default_runners(
@@ -961,7 +1064,7 @@ def _create_default_runners(
     components: RuntimeComponents,
     *,
     scheduler_runner: SchedulerRunner | None,
-) -> tuple[PollingRunner, SchedulerRunner, Thread | None]:
+) -> tuple[PollingRunner, SchedulerRunner, tuple[Thread, ...], Event]:
     stop_event = Event()
     _install_shutdown_handlers(stop_event)
     polling = TelegramPollingRunner(
@@ -970,7 +1073,20 @@ def _create_default_runners(
         stop_event=stop_event,
     )
     scheduler = scheduler_runner or LiveSchedulerRunner(stop_event=stop_event)
-    rupor_thread = None
+    auxiliary_threads: list[Thread] = []
+    notification_runner = NotificationBotPollingRunner(
+        poll_timeout_seconds=settings.telegram_runtime.poll_timeout_seconds,
+        poll_limit=settings.telegram_runtime.poll_limit,
+        stop_event=stop_event,
+    )
+    notification_thread = Thread(
+        target=notification_runner.run,
+        args=(components,),
+        name="notification-bot-polling",
+        daemon=True,
+    )
+    notification_thread.start()
+    auxiliary_threads.append(notification_thread)
     if components.rupor_bot is not None and components.rupor_dispatcher is not None:
         rupor = RuporPollingRunner(
             poll_timeout_seconds=settings.telegram_runtime.poll_timeout_seconds,
@@ -984,7 +1100,8 @@ def _create_default_runners(
             daemon=True,
         )
         rupor_thread.start()
-    return polling, scheduler, rupor_thread
+        auxiliary_threads.append(rupor_thread)
+    return polling, scheduler, tuple(auxiliary_threads), stop_event
 
 
 def register_main_bot_commands(components: RuntimeComponents) -> None:
@@ -993,6 +1110,9 @@ def register_main_bot_commands(components: RuntimeComponents) -> None:
             BotCommand("start", "Главное меню"),
             BotCommand("menu", "Показать меню"),
         )
+    )
+    components.notification_bot.set_commands(
+        (BotCommand("start", "Подключить уведомления"),)
     )
 
 

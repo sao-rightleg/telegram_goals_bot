@@ -53,6 +53,20 @@ class SheetsGateway(Protocol):
     def list_team_captains(self) -> list[SheetRow]:
         """Return team-to-captain assignments."""
 
+    def mark_team_captain_notification_started(
+        self,
+        *,
+        flow_id: str,
+        captain_id: str,
+        team_id: str,
+        captain_telegram_id: int,
+        chat_id: str,
+        started_at: str,
+        create_if_missing: bool = False,
+        captain_full_name: str = "",
+    ) -> None:
+        """Persist a captain's private notification-bot connection."""
+
     def get_tracker(self, tracker_id: str) -> SheetRow | None:
         """Return one tracker row by stable tracker ID."""
 
@@ -278,6 +292,10 @@ REQUIRED_SHEET_COLUMNS: dict[str, frozenset[str]] = {
             "is_active",
             "created_at",
             "updated_at",
+            "captain_full_name",
+            "notification_bot_chat_id",
+            "notification_bot_started_at",
+            "notification_bot_status",
         }
     ),
     "Trackers": frozenset({"tracker_id", "telegram_id", "full_name", "gender_scope", "role", "is_active"}),
@@ -394,6 +412,63 @@ class GoogleSheetsGateway:
 
     def list_team_captains(self) -> list[SheetRow]:
         return self._list_rows("TeamCaptains")
+
+    def mark_team_captain_notification_started(
+        self,
+        *,
+        flow_id: str,
+        captain_id: str,
+        team_id: str,
+        captain_telegram_id: int,
+        chat_id: str,
+        started_at: str,
+        create_if_missing: bool = False,
+        captain_full_name: str = "",
+    ) -> None:
+        headers, rows = self._table("TeamCaptains")
+        indexes = {
+            name: _header_index(headers, name)
+            for name in (
+                "flow_id", "captain_id", "team_id", "captain_telegram_id", "is_active",
+                "notification_bot_chat_id",
+                "notification_bot_started_at", "notification_bot_status", "updated_at",
+            )
+        }
+        for offset, row in enumerate(rows, start=2):
+            padded = _pad_row(row, len(headers))
+            if (
+                str(padded[indexes["flow_id"]]).strip() != flow_id
+                or str(padded[indexes["captain_id"]]).strip() != captain_id
+                or str(padded[indexes["team_id"]]).strip() != team_id
+                or str(padded[indexes["captain_telegram_id"]]).strip()
+                != str(captain_telegram_id)
+                or str(padded[indexes["is_active"]]).strip().lower() != "true"
+            ):
+                continue
+            padded[indexes["notification_bot_chat_id"]] = chat_id
+            if not str(padded[indexes["notification_bot_started_at"]]).strip():
+                padded[indexes["notification_bot_started_at"]] = started_at
+            padded[indexes["notification_bot_status"]] = "active"
+            padded[indexes["updated_at"]] = started_at
+            self._update_row("TeamCaptains", offset, padded)
+            return
+        if create_if_missing:
+            self._append_row("TeamCaptains", {
+                "flow_id": flow_id,
+                "team_id": team_id,
+                "captain_id": captain_id,
+                "captain_telegram_id": captain_telegram_id,
+                "is_primary": True,
+                "is_active": True,
+                "created_at": started_at,
+                "updated_at": started_at,
+                "captain_full_name": captain_full_name,
+                "notification_bot_chat_id": chat_id,
+                "notification_bot_started_at": started_at,
+                "notification_bot_status": "active",
+            })
+            return
+        raise KeyError("Team captain assignment not found")
 
     def get_tracker(self, tracker_id: str) -> SheetRow | None:
         for row in self.list_trackers():
@@ -927,6 +1002,52 @@ class FakeSheetsGateway:
     def list_team_captains(self) -> list[SheetRow]:
         return [dict(row) for row in self._team_captains]
 
+    def mark_team_captain_notification_started(
+        self,
+        *,
+        flow_id: str,
+        captain_id: str,
+        team_id: str,
+        captain_telegram_id: int,
+        chat_id: str,
+        started_at: str,
+        create_if_missing: bool = False,
+        captain_full_name: str = "",
+    ) -> None:
+        for row in self._team_captains:
+            if (
+                str(row.get("flow_id", "")).strip() == flow_id
+                and str(row.get("captain_id", "")).strip() == captain_id
+                and str(row.get("team_id", "")).strip() == team_id
+                and str(row.get("captain_telegram_id", "")).strip()
+                == str(captain_telegram_id)
+                and _is_literal_true(row.get("is_active"))
+            ):
+                row["notification_bot_chat_id"] = chat_id
+                row.setdefault("notification_bot_started_at", started_at)
+                if not row.get("notification_bot_started_at"):
+                    row["notification_bot_started_at"] = started_at
+                row["notification_bot_status"] = "active"
+                row["updated_at"] = started_at
+                return
+        if create_if_missing:
+            self._team_captains.append({
+                "flow_id": flow_id,
+                "team_id": team_id,
+                "captain_id": captain_id,
+                "captain_telegram_id": captain_telegram_id,
+                "is_primary": True,
+                "is_active": True,
+                "created_at": started_at,
+                "updated_at": started_at,
+                "captain_full_name": captain_full_name,
+                "notification_bot_chat_id": chat_id,
+                "notification_bot_started_at": started_at,
+                "notification_bot_status": "active",
+            })
+            return
+        raise KeyError("Team captain assignment not found")
+
     def get_tracker(self, tracker_id: str) -> SheetRow | None:
         for row in self._trackers:
             if row.get("tracker_id") == tracker_id:
@@ -1377,6 +1498,10 @@ def _value_for_header(row: SheetRow, header: str) -> object:
     if alias is not None and alias in row:
         return row[alias]
     return ""
+
+
+def _is_literal_true(value: object) -> bool:
+    return value is True or str(value).strip().lower() == "true"
 
 
 def _header_index(headers: Sequence[str], header: str) -> int:

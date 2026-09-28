@@ -63,3 +63,18 @@ def primary_team_captain(
     )
     primary = [row for row in assignments if row.get("is_primary") is True]
     return primary[0] if len(primary) == 1 else None
+
+
+def captain_notification_chat_id(
+    assignment: SheetRow,
+    *,
+    participant: SheetRow | None = None,
+) -> str | None:
+    """Return a private chat verified by a Notification-bot `/start`."""
+    if assignment.get("_assignment_source") == "legacy_teams":
+        return None
+    if str(assignment.get("notification_bot_status") or "").strip().lower() != "active":
+        return None
+    chat_id = str(assignment.get("notification_bot_chat_id") or "").strip()
+    telegram_id = str(assignment.get("captain_telegram_id") or "").strip()
+    return chat_id if chat_id and chat_id == telegram_id else None

@@ -126,6 +126,70 @@ def test_business_schema_migration_adds_captain_telegram_id_once(
     assert api.batch_calls == 1
 
 
+def test_business_schema_migration_adds_captain_full_name_once(
+    monkeypatch,
+) -> None:
+    headers = {
+        name: list(required)
+        for name, required in migration.REQUIRED_HEADERS.items()
+    }
+    headers["TeamCaptains"].remove("captain_full_name")
+    api = _SheetsApi(headers)
+    monkeypatch.setenv("GOOGLE_SHEETS_ID", "sheet-id")
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/private/credentials.json")
+    monkeypatch.setattr(
+        migration.Credentials, "from_service_account_file",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(migration, "build", lambda *_args, **_kwargs: api)
+
+    migration.main()
+
+    assert api.headers["TeamCaptains"][-1] == "captain_full_name"
+    assert api.headers["TeamCaptains"].count("captain_full_name") == 1
+    assert api.batch_calls == 1
+
+
+def test_business_schema_migration_adds_notification_connection_columns_once(
+    monkeypatch,
+) -> None:
+    headers = {
+        name: list(required)
+        for name, required in migration.REQUIRED_HEADERS.items()
+    }
+    connection_columns = {
+        "notification_bot_chat_id",
+        "notification_bot_started_at",
+        "notification_bot_status",
+    }
+    headers["TeamCaptains"] = [
+        header for header in headers["TeamCaptains"] if header not in connection_columns
+    ]
+    api = _SheetsApi(headers)
+    monkeypatch.setenv("GOOGLE_SHEETS_ID", "sheet-id")
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/private/credentials.json")
+    monkeypatch.setattr(
+        migration.Credentials, "from_service_account_file",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(migration, "build", lambda *_args, **_kwargs: api)
+
+    migration.main()
+    migration.main()
+
+    assert api.headers["TeamCaptains"][-3:] == [
+        "notification_bot_chat_id",
+        "notification_bot_started_at",
+        "notification_bot_status",
+    ]
+    assert all(api.headers["TeamCaptains"].count(column) == 1 for column in connection_columns)
+    assert api.batch_calls == 1
+
+    migration.main()
+    assert api.headers["TeamCaptains"].count("captain_full_name") == 1
+    assert api.batch_calls == 1
+
+
 def test_business_schema_migration_fails_before_write_when_sheet_is_missing(
     monkeypatch,
 ) -> None:

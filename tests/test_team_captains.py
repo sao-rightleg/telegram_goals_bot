@@ -1,4 +1,7 @@
-from app.services.team_captains import list_team_captain_assignments
+from app.services.team_captains import (
+    captain_notification_chat_id,
+    list_team_captain_assignments,
+)
 from app.sheets.gateway import FakeSheetsGateway
 
 
@@ -71,3 +74,36 @@ def test_bound_flow_prevents_blank_legacy_row_from_duplicating_explicit_team() -
     )
 
     assert [row["captain_id"] for row in assignments] == ["NEW_1"]
+
+
+def test_notification_chat_requires_verified_matching_start() -> None:
+    participant = {"telegram_id": 201}
+
+    assert captain_notification_chat_id(
+        {
+            "captain_telegram_id": 201,
+            "notification_bot_chat_id": "201",
+            "notification_bot_status": "active",
+        },
+        participant=participant,
+    ) == "201"
+    assert captain_notification_chat_id(
+        {
+            "captain_telegram_id": 201,
+            "notification_bot_chat_id": "999",
+            "notification_bot_status": "active",
+        },
+        participant=participant,
+    ) is None
+    assert captain_notification_chat_id(
+        {
+            "captain_telegram_id": 201,
+            "notification_bot_chat_id": "201",
+            "notification_bot_status": "blocked",
+        },
+        participant=participant,
+    ) is None
+    assert captain_notification_chat_id(
+        {"_assignment_source": "legacy_teams"},
+        participant=participant,
+    ) is None

@@ -199,6 +199,41 @@ def test_live_gateway_marks_participant_bot_started_once() -> None:
     assert row["last_stage_updated_at"] == "2026-07-03T10:00:00+05:00"
 
 
+def test_live_gateway_marks_notification_bot_started_for_exact_active_assignment() -> None:
+    sheets = minimal_live_sheets(TeamCaptains=[
+        [
+            "flow_id", "team_id", "captain_id", "captain_telegram_id",
+            "is_primary", "is_active", "created_at", "updated_at",
+            "captain_full_name", "notification_bot_chat_id",
+            "notification_bot_started_at", "notification_bot_status",
+        ],
+        [
+            "FLOW_1", "T001", "C001", "1001", "TRUE", "TRUE", "", "",
+            "Captain One", "", "", "",
+        ],
+        [
+            "FLOW_2", "T002", "C001", "1001", "TRUE", "TRUE", "", "",
+            "Captain One", "", "", "",
+        ],
+    ])
+    gateway = GoogleSheetsGateway(service=FakeSheetsService(sheets), spreadsheet_id="sheet-id")
+
+    gateway.mark_team_captain_notification_started(
+        flow_id="FLOW_1",
+        captain_id="C001",
+        team_id="T001",
+        captain_telegram_id=1001,
+        chat_id="1001",
+        started_at="2026-09-28T14:30:00+05:00",
+    )
+
+    rows = gateway.list_team_captains()
+    assert str(rows[0]["notification_bot_chat_id"]) == "1001"
+    assert rows[0]["notification_bot_started_at"] == "2026-09-28T14:30:00+05:00"
+    assert rows[0]["notification_bot_status"] == "active"
+    assert rows[1]["notification_bot_status"] == ""
+
+
 def test_live_gateway_weekly_focus_append_is_idempotent_and_rejects_conflict() -> None:
     service = FakeSheetsService(minimal_live_sheets())
     gateway = GoogleSheetsGateway(service=service, spreadsheet_id="sheet-id")
@@ -274,6 +309,26 @@ def test_live_schema_validation_requires_captain_telegram_id_in_teams() -> None:
 
     assert "Teams" in str(error.value)
     assert "captain_telegram_id" in str(error.value)
+
+
+@pytest.mark.parametrize("missing_column", [
+    "notification_bot_chat_id",
+    "notification_bot_started_at",
+    "notification_bot_status",
+])
+def test_live_schema_validation_requires_notification_connection_columns(
+    missing_column: str,
+) -> None:
+    sheets = minimal_live_sheets()
+    sheets["TeamCaptains"] = [[
+        header for header in sheets["TeamCaptains"][0] if header != missing_column
+    ]]
+
+    with pytest.raises(GoogleSheetsSchemaError) as error:
+        validate_required_schema(FakeSheetsService(sheets), spreadsheet_id="sheet-id")
+
+    assert "TeamCaptains" in str(error.value)
+    assert missing_column in str(error.value)
 
 
 def test_challenge_flows_schema_validation_uses_separate_spreadsheet() -> None:

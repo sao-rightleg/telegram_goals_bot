@@ -18,6 +18,7 @@ from app.scheduler.calendar import (
 from app.services.notifications import NotificationCategory, NotificationRouter, Recipient, RecipientType
 from app.services.team_captains import (
     active_team_captain_assignments,
+    captain_notification_chat_id,
     list_team_captain_assignments,
 )
 from app.sheets.gateway import SheetsGateway
@@ -449,7 +450,9 @@ class SchedulerService:
             ):
                 captain_id = _string_value(assignment.get("captain_id"))
                 captain = self.sheets.get_participant(captain_id) if captain_id else None
-                chat_id = _chat_id(captain or {})
+                chat_id = captain_notification_chat_id(
+                    assignment, participant=captain
+                )
                 if not _captain_is_eligible(
                     captain, team_id=team_id, flow_id=team_flow_id
                 ) or chat_id is None:
@@ -845,7 +848,13 @@ class SchedulerService:
             captain_id = _string_value(assignment.get("captain_id"))
             captain = self.sheets.get_participant(captain_id)
             if captain is not None:
-                recipients.append((captain, RecipientType.CAPTAIN, "silent_notification_send_failed"))
+                captain_recipient = {
+                    **captain,
+                    "chat_id": captain_notification_chat_id(
+                        assignment, participant=captain
+                    ) or "",
+                }
+                recipients.append((captain_recipient, RecipientType.CAPTAIN, "silent_notification_send_failed"))
             else:
                 recipients.append(({}, RecipientType.CAPTAIN, "silent_notification_send_failed"))
 
@@ -997,7 +1006,9 @@ def _steps_summary_recipients(
                 continue
             captain_id = _string_value(assignment.get("captain_id"))
             captain = participants_by_id.get(captain_id)
-            chat_id = _chat_id(captain or {})
+            chat_id = captain_notification_chat_id(
+                assignment, participant=captain
+            )
             if captain and chat_id and _captain_is_eligible(
                 captain, team_id=team_id,
                 flow_id=_string_value(assignment.get("flow_id")),

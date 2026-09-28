@@ -35,6 +35,13 @@ not query the registry. New flows use separate Main and Notification bot
 instances and separate SQLite/file storage. The technical Error bot remains
 shared.
 
+The Notification bot has its own polling loop for the `/start` connection
+command. A successful private-chat start is stored on the matching active
+`TeamCaptains` assignment and becomes the auditable source for whether a
+captain connected the notification channel. Captain notifications and reports
+use only this verified private chat; legacy `Teams`/`Participants` Telegram IDs
+are not treated as proof that the Notification bot was started.
+
 ```text
 Telegram users
   |

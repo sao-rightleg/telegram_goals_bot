@@ -17,6 +17,9 @@ REQUIRED_HEADERS = {
     "TeamCaptains": (
         "flow_id", "team_id", "captain_id", "captain_telegram_id",
         "is_primary", "is_active", "created_at", "updated_at",
+        "captain_full_name",
+        "notification_bot_chat_id", "notification_bot_started_at",
+        "notification_bot_status",
     ),
     "PlannedSteps": (
         "step_number", "step_title", "step_description", "step_metric",

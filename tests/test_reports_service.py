@@ -212,6 +212,18 @@ def _gateway(*, trackers: list[dict[str, object]] | None = None) -> FakeSheetsGa
             {"flow_id": "FLOW_TEST", "team_id": "T001", "team_name": "Команда А", "gender": "male", "captain_id": "C001", "is_active": True},
             {"flow_id": "FLOW_TEST", "team_id": "T002", "team_name": "Команда Б", "gender": "female", "captain_id": "C002", "is_active": True},
         ],
+        team_captains=[
+            {
+                "flow_id": "FLOW_TEST", "team_id": "T001", "captain_id": "C001",
+                "captain_telegram_id": 2001, "notification_bot_chat_id": "2001",
+                "notification_bot_status": "active", "is_primary": True, "is_active": True,
+            },
+            {
+                "flow_id": "FLOW_TEST", "team_id": "T002", "captain_id": "C002",
+                "captain_telegram_id": 2002, "notification_bot_chat_id": "2002",
+                "notification_bot_status": "active", "is_primary": True, "is_active": True,
+            },
+        ],
         participants=[
             _participant("P001", "Анна Иванова", "participant", "T001", "active"),
             _participant("P002", "Пётр Смирнов", "participant", "T002", "active"),

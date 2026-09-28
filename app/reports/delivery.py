@@ -24,6 +24,7 @@ from app.services.notifications import (
     RecipientType,
 )
 from app.sheets.gateway import SheetRow
+from app.services.team_captains import captain_notification_chat_id
 from app.storage.reports import ReportStateRepository
 
 
@@ -104,7 +105,9 @@ class ReportDeliveryPlanner:
                 self._append_team_items(
                     items=items, problems=problems, team=team,
                     recipient_type="captain", recipient_id=captain_id,
-                    chat_id=_chat_id(captain),
+                    chat_id=captain_notification_chat_id(
+                        assignment, participant=captain
+                    ),
                 )
 
     def _append_tracker_reports(
@@ -511,6 +514,7 @@ def _legacy_team_captains(teams: list[SheetRow]) -> list[SheetRow]:
             "captain_id": team.get("captain_id", ""),
             "is_primary": True,
             "is_active": team.get("is_active", True) is not False,
+            "_assignment_source": "legacy_teams",
         }
         for team in teams
         if team.get("captain_id")

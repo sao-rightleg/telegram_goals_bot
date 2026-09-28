@@ -8,6 +8,18 @@ The bot is a digital interviewer, data collector, history keeper, reminder engin
 
 It is not a coach, therapist, motivator, or advice engine.
 
+## Notification bot connection for captains
+
+An active captain opens the Notification bot in a private chat and sends
+`/start`. The bot verifies the Telegram ID against active `TeamCaptains` rows
+for the bound flow, records the private chat and first connection timestamp,
+then replies:
+
+`Бот уведомлений подключён. Сюда будут приходить сводки и отчёты вашей команды.`
+
+Unknown, inactive, other-flow, and group-chat starts do not change business
+data and receive a short administrator-contact message.
+
 ## Manual RUPOR Broadcast
 
 1. One of exactly three configured operators sends text to RUPOR in a private chat.

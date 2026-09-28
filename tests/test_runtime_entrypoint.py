@@ -163,6 +163,10 @@ def test_run_bot_registers_main_bot_commands_before_polling(tmp_path: Path) -> N
         "Главное меню",
         "Показать меню",
     ]
+    assert [command.command for command in runner.components.notification_bot.commands] == ["start"]
+    assert [command.description for command in runner.components.notification_bot.commands] == [
+        "Подключить уведомления",
+    ]
 
 
 def test_run_bot_starts_and_stops_supplied_scheduler_runner(tmp_path: Path) -> None:
@@ -177,6 +181,46 @@ def test_run_bot_starts_and_stops_supplied_scheduler_runner(tmp_path: Path) -> N
         scheduler_runner=scheduler_runner,
     )
 
+    assert scheduler_runner.started is True
+    assert scheduler_runner.stopped is True
+
+
+def test_run_bot_stops_and_joins_notification_polling_thread(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = load_settings(environ=runtime_env(tmp_path))
+    polling_runner = RecordingPollingRunner()
+    scheduler_runner = RecordingSchedulerRunner()
+    stop_event = Event()
+
+    class RecordingThread:
+        def __init__(self) -> None:
+            self.joined = False
+
+        def join(self, *, timeout: float) -> None:
+            assert timeout == settings.telegram_runtime.poll_timeout_seconds + 2
+            self.joined = True
+
+    notification_thread = RecordingThread()
+    monkeypatch.setattr(
+        runtime_module,
+        "_create_default_runners",
+        lambda *_args, **_kwargs: (
+            polling_runner,
+            scheduler_runner,
+            (notification_thread,),
+            stop_event,
+        ),
+    )
+
+    run_bot(
+        settings,
+        components_factory=lambda _settings: _runtime_components(tmp_path),
+    )
+
+    assert stop_event.is_set()
+    assert notification_thread.joined is True
     assert scheduler_runner.started is True
     assert scheduler_runner.stopped is True
     assert scheduler_runner.components is polling_runner.components

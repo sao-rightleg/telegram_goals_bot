@@ -21,7 +21,7 @@ from app.storage.sqlite import initialize_schema
 
 
 def test_captain_plan_contains_only_own_team_summary_and_pdf() -> None:
-    plan = _planner().build_plan(_report_data(), participants=_participants(), teams=_teams(), trackers=_trackers())
+    plan = _planner().build_plan(_report_data(), participants=_participants(), teams=_teams(), trackers=_trackers(), team_captains=_connected_team_captains())
 
     captain_items = [
         item
@@ -45,9 +45,9 @@ def test_same_team_summary_and_pdf_are_delivered_to_both_captains() -> None:
         }
     ]
     assignments = [
-        {"team_id": "T001", "captain_id": "C001", "is_primary": True, "is_active": True},
-        {"team_id": "T001", "captain_id": "C003", "is_primary": False, "is_active": True},
-        {"team_id": "T002", "captain_id": "C002", "is_primary": True, "is_active": True},
+        {"team_id": "T001", "captain_id": "C001", "captain_telegram_id": 2001, "notification_bot_chat_id": "2001", "notification_bot_status": "active", "is_primary": True, "is_active": True},
+        {"team_id": "T001", "captain_id": "C003", "captain_telegram_id": 2003, "notification_bot_chat_id": "2003", "notification_bot_status": "active", "is_primary": False, "is_active": True},
+        {"team_id": "T002", "captain_id": "C002", "captain_telegram_id": 2002, "notification_bot_chat_id": "2002", "notification_bot_status": "active", "is_primary": True, "is_active": True},
     ]
 
     plan = _planner().build_plan(
@@ -65,6 +65,24 @@ def test_same_team_summary_and_pdf_are_delivered_to_both_captains() -> None:
         ("C003", "2003", ReportType.TELEGRAM_TEAM_SUMMARY),
         ("C003", "2003", ReportType.PDF_TEAM_REPORT),
     }
+
+
+def test_explicit_captain_without_notification_start_gets_no_report() -> None:
+    assignments = [{
+        "team_id": "T001", "captain_id": "C001", "captain_telegram_id": 2001,
+        "notification_bot_chat_id": "", "notification_bot_status": "",
+        "is_primary": True, "is_active": True,
+    }]
+
+    plan = _planner().build_plan(
+        _report_data(), participants=_participants(), teams=_teams(), trackers=[],
+        team_captains=assignments,
+    )
+
+    assert [item for item in plan.items if item.recipient.recipient_type == "captain"] == []
+    assert [(problem.reason, problem.recipient_id) for problem in plan.problems] == [
+        ("missing_chat_id", "C001"),
+    ]
 
 
 def test_ineligible_or_cross_flow_captain_assignments_receive_no_report() -> None:
@@ -154,7 +172,7 @@ def test_pdf_recipient_matrix_contains_only_role_approved_pdf_types() -> None:
     participants = _participants() + [
         {"participant_id": "P001", "role": "participant", "team_id": "T001", "telegram_id": 1001}
     ]
-    plan = _planner().build_plan(_report_data(), participants=participants, teams=_teams(), trackers=_trackers())
+    plan = _planner().build_plan(_report_data(), participants=participants, teams=_teams(), trackers=_trackers(), team_captains=_connected_team_captains())
     pdf_items = [item for item in plan.items if item.file_path is not None]
 
     assert {
@@ -218,7 +236,7 @@ def test_missing_chat_id_is_planned_as_problem_not_delivery_item() -> None:
 def test_delivery_sends_text_and_documents_through_notification_bot(tmp_path: Path) -> None:
     service, _repository, _main_bot, _error_bot, notification_bot = _delivery_service(tmp_path)
     captains_only = [row for row in _participants() if row["role"] == "captain"]
-    plan = _planner().build_plan(_report_data(), participants=captains_only, teams=_teams(), trackers=[])
+    plan = _planner().build_plan(_report_data(), participants=captains_only, teams=_teams(), trackers=[], team_captains=_connected_team_captains())
 
     result = service.deliver_plan(week_number=5, plan=plan, sent_at="2026-07-12T23:59:00+05:00")
 
@@ -578,6 +596,21 @@ def _teams() -> list[dict[str, object]]:
     return [
         {"team_id": "T001", "team_name": "Мужская команда", "gender": "male", "captain_id": "C001"},
         {"team_id": "T002", "team_name": "Женская команда", "gender": "female", "captain_id": "C002"},
+    ]
+
+
+def _connected_team_captains() -> list[dict[str, object]]:
+    return [
+        {
+            "team_id": "T001", "captain_id": "C001", "captain_telegram_id": 2001,
+            "notification_bot_chat_id": "2001", "notification_bot_status": "active",
+            "is_primary": True, "is_active": True,
+        },
+        {
+            "team_id": "T002", "captain_id": "C002", "captain_telegram_id": 2002,
+            "notification_bot_chat_id": "2002", "notification_bot_status": "active",
+            "is_primary": True, "is_active": True,
+        },
     ]
 
 
