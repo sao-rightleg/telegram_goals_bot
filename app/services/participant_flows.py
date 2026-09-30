@@ -1989,6 +1989,7 @@ def _goal_row(
         "flow_id": draft.flow_id,
         "goal_id": f"G{digest}",
         "participant_id": draft.participant_id,
+        "participant_full_name": _participant_name(participant),
         "team_id": _string_value(participant.get("team_id")),
         "goal_title": draft.goal_title,
         "goal_description": draft.goal_description,

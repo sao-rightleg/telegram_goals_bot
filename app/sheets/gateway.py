@@ -299,7 +299,9 @@ REQUIRED_SHEET_COLUMNS: dict[str, frozenset[str]] = {
         }
     ),
     "Trackers": frozenset({"tracker_id", "telegram_id", "full_name", "gender_scope", "role", "is_active"}),
-    "Goals": frozenset({"goal_id", "participant_id", "goal_status"}),
+    "Goals": frozenset(
+        {"goal_id", "participant_id", "participant_full_name", "goal_status"}
+    ),
     "PlannedSteps": frozenset(
         {
             "step_id",

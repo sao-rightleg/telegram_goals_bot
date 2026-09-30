@@ -181,7 +181,10 @@ def minimal_live_sheets(**overrides: list[list[object]]) -> dict[str, list[list[
             "notification_bot_status",
         ]],
         "Trackers": [["tracker_id", "telegram_id", "full_name", "gender_scope", "role", "is_active"]],
-        "Goals": [["goal_id", "participant_id", "goal_status"], ["G001", "P001", "active"]],
+        "Goals": [
+            ["goal_id", "participant_id", "participant_full_name", "goal_status"],
+            ["G001", "P001", "Participant One", "active"],
+        ],
         "PlannedSteps": [
             [
                 "step_id",

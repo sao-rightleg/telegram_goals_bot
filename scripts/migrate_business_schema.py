@@ -21,6 +21,7 @@ REQUIRED_HEADERS = {
         "notification_bot_chat_id", "notification_bot_started_at",
         "notification_bot_status",
     ),
+    "Goals": ("participant_full_name",),
     "PlannedSteps": (
         "step_number", "step_title", "step_description", "step_metric",
         "updated_at", "created_at",

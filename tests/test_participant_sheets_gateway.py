@@ -311,6 +311,19 @@ def test_live_schema_validation_requires_captain_telegram_id_in_teams() -> None:
     assert "captain_telegram_id" in str(error.value)
 
 
+def test_live_schema_validation_requires_participant_full_name_in_goals() -> None:
+    sheets = minimal_live_sheets()
+    sheets["Goals"] = [[
+        header for header in sheets["Goals"][0] if header != "participant_full_name"
+    ]]
+
+    with pytest.raises(GoogleSheetsSchemaError) as error:
+        validate_required_schema(FakeSheetsService(sheets), spreadsheet_id="sheet-id")
+
+    assert "Goals" in str(error.value)
+    assert "participant_full_name" in str(error.value)
+
+
 @pytest.mark.parametrize("missing_column", [
     "notification_bot_chat_id",
     "notification_bot_started_at",

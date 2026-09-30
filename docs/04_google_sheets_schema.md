@@ -286,6 +286,7 @@ Stores participant goals.
 Columns:
 - `goal_id`
 - `participant_id`
+- `participant_full_name` — display-only copy of `Participants.full_name` for quick manual review
 - `goal_title`
 - `goal_description`
 - `goal_value_amount`
@@ -307,6 +308,9 @@ Allowed `goal_status` values:
 - `cancelled`
 
 Notes:
+- `participant_full_name` is filled by the bot when the goal is created. It is
+  not an identifier or authorization source; all joins and access checks continue
+  to use `participant_id`.
 - Goal is a concrete desired object or result.
 - Goal is not simply money.
 - Final goal achievement is fixed by tracker.

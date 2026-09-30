@@ -39,6 +39,7 @@ NOW = "2026-07-02T10:00:00+05:00"
 def test_participant_creates_confirmed_goal_in_google_sheets_boundary(tmp_path: Path) -> None:
     participant = {
         "flow_id": "FLOW_2", "participant_id": "P001", "telegram_id": 1001,
+        "full_name": "Иван Петров",
         "team_id": "T001", "role": "participant", "status": "active", "consent_given": True,
     }
     service, gateway, _main_bot, _error_bot, _notification_bot, repository = _build_service(
@@ -71,10 +72,12 @@ def test_participant_creates_confirmed_goal_in_google_sheets_boundary(tmp_path: 
     goal = gateway.get_active_goal("P001")
     assert goal is not None
     assert {key: goal[key] for key in (
-        "flow_id", "participant_id", "team_id", "goal_title", "goal_description",
+        "flow_id", "participant_id", "participant_full_name", "team_id",
+        "goal_title", "goal_description",
         "goal_value_amount", "goal_value_currency", "permission_condition", "goal_status",
     )} == {
-        "flow_id": "FLOW_2", "participant_id": "P001", "team_id": "T001",
+        "flow_id": "FLOW_2", "participant_id": "P001",
+        "participant_full_name": "Иван Петров", "team_id": "T001",
         "goal_title": "Запустить новое направление",
         "goal_description": "Получить первые оплаченные заказы",
         "goal_value_amount": "3", "goal_value_currency": "клиента",

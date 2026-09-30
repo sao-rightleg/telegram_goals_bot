@@ -150,6 +150,32 @@ def test_business_schema_migration_adds_captain_full_name_once(
     assert api.batch_calls == 1
 
 
+def test_business_schema_migration_adds_goal_participant_full_name_once(
+    monkeypatch,
+) -> None:
+    headers = {
+        name: list(required)
+        for name, required in migration.REQUIRED_HEADERS.items()
+    }
+    headers["Goals"] = ["goal_id", "participant_id"]
+    api = _SheetsApi(headers)
+    monkeypatch.setenv("GOOGLE_SHEETS_ID", "sheet-id")
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/private/credentials.json")
+    monkeypatch.setattr(
+        migration.Credentials, "from_service_account_file",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(migration, "build", lambda *_args, **_kwargs: api)
+
+    migration.main()
+    migration.main()
+
+    assert api.headers["Goals"] == [
+        "goal_id", "participant_id", "participant_full_name",
+    ]
+    assert api.batch_calls == 1
+
+
 def test_business_schema_migration_adds_notification_connection_columns_once(
     monkeypatch,
 ) -> None:
