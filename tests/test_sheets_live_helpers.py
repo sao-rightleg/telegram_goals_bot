@@ -189,6 +189,7 @@ def minimal_live_sheets(**overrides: list[list[object]]) -> dict[str, list[list[
             [
                 "step_id",
                 "participant_id",
+                "participant_full_name",
                 "goal_id",
                 "step_number",
                 "step_title",
@@ -201,7 +202,10 @@ def minimal_live_sheets(**overrides: list[list[object]]) -> dict[str, list[list[
                 "created_at",
                 "updated_at",
             ],
-            ["S001", "P001", "G001", "1", "Step one", "Description", "Metric", "open", "", "", "", "now", "now"],
+            [
+                "S001", "P001", "Participant One", "G001", "1", "Step one",
+                "Description", "Metric", "open", "", "", "", "now", "now",
+            ],
         ],
         "WeeklyReports": [
             [

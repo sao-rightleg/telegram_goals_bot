@@ -23,8 +23,8 @@ REQUIRED_HEADERS = {
     ),
     "Goals": ("participant_full_name",),
     "PlannedSteps": (
-        "step_number", "step_title", "step_description", "step_metric",
-        "updated_at", "created_at",
+        "participant_full_name", "step_number", "step_title",
+        "step_description", "step_metric", "updated_at", "created_at",
     ),
     "WeeklyReportSteps": ("metric_status", "metric_result_text"),
 }

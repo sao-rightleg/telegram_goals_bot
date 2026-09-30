@@ -2302,6 +2302,7 @@ def _planned_step_rows(
         {
             "step_id": f"S:{participant_id}:{draft.goal_id}:{item.step_number:02d}",
             "participant_id": participant_id,
+            "participant_full_name": _participant_name(participant),
             "goal_id": draft.goal_id,
             "step_number": item.step_number,
             "step_title": _short_step_title(item.description, limit=80),

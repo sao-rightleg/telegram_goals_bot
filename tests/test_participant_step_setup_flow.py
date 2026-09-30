@@ -60,6 +60,7 @@ def test_participant_records_exactly_eight_steps_with_metrics(tmp_path: Path) ->
     assert saved.text == "Восемь шагов сохранены."
     assert len(rows) == 8
     assert [row["step_number"] for row in rows] == list(range(1, 9))
+    assert {row["participant_full_name"] for row in rows} == {"Иван Петров"}
     assert rows[0]["step_description"] == "Провести действие 1"
     assert rows[0]["step_metric"] == "Не менее 10 единиц"
     assert all(row["step_status"] == "open" for row in rows)
@@ -360,6 +361,7 @@ def _service(tmp_path: Path):
     gateway = FakeSheetsGateway(
         participants=[{
             "participant_id": "P001", "telegram_id": 1001, "flow_id": "F001",
+            "full_name": "Иван Петров",
             "role": "participant", "status": "active", "team_id": "T001",
             "consent_given": True,
         }],

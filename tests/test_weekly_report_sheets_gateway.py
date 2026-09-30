@@ -220,7 +220,8 @@ def test_live_gateway_updates_metric_relation_and_partial_step_only() -> None:
         "WRS001", "WR001", "P001", "S001", "partial", "partial", "старый факт", "now"
     ])
     sheets["PlannedSteps"].append([
-        "S002", "P001", "G001", 2, "Шаг 2", "Суть", "Метрика", "closed", "", "", ""
+        "S002", "P001", "Participant One", "G001", 2, "Шаг 2", "Суть",
+        "Метрика", "closed", "", "", "",
     ])
     service = FakeSheetsService(sheets)
     gateway = GoogleSheetsGateway(service=service, spreadsheet_id="sheet-id")

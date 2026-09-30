@@ -306,6 +306,7 @@ REQUIRED_SHEET_COLUMNS: dict[str, frozenset[str]] = {
         {
             "step_id",
             "participant_id",
+            "participant_full_name",
             "goal_id",
             "step_number",
             "step_title",

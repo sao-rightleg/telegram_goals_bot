@@ -326,6 +326,7 @@ Stores predefined participant steps.
 Columns:
 - `step_id`
 - `participant_id`
+- `participant_full_name` — display-only copy of `Participants.full_name` for quick manual review
 - `goal_id`
 - `step_number`
 - `step_title`
@@ -345,6 +346,9 @@ Allowed `step_status` values:
 - `cancelled`
 
 Notes:
+- `participant_full_name` is filled by the bot for every confirmed step row. It
+  is not an identifier or authorization source; joins continue to use
+  `participant_id` and `goal_id`.
 - Steps are not tied to specific weeks.
 - Main route contains 8 planned steps.
 - An active consenting participant creates exactly eight numbered steps in the
