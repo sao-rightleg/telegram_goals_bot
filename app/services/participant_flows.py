@@ -918,6 +918,7 @@ class ParticipantFlowService:
         self,
         user: TelegramUserContext,
         *,
+        week_number: int,
         step_id: str,
         occurred_at: str,
     ) -> FlowResponse:
@@ -940,7 +941,9 @@ class ParticipantFlowService:
             )
 
         goal = _goal_from_row(goal_row)
-        week_number = current_challenge_week_number(datetime.fromisoformat(occurred_at))
+        current_week_number = current_challenge_week_number(datetime.fromisoformat(occurred_at))
+        if week_number != current_week_number:
+            raise ActionDiagnosticError(ActionDiagnosticKind.FOCUS_SELECTION_NOT_REQUESTED)
         existing = self.sheets.find_weekly_focus(participant_id, week_number=week_number)
         if existing is not None:
             return self._send_simple_response(
@@ -951,10 +954,6 @@ class ParticipantFlowService:
                 step="weekly_focus_locked",
                 occurred_at=occurred_at,
             )
-
-        state = self.dialog_states.get(user.telegram_id)
-        if state is None or state.flow != "idle" or state.step != "weekly_focus":
-            raise ActionDiagnosticError(ActionDiagnosticKind.FOCUS_SELECTION_NOT_REQUESTED)
 
         steps = [_planned_step_from_row(row) for row in self.sheets.list_planned_steps(participant_id, goal.goal_id)]
         selected_step = _step_by_id([step for step in steps if step.step_status != "closed"], step_id)
@@ -1351,7 +1350,7 @@ class ParticipantFlowService:
             flow="idle",
             step="weekly_focus",
             occurred_at=occurred_at,
-            buttons=_weekly_focus_buttons(open_steps),
+            buttons=_weekly_focus_buttons(open_steps, week_number=week_number),
         )
 
     def _participant_for_current_flow(self, telegram_id: int) -> SheetRow | None:
@@ -2435,11 +2434,15 @@ def _step_action_buttons(steps: list[PlannedStep]) -> tuple[TelegramInlineButton
     )
 
 
-def _weekly_focus_buttons(steps: list[PlannedStep]) -> tuple[TelegramInlineButton, ...]:
+def _weekly_focus_buttons(
+    steps: list[PlannedStep], *, week_number: int
+) -> tuple[TelegramInlineButton, ...]:
     return tuple(
         TelegramInlineButton(
             text=_step_button_text(step),
-            callback_data=f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}{step.step_id}",
+            callback_data=(
+                f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}{week_number}:{step.step_id}"
+            ),
         )
         for step in sorted(steps, key=lambda item: item.step_number)
     )

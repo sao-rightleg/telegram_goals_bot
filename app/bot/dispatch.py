@@ -272,9 +272,11 @@ class TelegramUpdateDispatcher:
                 user, field="last_name", occurred_at=now.isoformat()
             )
         if data.startswith(WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX):
+            week_number, step_id = _weekly_focus_selection(data)
             return self.participant_service.select_weekly_focus(
                 user,
-                step_id=_required_suffix(data, WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX),
+                week_number=week_number,
+                step_id=step_id,
                 occurred_at=now.isoformat(),
             )
         if data.startswith(MENU_CALLBACK_PREFIX):
@@ -616,6 +618,20 @@ def _int_suffix(data: str, prefix: str) -> int:
         return int(suffix)
     except ValueError as exc:
         raise TelegramCallbackError("callback integer is invalid") from exc
+
+
+def _weekly_focus_selection(data: str) -> tuple[int, str]:
+    suffix = _required_suffix(data, WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX)
+    week_value, separator, step_id = suffix.partition(":")
+    if not separator or not step_id:
+        raise TelegramCallbackError("weekly focus callback is malformed")
+    try:
+        week_number = int(week_value)
+    except ValueError as exc:
+        raise TelegramCallbackError("weekly focus week is invalid") from exc
+    if week_number not in range(1, 9):
+        raise TelegramCallbackError("weekly focus week is out of range")
+    return week_number, step_id
 
 
 def _required_suffix(data: str, prefix: str) -> str:

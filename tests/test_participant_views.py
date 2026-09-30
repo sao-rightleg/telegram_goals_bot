@@ -128,8 +128,8 @@ def test_start_prompts_required_weekly_focus_before_menu(tmp_path: Path) -> None
     assert "Неделя 4: с 29.06.2026 по 05.07.2026." in response.text
     assert "Выбери обязательный фокус недели." in response.text
     assert [button.callback_data for button in response.buttons] == [
-        f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}S004",
-        f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}S005",
+        f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}4:S004",
+        f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}4:S005",
     ]
     assert main_bot.sent_messages[-1].buttons == response.buttons
 
@@ -164,10 +164,12 @@ def test_select_weekly_focus_saves_business_fact_and_locks_week(tmp_path: Path) 
         ],
     )
     user = TelegramUserContext(telegram_id=1001, chat_id="chat-1001")
-    service.handle_start(user, occurred_at=NOW)
-
-    response = service.select_weekly_focus(user, step_id="S004", occurred_at=NOW)
-    locked = service.select_weekly_focus(user, step_id="S005", occurred_at=NOW)
+    response = service.select_weekly_focus(
+        user, week_number=4, step_id="S004", occurred_at=NOW
+    )
+    locked = service.select_weekly_focus(
+        user, week_number=4, step_id="S005", occurred_at=NOW
+    )
 
     assert response.text == "Фокус недели 4 (с 29.06.2026 по 05.07.2026) сохранён: Шаг 4"
     assert locked.text == "Фокус этой недели уже выбран. Внутри недели его нельзя менять."
@@ -185,7 +187,7 @@ def test_select_weekly_focus_saves_business_fact_and_locks_week(tmp_path: Path) 
     }
 
 
-def test_weekly_focus_rejects_forged_callback_without_issued_prompt(tmp_path: Path) -> None:
+def test_weekly_focus_rejects_button_from_another_week(tmp_path: Path) -> None:
     service, gateway, *_ = _build_service(
         tmp_path,
         participants=[_participant("P001", 1001)],
@@ -196,7 +198,9 @@ def test_weekly_focus_rejects_forged_callback_without_issued_prompt(tmp_path: Pa
     with pytest.raises(PermissionError, match="was not requested"):
         service.select_weekly_focus(
             TelegramUserContext(telegram_id=1001, chat_id="chat-1001"),
-            step_id="S004", occurred_at=NOW,
+            week_number=3,
+            step_id="S004",
+            occurred_at=NOW,
         )
 
     assert gateway.find_weekly_focus("P001", week_number=4) is None

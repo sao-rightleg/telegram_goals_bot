@@ -9,10 +9,13 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app.bot.clients import BotPurpose, FakeBotClient, OutgoingDocument, OutgoingMessage
+from app.bot.dispatch import TelegramUpdateDispatcher
 from app.bot.menus import WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX
 from app.scheduler.calendar import TIMEZONE_NAME
 from app.scheduler.jobs import ReminderJobResult, SchedulerService
 from app.services.notifications import NotificationRouter, Recipient, RecipientType
+from app.services.participant_flows import ParticipantFlowService
+from app.storage.dialog_state import DialogStateRepository
 from app.sheets.gateway import FakeSheetsGateway
 from app.storage.scheduler import SchedulerJobRepository
 from app.storage.sqlite import initialize_schema
@@ -302,9 +305,77 @@ def test_monday_reminder_prompts_weekly_focus_when_open_steps_exist(tmp_path: Pa
         "Шаг 2. Второй шаг",
     ]
     assert [button.callback_data for button in main_bot.sent_messages[0].buttons] == [
-        f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}S001",
-        f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}S002",
+        f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}1:S001",
+        f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}1:S002",
     ]
+
+
+def test_monday_focus_button_dispatch_persists_focus_without_dialog_state(
+    tmp_path: Path,
+) -> None:
+    participant = {**_participant("P001", 1001, consent=True), "flow_id": "F001"}
+    gateway = FakeSheetsGateway(
+        participants=[participant],
+        teams=[{"flow_id": "F001", "team_id": "T001", "is_active": True}],
+        goals=[_goal("G001", "P001")],
+        planned_steps=[_step("S001", "P001", "G001", 1, "Первый шаг", "open")],
+    )
+    scheduler, _gateway, main_bot, error_bot = _service(
+        tmp_path,
+        participants=[participant],
+        gateway=gateway,
+    )
+    scheduler.run_reminder("monday_reminder", now=MONDAY_START)
+    callback_data = main_bot.sent_messages[-1].buttons[0].callback_data
+    participant_bot = FakeBotClient(BotPurpose.MAIN)
+    router = NotificationRouter(
+        main_bot=participant_bot,
+        error_bot=error_bot,
+        notification_bot=FakeBotClient(BotPurpose.NOTIFICATION),
+        admin_error_recipient=Recipient(RecipientType.ADMIN_ERROR_CHAT, "admin-errors"),
+    )
+    dialog_states = DialogStateRepository(tmp_path / "participant-state.sqlite3")
+    initialize_schema(tmp_path / "participant-state.sqlite3")
+    participant_service = ParticipantFlowService(
+        sheets=gateway,
+        main_bot=participant_bot,
+        notification_router=router,
+        dialog_states=dialog_states,
+    )
+    dispatcher = TelegramUpdateDispatcher(
+        participant_service=participant_service,
+        weekly_report_service=object(),
+        insight_service=object(),
+        captain_service=object(),
+        dialog_states=dialog_states,
+        notification_router=router,
+        now_provider=lambda: MONDAY_START,
+    )
+
+    dispatcher.dispatch_update(
+        {
+            "update_id": 77,
+            "callback_query": {
+                "id": "focus-callback",
+                "from": {"id": 1001},
+                "message": {"message_id": 701, "chat": {"id": "1001"}},
+                "data": callback_data,
+            },
+        }
+    )
+
+    assert gateway.find_weekly_focus("P001", week_number=1) == {
+        "focus_id": "WF:P001:week-01",
+        "participant_id": "P001",
+        "goal_id": "G001",
+        "step_id": "S001",
+        "week_number": 1,
+        "week_start_date": "2026-06-08",
+        "week_end_date": "2026-06-14",
+        "focus_status": "active",
+        "selected_at": MONDAY_START.isoformat(),
+        "updated_at": MONDAY_START.isoformat(),
+    }
 
 
 def test_monday_reminder_falls_back_to_plain_text_when_focus_already_selected(

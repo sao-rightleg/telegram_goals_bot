@@ -11,7 +11,7 @@ import pytest
 import app.runtime as runtime_module
 from app.config import ConfigurationError, load_settings
 from app.bot.clients import BotPurpose, FakeBotClient, TelegramApiError
-from app.bot.messages import MESSAGE_WITHOUT_FLOW_TEXT
+from app.bot.messages import MESSAGE_WITHOUT_FLOW_TEXT, NOT_AVAILABLE_TEXT
 from app.bot.menus import (
     CAPTAIN_GOAL_CALLBACK_PREFIX,
     CAPTAIN_GOALS_PAGE_CALLBACK_PREFIX,
@@ -27,6 +27,7 @@ from app.bot.menus import (
     STEPS_CONFIRM_CALLBACK,
     STEPS_EDIT_CALLBACK_PREFIX,
     WEEKLY_REPORT_METRIC_CALLBACK_PREFIX,
+    WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX,
     WEEKLY_REPORT_START_STEP_CALLBACK_PREFIX,
     MenuAction,
 )
@@ -1112,6 +1113,39 @@ def test_dispatcher_routes_metric_result_callback(tmp_path: Path) -> None:
     assert services.weekly.metric_results == ["partial"]
 
 
+def test_dispatcher_routes_week_scoped_focus_callback(tmp_path: Path) -> None:
+    dispatcher, services, _error_bot = _dispatcher(tmp_path)
+
+    dispatcher.dispatch_update(
+        _callback_update(data=f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}5:S007")
+    )
+
+    assert services.participant.focus_selections == [(5, "S007")]
+
+
+@pytest.mark.parametrize(
+    "callback_data",
+    (
+        WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX,
+        f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}S007",
+        f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}5:",
+        f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}week:S007",
+        f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}0:S007",
+        f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}9:S007",
+    ),
+)
+def test_dispatcher_rejects_malformed_weekly_focus_callback(
+    tmp_path: Path, callback_data: str
+) -> None:
+    dispatcher, services, _error_bot = _dispatcher(tmp_path)
+
+    response = dispatcher.dispatch_update(_callback_update(data=callback_data))
+
+    assert response is not None
+    assert response.text == NOT_AVAILABLE_TEXT
+    assert services.participant.focus_selections == []
+
+
 def test_polling_runner_reports_dispatch_error_and_continues_without_raw_update(tmp_path: Path) -> None:
     components = _runtime_components(tmp_path)
     dispatcher, services, _dispatcher_error_bot = _dispatcher(tmp_path)
@@ -1451,6 +1485,7 @@ class RecordingParticipantService:
         self.step_edits: list[int] = []
         self.step_confirms = 0
         self.step_cancels = 0
+        self.focus_selections: list[tuple[int, str]] = []
 
     def handle_start(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
         self.starts.append((user, occurred_at))
@@ -1497,6 +1532,17 @@ class RecordingParticipantService:
     def cancel_steps(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
         self.step_cancels += 1
         return FlowResponse(chat_id=user.chat_id, text="steps cancelled")
+
+    def select_weekly_focus(
+        self,
+        user: TelegramUserContext,
+        *,
+        week_number: int,
+        step_id: str,
+        occurred_at: str,
+    ) -> FlowResponse:
+        self.focus_selections.append((week_number, step_id))
+        return FlowResponse(chat_id=user.chat_id, text="focus selected")
 
 
 class RecordingWeeklyReportService:

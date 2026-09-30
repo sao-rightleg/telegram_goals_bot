@@ -676,7 +676,7 @@ class SchedulerService:
                     "Выбери обязательный фокус недели.",
                 )
             )
-        return text, _weekly_focus_buttons(open_steps)
+        return text, _weekly_focus_buttons(open_steps, week_number=week_number)
 
     def _send_reminder_with_retry(
         self,
@@ -1127,7 +1127,9 @@ def _telegram_message_id(message: object) -> int | None:
     return value if isinstance(value, int) else None
 
 
-def _weekly_focus_buttons(steps: list[dict[str, object]]) -> tuple[TelegramInlineButton, ...]:
+def _weekly_focus_buttons(
+    steps: list[dict[str, object]], *, week_number: int
+) -> tuple[TelegramInlineButton, ...]:
     return tuple(
         TelegramInlineButton(
             text=(
@@ -1135,7 +1137,8 @@ def _weekly_focus_buttons(steps: list[dict[str, object]]) -> tuple[TelegramInlin
                 f"{_short_step_title(_string_value(step.get('step_title')))}"
             ),
             callback_data=(
-                f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}{_string_value(step.get('step_id'))}"
+                f"{WEEKLY_FOCUS_SELECT_CALLBACK_PREFIX}{week_number}:"
+                f"{_string_value(step.get('step_id'))}"
             ),
         )
         for step in sorted(steps, key=lambda row: _int_value(row.get("step_number")))
