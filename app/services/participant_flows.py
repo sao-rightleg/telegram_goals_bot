@@ -10,7 +10,7 @@ from threading import RLock
 from uuid import uuid4
 
 from app.bot.clients import BotClient, TelegramInlineButton
-from app.domain import PLANNED_STEP_COUNT
+from app.domain import PLANNED_STEP_COUNT, parse_word_price
 from app.errors import ActionDiagnosticError, ActionDiagnosticKind
 from app.bot.menus import (
     MenuAction,
@@ -46,6 +46,9 @@ from app.bot.messages import (
     TELEGRAM_HTML_PARSE_MODE,
     WEEKLY_REPORT_EDIT_STEP_BUTTON,
     WEEKLY_REPORT_START_STEP_BUTTON,
+    WORD_PRICE_PROMPT_TEXT,
+    WORD_PRICE_INVALID_TEXT,
+    PROJECT_RULES_TEXT,
     build_insight_menu_buttons,
     MISSING_DATA_TEXT,
     NOT_AVAILABLE_TEXT,
@@ -315,6 +318,9 @@ class ParticipantFlowService:
     def handle_steps_text(
         self, user: TelegramUserContext, text: str, *, occurred_at: str
     ) -> FlowResponse:
+        state = self.dialog_states.get(user.telegram_id)
+        if state is not None and state.flow == "steps_setup" and state.step == "awaiting_word_price":
+            return self._save_word_price(user, text, occurred_at=occurred_at)
         participant, goal = self._eligible_steps_context(user, occurred_at=occurred_at)
         state = self.dialog_states.get(user.telegram_id)
         draft = self._step_repository().get(user.telegram_id)
@@ -387,6 +393,11 @@ class ParticipantFlowService:
     def edit_step_draft(
         self, user: TelegramUserContext, *, step_number: int, occurred_at: str
     ) -> FlowResponse:
+        participant = self._participant_for_current_flow(user.telegram_id)
+        if participant is not None:
+            response = self._resume_word_price(user, participant=participant, occurred_at=occurred_at)
+            if response is not None:
+                return response
         participant, goal = self._eligible_steps_context(user, occurred_at=occurred_at)
         draft = self._step_repository().get(user.telegram_id)
         if not _valid_step_draft(draft, participant=participant, goal=goal, occurred_at=occurred_at):
@@ -411,6 +422,11 @@ class ParticipantFlowService:
         goal_id = _string_value(goal.get("goal_id"))
         if _complete_planned_steps(self.sheets.list_planned_steps(participant_id, goal_id)):
             self._step_repository().clear(user.telegram_id)
+            price_response = self._prompt_word_price_if_missing(
+                user, participant=participant, occurred_at=occurred_at
+            )
+            if price_response is not None:
+                return price_response
             return self._steps_response(
                 user, participant=participant, text="Восемь шагов уже сохранены.",
                 step="steps_saved", occurred_at=occurred_at, flow="idle",
@@ -436,6 +452,17 @@ class ParticipantFlowService:
             self._step_repository().release(user.telegram_id, occurred_at=occurred_at)
             raise
         self._step_repository().clear(user.telegram_id)
+        return self._finish_steps_setup(user, participant=participant, occurred_at=occurred_at)
+
+    def _finish_steps_setup(
+        self, user: TelegramUserContext, *, participant: SheetRow, occurred_at: str,
+    ) -> FlowResponse:
+        price_response = self._prompt_word_price_if_missing(
+            user, participant=participant, occurred_at=occurred_at,
+            prefix="Восемь шагов сохранены.\n\n",
+        )
+        if price_response is not None:
+            return price_response
         saved_response = self._steps_response(
             user, participant=participant, text="Восемь шагов сохранены.",
             step="steps_saved", occurred_at=occurred_at, flow="idle",
@@ -446,6 +473,11 @@ class ParticipantFlowService:
         return focus_response or saved_response
 
     def cancel_steps(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
+        participant = self._participant_for_current_flow(user.telegram_id)
+        if participant is not None:
+            response = self._resume_word_price(user, participant=participant, occurred_at=occurred_at)
+            if response is not None:
+                return response
         participant, _goal = self._eligible_steps_context(user, occurred_at=occurred_at)
         self._step_repository().clear(user.telegram_id)
         return self._steps_response(
@@ -656,10 +688,21 @@ class ParticipantFlowService:
                 user.telegram_id, claim_token=claim_token
             ):
                 raise RuntimeError("Registration finalization ownership was lost")
+        return self._finish_registration(
+            user, participant=participant, flow=flow, success_text=success_text, occurred_at=occurred_at
+        )
+
+    def _finish_registration(
+        self, user: TelegramUserContext, *, participant: SheetRow, flow: SheetRow,
+        success_text: str, occurred_at: str,
+    ) -> FlowResponse:
         self.dialog_states.upsert(
             _dialog_state_for(user=user, participant=participant, flow="idle", step="menu", occurred_at=occurred_at)
         )
         success_response = self._send_registration_response(user, success_text)
+        self.main_bot.send_message(
+            chat_id=user.chat_id, text=PROJECT_RULES_TEXT, parse_mode=TELEGRAM_HTML_PARSE_MODE
+        )
         if self._late_onboarding_is_authorized(flow, participant, occurred_at):
             return self._start_goal_creation(
                 user, participant=participant, occurred_at=occurred_at
@@ -1031,6 +1074,10 @@ class ParticipantFlowService:
                 user, participant=participant, occurred_at=occurred_at
             )
 
+        price_response = self._resume_word_price(user, participant=participant, occurred_at=occurred_at)
+        if price_response is not None:
+            return price_response
+
         normalized_action = _normalize_action(action)
         if normalized_action is MenuAction.VIEW_INSIGHTS:
             return self._send_simple_response(
@@ -1146,24 +1193,8 @@ class ParticipantFlowService:
             )
 
         if normalized_action is MenuAction.VIEW_STEPS:
-            report_buttons = (
-                _step_action_buttons(steps)
-                if is_weekly_report_open(datetime.fromisoformat(occurred_at))
-                else ()
-            )
-            focus = self.sheets.find_weekly_focus(
-                participant_id,
-                week_number=current_challenge_week_number(datetime.fromisoformat(occurred_at)),
-            )
-            return self._send_simple_response(
-                user,
-                participant=participant,
-                text=format_planned_steps_view(steps, focus_step_id=_focus_step_id(focus)),
-                flow="view_steps",
-                step="render",
-                occurred_at=occurred_at,
-                buttons=report_buttons,
-                parse_mode=TELEGRAM_HTML_PARSE_MODE,
+            return self._show_planned_steps(
+                user, participant=participant, steps=steps, occurred_at=occurred_at
             )
 
         return self._send_simple_response(
@@ -1173,6 +1204,32 @@ class ParticipantFlowService:
             flow="idle",
             step="unknown_action",
             occurred_at=occurred_at,
+        )
+
+    def _show_planned_steps(
+        self, user: TelegramUserContext, *, participant: SheetRow,
+        steps: list[PlannedStep], occurred_at: str,
+    ) -> FlowResponse:
+        participant_id = _string_value(participant.get("participant_id"))
+        report_buttons = (
+            _step_action_buttons(steps)
+            if is_weekly_report_open(datetime.fromisoformat(occurred_at))
+            else ()
+        )
+        focus = self.sheets.find_weekly_focus(
+            participant_id,
+            week_number=current_challenge_week_number(datetime.fromisoformat(occurred_at)),
+        )
+        flow_id = _optional_string_value(participant.get("flow_id"))
+        word_price = self.sheets.find_word_price(flow_id, participant_id) if flow_id else None
+        word_price_rub = parse_word_price(str(word_price.get("word_price_rub", ""))) if word_price else None
+        return self._send_simple_response(
+            user, participant=participant,
+            text=format_planned_steps_view(
+                steps, focus_step_id=_focus_step_id(focus), word_price_rub=word_price_rub
+            ),
+            flow="view_steps", step="render", occurred_at=occurred_at,
+            buttons=report_buttons, parse_mode=TELEGRAM_HTML_PARSE_MODE,
         )
 
     def _handle_progress_menu_action(
@@ -1212,6 +1269,9 @@ class ParticipantFlowService:
         participant: SheetRow,
         occurred_at: str,
     ) -> FlowResponse:
+        price_response = self._resume_word_price(user, participant=participant, occurred_at=occurred_at)
+        if price_response is not None:
+            return price_response
         focus_response = self._maybe_prompt_weekly_focus(user, participant=participant, occurred_at=occurred_at)
         if focus_response is not None:
             return focus_response
@@ -1230,6 +1290,80 @@ class ParticipantFlowService:
         )
         self.main_bot.send_message(chat_id=user.chat_id, text=text, menu_items=menu_items)
         return response
+
+    def _resume_word_price(
+        self, user: TelegramUserContext, *, participant: SheetRow, occurred_at: str,
+    ) -> FlowResponse | None:
+        state = self.dialog_states.get(user.telegram_id)
+        if (
+            state is None or state.participant_id != participant.get("participant_id")
+            or not (state.flow == "steps_setup" or state.step == "steps_saved")
+        ):
+            return None
+        goal = self.sheets.get_active_goal(_string_value(participant.get("participant_id")))
+        if goal is None or not _complete_planned_steps(self.sheets.list_planned_steps(
+            _string_value(participant.get("participant_id")), _string_value(goal.get("goal_id"))
+        )):
+            return None
+        return self._prompt_word_price_if_missing(user, participant=participant, occurred_at=occurred_at)
+
+    def _prompt_word_price_if_missing(
+        self, user: TelegramUserContext, *, participant: SheetRow,
+        occurred_at: str, prefix: str = "",
+    ) -> FlowResponse | None:
+        if (
+            not _consent_is_given(participant) or _role(participant) not in {"participant", "captain"}
+            or str(participant.get("status", "")).strip().lower() != "active"
+        ):
+            return None
+        if self.sheets.find_word_price(
+            _string_value(participant.get("flow_id")), _string_value(participant.get("participant_id"))
+        ) is not None:
+            return None
+        return self._steps_response(
+            user, participant=participant, text=prefix + WORD_PRICE_PROMPT_TEXT,
+            step="awaiting_word_price", occurred_at=occurred_at,
+        )
+
+    def _save_word_price(
+        self, user: TelegramUserContext, text: str, *, occurred_at: str,
+    ) -> FlowResponse:
+        participant = self._participant_for_current_flow(user.telegram_id)
+        state = self.dialog_states.get(user.telegram_id)
+        if (
+            participant is None or state is None
+            or state.participant_id != participant.get("participant_id")
+            or not _consent_is_given(participant)
+            or _role(participant) not in {"participant", "captain"}
+            or str(participant.get("status", "")).strip().lower() != "active"
+            or not participant.get("team_id")
+        ):
+            raise ValueError("Word price participant is not eligible")
+        participant_id = _string_value(participant.get("participant_id"))
+        goal = self.sheets.get_active_goal(participant_id)
+        if goal is None or not _complete_planned_steps(self.sheets.list_planned_steps(
+            participant_id, _string_value(goal.get("goal_id"))
+        )):
+            raise ValueError("Word price requires a confirmed initial plan")
+        amount = parse_word_price(text)
+        if amount is None:
+            return self._steps_response(
+                user, participant=participant, text=WORD_PRICE_INVALID_TEXT,
+                step="awaiting_word_price", occurred_at=occurred_at,
+            )
+        flow_id = _string_value(participant.get("flow_id"))
+        self.sheets.save_word_price({
+            "flow_id": flow_id, "participant_id": participant_id, "word_price_rub": amount,
+            "created_at": occurred_at, "updated_at": occurred_at,
+        })
+        saved = self.sheets.find_word_price(flow_id, participant_id)
+        if saved is None:
+            raise RuntimeError("Word price is not visible after save")
+        response = self._steps_response(
+            user, participant=participant, text=f"Цена слова сохранена: {saved['word_price_rub']} ₽.",
+            step="word_price_saved", occurred_at=occurred_at, flow="idle",
+        )
+        return self._maybe_prompt_weekly_focus(user, participant=participant, occurred_at=occurred_at) or response
 
     def _send_simple_response(
         self,
@@ -1519,6 +1653,18 @@ class ParticipantFlowService:
                 step="steps_closed", occurred_at=occurred_at, flow="idle",
             )
         participant, goal = self._eligible_steps_context(user, occurred_at=occurred_at)
+        if _complete_planned_steps(self.sheets.list_planned_steps(
+            _string_value(participant.get("participant_id")), _string_value(goal.get("goal_id"))
+        )):
+            response = self._prompt_word_price_if_missing(
+                user, participant=participant, occurred_at=occurred_at
+            )
+            if response is not None:
+                return response
+            return self._steps_response(
+                user, participant=participant, text="Восемь шагов уже сохранены.",
+                step="steps_saved", occurred_at=occurred_at, flow="idle",
+            )
         self._step_repository().create(
             telegram_id=user.telegram_id,
             participant_id=_string_value(participant.get("participant_id")),
@@ -2325,6 +2471,7 @@ def _truthy(value: object) -> bool:
 
 
 _INERT_ACTIONS = {
+    MenuAction.VIEW_TEAM_WORD_PRICES,
     MenuAction.VIEW_TEAM,
     MenuAction.VIEW_TEAM_PROGRESS,
     MenuAction.VIEW_TEAM_GOALS,

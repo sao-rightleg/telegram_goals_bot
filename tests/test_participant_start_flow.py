@@ -762,7 +762,8 @@ def test_late_first_captain_continues_to_goal_and_eight_steps(tmp_path: Path) ->
     goal_prompt = service.confirm_registration(user, occurred_at=late_now)
 
     assert "Кратко напиши цель" in goal_prompt.text
-    assert "успешно зарегистрирован" in main_bot.sent_messages[-2].text
+    assert "успешно зарегистрирован" in main_bot.sent_messages[-3].text
+    assert main_bot.sent_messages[-2].text.startswith("ПРАВИЛА ПРОЕКТА")
     captain = gateway.find_participant_in_flow("FLOW_2", 404)
     assert captain is not None
     assert captain["role"] == "captain"
@@ -790,9 +791,9 @@ def test_late_first_captain_continues_to_goal_and_eight_steps(tmp_path: Path) ->
     ]
     assert all(step["participant_id"] == "C009" for step in steps)
     assert all(step["goal_id"] == goal["goal_id"] for step in steps)
-    assert completed.text == "Восемь шагов сохранены."
-    assert repository.get(404).flow == "idle"
-    assert repository.get(404).step == "steps_saved"
+    assert completed.text.startswith("Восемь шагов сохранены.\n\nКакова твоя цена слова")
+    assert repository.get(404).flow == "steps_setup"
+    assert repository.get(404).step == "awaiting_word_price"
 
 
 def test_captain_registration_fails_closed_for_duplicate_active_team_assignments(
@@ -885,7 +886,8 @@ def test_late_registration_continues_directly_to_goal_and_then_steps(tmp_path: P
     goal_prompt = service.confirm_registration(user, occurred_at=late_now)
 
     assert "Кратко напиши цель" in goal_prompt.text
-    assert "успешно зарегистрирован" in main_bot.sent_messages[-2].text
+    assert "успешно зарегистрирован" in main_bot.sent_messages[-3].text
+    assert main_bot.sent_messages[-2].text.startswith("ПРАВИЛА ПРОЕКТА")
     participant = gateway.find_participant_by_telegram_id(404)
     assert participant is not None
     assert participant["onboarding_completed_at"] == late_now

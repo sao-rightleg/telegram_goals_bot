@@ -203,6 +203,39 @@ Notes:
 - `participant_stage` tracks where the participant currently is: `invited`, `onboarding`, `goal_setup`, `steps_setup`, `week_01` through `week_08`, `final_summary`, `completed`, or `declined`.
 - `bot_started_at` is set when an expected participant first opens the bot.
 
+## WordPrices
+
+Stores the participant's declared word price in rubles for the current flow.
+This is a separate tab in the flow's business spreadsheet.
+
+Columns, in order:
+- `flow_id`
+- `participant_id`
+- `word_price_rub`
+- `created_at`
+- `updated_at`
+
+Rules:
+- One row per `flow_id + participant_id`; the pair is the stable composite key.
+- Both identifiers must reference the same row in `Participants`.
+- `word_price_rub` is required for a saved declaration and must be a numeric
+  positive integer; zero, negative, fractional, and text values are invalid.
+- The currency is always RUB. Store the numeric amount without currency text.
+- Bot writes use RAW numeric values. The technical maximum is `2^53 - 1`
+  rubles to avoid loss of integer precision in Google Sheets numeric cells.
+- Missing rows mean the participant has not yet declared a word price; do not
+  substitute zero or invent an amount for existing participants.
+- `created_at` and `updated_at` are ISO 8601 timestamps with timezone offsets.
+- Save after initial step confirmation, before asking for the weekly focus.
+- Retried saves must reuse the composite key and must not append duplicates.
+- Retried saves preserve the original declaration, including its amount and
+  timestamps. Concurrent saves are serialized within the single bot process.
+- Startup schema validation requires this tab and all five columns. The CI/CD
+  business schema migration creates the tab and missing headers when needed.
+- Participant names, Telegram IDs, and team membership are resolved through
+  `Participants`, rather than used as the binding key or duplicated here.
+- Existing role-based access rules apply to this tab.
+
 ## Teams
 
 Stores teams.
@@ -590,6 +623,7 @@ Notes:
 ## Relationships
 
 - `Participants.flow_id` -> `ChallengeFlows.flow_id`
+- `WordPrices.(flow_id, participant_id)` -> `Participants.(flow_id, participant_id)`
 - `Participants.team_id` -> `Teams.team_id`
 - `Participants.captain_id` -> `Participants.participant_id`
 - `Participants.tracker_id` -> `Trackers.tracker_id`

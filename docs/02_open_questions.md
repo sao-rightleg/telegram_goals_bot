@@ -287,3 +287,12 @@ If external Codex/Claude skills are imported later:
 - Do not blindly trust scripts.
 - Adapt to this project.
 - Keep project-specific rules in Project Knowledge and docs.
+
+## 17. Word Price During Initial Setup
+
+- Ask for the word price after goal and initial step collection, before weekly focus.
+- The amount is in rubles and must be a whole number strictly greater than zero.
+- Zero, negative, fractional, and nonnumeric answers are invalid.
+- Store declarations in a separate `WordPrices` tab in the flow's business spreadsheet.
+- Bind each declaration to `Participants` by `flow_id + participant_id`.
+- Use one row per participant per flow; retries must not create duplicates.

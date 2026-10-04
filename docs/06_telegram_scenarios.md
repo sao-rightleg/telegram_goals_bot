@@ -99,14 +99,34 @@ If user does not consent, bot must not continue.
 3. After consent, bot asks for first name and surname in separate steps.
 4. Bot shows both values for confirmation and allows either value to be corrected.
 5. Bot creates one participant record identified by `flow_id + telegram_id`.
+6. Bot sends the successful registration message, then a separate project rules
+   message in HTML mode, before any next onboarding prompt. This applies to both
+   participants and captains. Reopening `/start` or confirming an already
+   completed registration does not resend the rules.
+
+The rules message preserves this approved user-facing copy:
+
+```html
+ПРАВИЛА ПРОЕКТА (читать внимательно):
+
+<u>Цель и шаги</u> — это как маяк и компас. На этом пути будут всплывать сложности и иллюзии. Мы здесь, чтобы с ними разобраться, а не чтобы делать вид, что их нет. Даже если цель на 100% будет не достигнута, победой будет смерть иллюзий и твердая уверенность, что цель точно будет достигнута.
+
+Реалистичность: Реальная картина — это 1 новое действие в неделю поверх вашей ежедневной рутины. Если у вас в списке больше 8 шагов, значит, это микро-шаги одного большого дела. Не пишите действия, которые займут у вас «всю неделю».
+
+<u>Цена слова</u> — Вы должны определить для себя цену своего слова. Это та «плата», которую вы отдадите, если не выполните обещанный шаг. Цена должна быть такой, чтобы сделать действие было психологически и физически выгоднее, чем заплатить эту цену. Идеальная картина: цена слова никогда не платится, потому что ваше слово — закон.
+
+Последствия: Участник, который не выполнил действие, не заплатил цену слова и после этого не взломал свою иллюзию (не разобрался, что его остановило) — исключается из проекта. Беспощадно.
+```
 
 If registration completes after the ordinary goal setup deadline, the same Main Bot
 continues in late-onboarding mode:
 
 1. Show the successful registration message.
-2. Collect and confirm the goal.
-3. Collect exactly eight steps, each with an essence and achievement metric.
-4. If a working week is active, immediately request the current-week focus.
+2. Send the project rules message above.
+3. Collect and confirm the goal.
+4. Collect exactly eight steps, each with an essence and achievement metric.
+5. Ask for the participant's word price in rubles and save the numeric answer.
+6. If a working week is active, request the current-week focus.
 
 This exception lasts only through `registration_closes_at` and applies only to a
 participant whose `onboarding_completed_at` is later than `goal_setup_end_date`.
@@ -142,6 +162,7 @@ Buttons:
 - `📊 Мой прогресс`
 - `💡 Мои инсайты`
 - `👥 Моя команда`
+- `Цена слова участников`
 - `➕ Внести отчёт за участника`
 - `📄 Отчёт команды`
 
@@ -177,6 +198,7 @@ Trigger:
 
 Bot shows:
 - progress percent
+- word price in rubles from `WordPrices`, scoped by `flow_id + participant_id`
 - all planned steps with visual status
 - current weekly focus marker after the focused step number and before the title
 - current progress percent
@@ -189,6 +211,7 @@ Example:
 
 ```text
 Прогресс: 33%
+Цена слова: 5 000 ₽
 
 🟩 Шаг 1. Найти клиента
 ⬜ Шаг 4. 🎯 Провести встречу
@@ -198,6 +221,9 @@ Example:
 Step description is shown under the title as a native expandable Telegram blockquote,
 the same way full insight text is displayed. It must not use spoiler blur.
 
+If the word price has not been declared, show `Цена слова: не указана`.
+Viewing steps does not modify the saved amount or start a new price interview.
+
 Buttons:
 - `Шаг {number}. {step_title} - Отчитаться` for open steps
 - `Шаг {number}. {step_title} - Редактировать отчёт` for closed steps
@@ -206,6 +232,40 @@ These report-action buttons are shown only during an open working week. During
 goal and steps setup, participants can view expandable step descriptions but do
 not see report buttons. A stale report button from an older message returns the
 first working-week opening date instead of claiming that a deadline has passed.
+
+## Word Price During Initial Setup
+
+After the initial eight steps have been confirmed and saved, ask:
+
+```text
+Какова твоя цена слова, если ты не выполнишь шаг за неделю?
+Введи целое число рублей больше нуля, например: 5000.
+```
+
+This question is part of both ordinary setup and late onboarding and precedes
+any current-week focus question. The amount belongs to the participant in the
+current flow and is separate from the goal value.
+
+For empty, nonnumeric, zero, negative, or fractional input, keep the question
+active and reply:
+
+```text
+Введи целое число рублей больше нуля, например: 5000.
+```
+
+Save the accepted positive integer answer in `WordPrices`, linked by
+`flow_id + participant_id`, before continuing. Do not create a duplicate row
+when the same onboarding step is retried.
+
+`/start` and `/menu` resume a pending price question after a restart. Old step
+edit/cancel buttons keep this question active and do not recreate the saved plan.
+A Google Sheets failure leaves the question active for a retry. A saved price
+is not overwritten by a retry with a different value.
+
+After saving, reply `Цена слова сохранена: {amount} ₽.` and request the weekly
+focus if a working week is open. Otherwise, retain the normal menu entry points.
+Participants who completed onboarding before this question was introduced are
+not automatically asked to backfill a price just by opening their normal menu.
 
 ## Weekly Focus Flow
 
@@ -248,6 +308,30 @@ captain an own-team summary:
 
 This operational summary is captain-only. It is not sent to trackers, the
 administrator, or Alexander Sitnikov.
+
+## Captain Team Word Prices
+
+Trigger: `Цена слова участников` in the captain menu.
+
+The bot verifies a private chat, captain role, consent, active status, and an
+active captain assignment to the team. It lists active consenting participants
+with roles `participant` or `captain` from that same team and flow, sorted by
+name. Word prices are joined by `flow_id + participant_id`.
+
+Example:
+
+```text
+Цена слова участников
+
+Анна Иванова — 5 000 ₽
+
+Борис Петров — не указана
+```
+
+Missing declarations are shown as `не указана`; do not substitute zero. The
+response is plain text and does not change amounts or participant data. Long
+lists are split at participant boundaries with the continuation heading
+`Цена слова участников — продолжение`. Other teams and flows are excluded.
 
 ## Captain Team Progress
 

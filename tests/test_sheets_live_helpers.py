@@ -119,6 +119,7 @@ def _body_values(body: dict[str, object]) -> list[list[object]]:
 
 def minimal_live_sheets(**overrides: list[list[object]]) -> dict[str, list[list[object]]]:
     sheets: dict[str, list[list[object]]] = {
+        "WordPrices": [["flow_id", "participant_id", "word_price_rub", "created_at", "updated_at"]],
         "Participants": [
             [
                 "flow_id",

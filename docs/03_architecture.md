@@ -28,6 +28,13 @@ Out of MVP:
 
 ## High-Level Architecture
 
+Initial step setup continues with a word-price question. `ParticipantFlowService`
+validates the positive whole-ruble answer and writes it through `SheetsGateway`
+to `WordPrices`, keyed by `flow_id + participant_id`. SQLite retains only the
+pending `steps_setup / awaiting_word_price` state. No new SQLite business table
+or external service is introduced. The existing Main bot dispatcher routes the
+answer through its step-setup text handler.
+
 Each deployed Main/Notification bot instance is bound to one flow spreadsheet.
 The challenge-flow registry is resolved once during startup by
 `flow_spreadsheet_id`; participant requests use the in-memory bound flow and do

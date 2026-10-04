@@ -13,7 +13,7 @@ from app.bot.menus import (
     CAPTAIN_STEP_CALLBACK_PREFIX,
     CAPTAIN_STEPS_PAGE_CALLBACK_PREFIX,
 )
-from app.domain import PLANNED_STEP_COUNT, planned_step_score, planned_steps_bar, planned_steps_percent
+from app.domain import PLANNED_STEP_COUNT, parse_word_price, planned_step_score, planned_steps_bar, planned_steps_percent
 from app.bot.messages import (
     CAPTAIN_DROPPED_PARTICIPANT_TEXT,
     CAPTAIN_EMPTY_REPORT_TEXT,
@@ -101,6 +101,33 @@ class CaptainService:
             user,
             text=text,
             continuation_header="Прогресс команды — продолжение",
+        )
+
+    def show_team_word_prices(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
+        context = self._resolve_team_data_captain(user, occurred_at=_occurred_at(now))
+        if isinstance(context, FlowResponse):
+            return context
+        captain, _captain_id, team_id = context
+        flow_id = _string_value(captain.get("flow_id"))
+        participants = _eligible_team_participants(
+            self.sheets.list_participants_by_team(team_id), flow_id=flow_id
+        )
+        if not participants:
+            return self._send_response(user, text=CAPTAIN_NO_TEAM_MEMBERS_TEXT)
+        participant_ids = {_string_value(row.get("participant_id")) for row in participants}
+        prices = {
+            _string_value(row.get("participant_id")): parse_word_price(str(row.get("word_price_rub", "")))
+            for row in self.sheets.list_word_prices()
+            if row.get("flow_id") == flow_id and row.get("participant_id") in participant_ids
+        }
+        sections = ["Цена слова участников"]
+        for participant in sorted(participants, key=_team_member_sort_key):
+            amount = prices.get(_string_value(participant.get("participant_id")))
+            price_text = f"{amount:,} ₽".replace(",", " ") if amount is not None else "не указана"
+            name = _safe_goal_field(_display_name(participant), fallback="Участник без имени")
+            sections.append(f"{name} — {price_text}")
+        return self._send_sectioned_response(
+            user, text="\n\n".join(sections), continuation_header="Цена слова участников — продолжение"
         )
 
     def show_team_goals(

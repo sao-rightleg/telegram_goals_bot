@@ -55,11 +55,12 @@ def test_captain_menu_extends_participant_menu() -> None:
 
     assert [item.label for item in menu] == CAPTAIN_MENU_LABELS
     assert CAPTAIN_MENU_LABELS[: len(PARTICIPANT_MENU_LABELS)] == PARTICIPANT_MENU_LABELS
-    assert [item.action for item in menu][-6:] == [
+    assert [item.action for item in menu][-7:] == [
         MenuAction.VIEW_TEAM,
         MenuAction.VIEW_TEAM_PROGRESS,
         MenuAction.VIEW_TEAM_GOALS,
         MenuAction.VIEW_TEAM_STEPS,
+        MenuAction.VIEW_TEAM_WORD_PRICES,
         MenuAction.CAPTAIN_MANUAL_REPORT,
         MenuAction.VIEW_TEAM_REPORT,
     ]

@@ -57,7 +57,7 @@ def test_participant_records_exactly_eight_steps_with_metrics(tmp_path: Path) ->
     saved = service.confirm_steps(user, occurred_at=NOW)
 
     rows = gateway.list_planned_steps("P001", "G001")
-    assert saved.text == "Восемь шагов сохранены."
+    assert saved.text.startswith("Восемь шагов сохранены.\n\nКакова твоя цена слова")
     assert len(rows) == 8
     assert [row["step_number"] for row in rows] == list(range(1, 9))
     assert {row["participant_full_name"] for row in rows} == {"Иван Петров"}
@@ -158,9 +158,12 @@ def test_late_onboarding_prompts_first_week_focus_after_eight_steps(
             service.handle_steps_text(user, f"Суть {number}", occurred_at=late_now)
             service.handle_steps_text(user, f"Метрика {number}", occurred_at=late_now)
 
-        focus_prompt = service.confirm_steps(user, occurred_at=late_now)
-
-        assert main_bot.sent_messages[-2].text == "Восемь шагов сохранены."
+        price_prompt = service.confirm_steps(user, occurred_at=late_now)
+        assert "Какова твоя цена слова" in price_prompt.text
+        assert service.dialog_states.get(1001).step == "awaiting_word_price"
+        assert not any("Выбери обязательный фокус недели" in message.text for message in main_bot.sent_messages)
+        focus_prompt = service.handle_steps_text(user, "5000", occurred_at=late_now)
+        assert main_bot.sent_messages[-2].text == "Цена слова сохранена: 5000 ₽."
         assert focus_prompt.text == (
             "Неделя 1: с 21.09.2026 по 27.09.2026.\n\n"
             "Выбери обязательный фокус недели."
@@ -230,7 +233,7 @@ def test_step_confirmation_is_idempotent_and_write_failure_releases_draft(tmp_pa
     service.confirm_steps(user, occurred_at=NOW)
     repeated = service.confirm_steps(user, occurred_at=NOW)
 
-    assert repeated.text == "Восемь шагов уже сохранены."
+    assert "Какова твоя цена слова" in repeated.text
     assert len(gateway.list_planned_steps("P001", "G001")) == 8
 
 
@@ -351,7 +354,7 @@ def test_stale_step_finalization_resumes_without_losing_completed_draft(tmp_path
 
     result = service.confirm_steps(user, occurred_at="2026-09-20T12:11:00+05:00")
 
-    assert result.text == "Восемь шагов сохранены."
+    assert result.text.startswith("Восемь шагов сохранены.\n\nКакова твоя цена слова")
     assert len(gateway.list_planned_steps("P001", "G001")) == 8
     assert drafts.get(1001) is None
 

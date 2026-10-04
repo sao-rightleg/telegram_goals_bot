@@ -9,6 +9,8 @@ from threading import RLock
 from time import sleep
 from typing import Protocol
 
+from app.domain import validate_word_price_row
+
 
 SheetRow = dict[str, object]
 logger = logging.getLogger(__name__)
@@ -29,6 +31,15 @@ class GoogleSheetsSchemaError(GoogleSheetsError):
 
 
 class SheetsGateway(Protocol):
+    def list_word_prices(self) -> list[SheetRow]:
+        """Return declared prices for authorized team views."""
+
+    def find_word_price(self, flow_id: str, participant_id: str) -> SheetRow | None:
+        """Find the declaration by its flow-scoped participant key."""
+
+    def save_word_price(self, row: SheetRow) -> None:
+        """Save a declaration once; retries preserve the original amount."""
+
     def list_participants(self) -> list[SheetRow]:
         """Return all participant rows for scheduler selection."""
 
@@ -244,6 +255,7 @@ REQUIRED_CHALLENGE_FLOW_COLUMNS = frozenset(
 
 
 REQUIRED_SHEET_COLUMNS: dict[str, frozenset[str]] = {
+    "WordPrices": frozenset({"flow_id", "participant_id", "word_price_rub", "created_at", "updated_at"}),
     "Participants": frozenset(
         {
             "flow_id",
@@ -382,6 +394,22 @@ REQUIRED_CHALLENGE_FLOWS_SHEET_COLUMNS: dict[str, frozenset[str]] = {
 class GoogleSheetsGateway:
     service: object
     spreadsheet_id: str
+
+    def list_word_prices(self) -> list[SheetRow]:
+        return self._list_rows("WordPrices")
+
+    def find_word_price(self, flow_id: str, participant_id: str) -> SheetRow | None:
+        for row in self._list_rows("WordPrices"):
+            if row.get("flow_id") == flow_id and row.get("participant_id") == participant_id:
+                return row
+        return None
+
+    def save_word_price(self, row: SheetRow) -> None:
+        validate_word_price_row(row)
+        # Polling and scheduled work share one adapter; serialize check + append.
+        with _GOOGLE_REQUEST_LOCK:
+            if self.find_word_price(str(row["flow_id"]), str(row["participant_id"])) is None:
+                self._append_row("WordPrices", row)
 
     def list_participants(self) -> list[SheetRow]:
         return self._list_rows("Participants")
@@ -956,7 +984,9 @@ class FakeSheetsGateway:
         insights: Iterable[SheetRow] = (),
         challenge_flows: Iterable[SheetRow] = (),
         flow_schedule: Iterable[SheetRow] = (),
+        word_prices: Iterable[SheetRow] = (),
     ) -> None:
+        self._word_prices = _copy_rows(word_prices)
         self._participants = _copy_rows(participants)
         self._teams = _copy_rows(teams)
         self._team_captains = _copy_rows(team_captains)
@@ -969,6 +999,21 @@ class FakeSheetsGateway:
         self._insights = _copy_rows(insights)
         self._challenge_flows = _copy_rows(challenge_flows)
         self._flow_schedule = _copy_rows(flow_schedule)
+
+    def list_word_prices(self) -> list[SheetRow]:
+        return [dict(row) for row in self._word_prices]
+
+    def find_word_price(self, flow_id: str, participant_id: str) -> SheetRow | None:
+        for row in self._word_prices:
+            if row.get("flow_id") == flow_id and row.get("participant_id") == participant_id:
+                return dict(row)
+        return None
+
+    def save_word_price(self, row: SheetRow) -> None:
+        validate_word_price_row(row)
+        with _GOOGLE_REQUEST_LOCK:
+            if self.find_word_price(str(row["flow_id"]), str(row["participant_id"])) is None:
+                self._word_prices.append(dict(row))
 
     def list_participants(self) -> list[SheetRow]:
         return [dict(row) for row in self._participants]

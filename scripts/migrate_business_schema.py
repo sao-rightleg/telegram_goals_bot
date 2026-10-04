@@ -9,6 +9,7 @@ from googleapiclient.discovery import build
 
 
 REQUIRED_HEADERS = {
+    "WordPrices": ("flow_id", "participant_id", "word_price_rub", "created_at", "updated_at"),
     "Participants": (
         "bot_started_at", "consent_status", "flow_id",
         "last_stage_updated_at", "onboarding_completed_at", "participant_stage",
@@ -45,10 +46,11 @@ def main() -> None:
         item["properties"]["title"]: item["properties"]
         for item in metadata.get("sheets", [])
     }
-    if "TeamCaptains" not in properties:
+    new_sheets = [name for name in ("TeamCaptains", "WordPrices") if name not in properties]
+    if new_sheets:
         sheets.spreadsheets().batchUpdate(
             spreadsheetId=spreadsheet_id,
-            body={"requests": [{"addSheet": {"properties": {"title": "TeamCaptains"}}}]},
+            body={"requests": [{"addSheet": {"properties": {"title": name}}} for name in new_sheets]},
         ).execute()
         metadata = sheets.spreadsheets().get(
             spreadsheetId=spreadsheet_id,

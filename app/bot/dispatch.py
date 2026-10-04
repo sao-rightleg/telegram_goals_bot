@@ -441,6 +441,8 @@ class TelegramUpdateDispatcher:
             return self.captain_service.show_team_goals(user, now=now)
         if action is MenuAction.VIEW_TEAM_STEPS:
             return self.captain_service.show_team_steps(user, now=now)
+        if action is MenuAction.VIEW_TEAM_WORD_PRICES:
+            return self.captain_service.show_team_word_prices(user, now=now)
         if action is MenuAction.CAPTAIN_MANUAL_REPORT:
             raise TelegramCallbackError("captain manual report callback requires participant id")
         return self.participant_service.handle_menu_action(user, action, occurred_at=now.isoformat())

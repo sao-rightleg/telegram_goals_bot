@@ -108,6 +108,8 @@ Captain has additional responsibilities:
   private chat with the bot
 - can select an active consenting participant from own team and view the
   numbered planned steps of that participant's active goal in a private chat
+- can request a text list of word prices for active consenting participants in
+  own team and flow, including captains as participants, in a private chat
 
 Captain cannot:
 - add reports for other teams
@@ -219,6 +221,34 @@ Final goal achievement:
 - captain cannot mark final goal as achieved
 - bot must not automatically mark final goal as achieved only because all planned steps are closed
 
+### 8.1 Word price collected during initial setup
+
+After the participant has entered and confirmed the initial planned steps, the
+bot asks for their word price in rubles: the amount they commit to if they do
+not complete a step during a working week. The same question is required in
+ordinary setup and late onboarding, before the current-week focus prompt.
+
+User-facing question:
+
+`Какова твоя цена слова, если ты не выполнишь шаг за неделю? Введи целое число рублей больше нуля, например: 5000.`
+
+The answer must be a whole number of rubles strictly greater than zero.
+Empty, nonnumeric, zero, negative, and fractional answers must keep the
+participant on this question and show a short request to enter a positive integer.
+The value is a participant business fact for the current flow, separate from
+the goal's value and achievement metric, and must be saved in a separate
+`WordPrices` Google Sheets tab. Each row is linked to its participant by
+`flow_id + participant_id`; at most one declared amount is stored per pair.
+
+This requirement collects the declared amount only. Payment collection and
+automatic penalty accounting have not been requested.
+
+No additional product-level upper limit has been specified.
+
+The participant's `Мои шаги` view displays their declared amount in rubles next
+to progress, using the same `flow_id + participant_id` binding. If no declaration
+exists, display `Цена слова: не указана` without changing business data.
+
 ## 9. Weekly focus and step report logic
 
 At the beginning of each week, each participant must select one open planned step as the weekly focus.
@@ -278,6 +308,14 @@ After deadline:
 All schedule times use `Asia/Yekaterinburg`.
 
 ### Participant registration window
+
+After successful self-registration, send the approved project rules as a
+separate HTML message immediately after the registration congratulation and
+before any subsequent goal prompt. Preserve the exact copy and underline
+`Цель и шаги` and `Цена слова`; see `docs/06_telegram_scenarios.md`. This applies
+to ordinary and late registrations of participants and captains. Completed
+registration retries and `/start` do not resend it. This message addition does
+not introduce automatic payment collection or participant exclusion.
 
 - Self-registration opens at `kickoff_meeting_at`. The default window is seven days, and the administrator may explicitly extend `registration_closes_at` by up to twenty additional days for late participants without changing the challenge calendar.
 - `registration_opens_at` equals `kickoff_meeting_at`; `registration_closes_at` must be later than `registration_opens_at`.
@@ -393,6 +431,7 @@ MVP captain menu:
 - 📊 Мой прогресс
 - 💡 Мои инсайты
 - 👥 Моя команда
+- Цена слова участников
 - ➕ Внести отчёт за участника
 - 📄 Отчёт команды
 

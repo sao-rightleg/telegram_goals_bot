@@ -15,6 +15,7 @@ The MVP includes:
 - flow-driven day-by-day message and report schedule configured in Google Sheets
 - participant goal view
 - planned steps view
+- collection of a positive whole-ruble word price after initial step confirmation
 - progress view
 - weekly report collection
 - insight collection

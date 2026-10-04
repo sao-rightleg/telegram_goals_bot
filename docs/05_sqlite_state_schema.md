@@ -120,6 +120,9 @@ Columns:
 
 Suggested `flow` values:
 - `consent`
+- `registration`
+- `goal_setup`
+- `steps_setup`
 - `weekly_report`
 - `insight`
 - `captain_manual_report`
@@ -130,6 +133,14 @@ Suggested `flow` values:
 - `idle`
 
 Notes:
+- After eight initial steps are confirmed, `flow = steps_setup` and
+  `step = awaiting_word_price` keep the next question recoverable across restarts.
+  The amount is written directly to `WordPrices` in Google Sheets; SQLite does
+  not retain the final amount. This uses the existing physical schema.
+- `/start` and `/menu` resume this question when it is pending. Old step edit
+  and cancel buttons must not clear it or recreate the saved plan.
+- A pending price answer remains accepted after the step setup deadline because
+  it does not change the already confirmed steps.
 - `selected_participant_id` is used for captain manual report.
 - `selected_step_ids` is required before saving `green` or `blue` reports.
 - `selected_step_ids` may contain multiple step IDs because one weekly report can close or partially progress several steps.

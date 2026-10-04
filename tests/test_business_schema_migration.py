@@ -76,6 +76,21 @@ class _SheetsApi:
         return self._spreadsheets
 
 
+def test_business_schema_migration_creates_word_prices_and_is_idempotent(monkeypatch) -> None:
+    headers = {name: list(required) for name, required in migration.REQUIRED_HEADERS.items()}
+    del headers["WordPrices"]
+    api = _SheetsApi(headers)
+    monkeypatch.setenv("GOOGLE_SHEETS_ID", "sheet-id")
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/private/credentials.json")
+    monkeypatch.setattr(migration.Credentials, "from_service_account_file", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(migration, "build", lambda *_args, **_kwargs: api)
+    migration.main()
+    assert api.headers["WordPrices"] == list(migration.REQUIRED_HEADERS["WordPrices"])
+    calls = api.batch_calls
+    migration.main()
+    assert api.batch_calls == calls
+
+
 def test_business_schema_migration_adds_missing_headers_and_second_run_is_noop(
     monkeypatch,
 ) -> None:

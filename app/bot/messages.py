@@ -14,6 +14,11 @@ from app.services.weekly_report_models import WeeklyReportStatus
 
 
 UNKNOWN_USER_TEXT = "Извините, вас нет в базе участников. Свяжитесь со своим капитаном."
+WORD_PRICE_PROMPT_TEXT = (
+    "Какова твоя цена слова, если ты не выполнишь шаг за неделю?\n"
+    "Введи целое число рублей больше нуля, например: 5000."
+)
+WORD_PRICE_INVALID_TEXT = "Введи целое число рублей больше нуля, например: 5000."
 CONSENT_TEXT = (
     "Дай согласие на обработку персональных данных. Бот сохранит твоё имя, фамилию, "
     "Telegram ID и ответы в рамках проекта «Смерть иллюзий». Данные будут доступны "
@@ -29,6 +34,21 @@ CONSENT_DECLINE_CONFIRM_TEXT = (
 )
 CONSENT_DECLINED_TEXT = "Понял. Без согласия на обработку данных участие в челлендже невозможно."
 CONSENT_ACCEPTED_INTRO_TEXT = "Прекрасно, тогда продолжаем!"
+PROJECT_RULES_TEXT = (
+    "ПРАВИЛА ПРОЕКТА (читать внимательно):\n\n"
+    "<u>Цель и шаги</u> — это как маяк и компас. На этом пути будут всплывать сложности и иллюзии. "
+    "Мы здесь, чтобы с ними разобраться, а не чтобы делать вид, что их нет. Даже если цель на 100% "
+    "будет не достигнута, победой будет смерть иллюзий и твердая уверенность, что цель точно будет достигнута.\n\n"
+    "Реалистичность: Реальная картина — это 1 новое действие в неделю поверх вашей ежедневной рутины. "
+    "Если у вас в списке больше 8 шагов, значит, это микро-шаги одного большого дела. "
+    "Не пишите действия, которые займут у вас «всю неделю».\n\n"
+    "<u>Цена слова</u> — Вы должны определить для себя цену своего слова. Это та «плата», которую вы "
+    "отдадите, если не выполните обещанный шаг. Цена должна быть такой, чтобы сделать действие было "
+    "психологически и физически выгоднее, чем заплатить эту цену. Идеальная картина: цена слова никогда "
+    "не платится, потому что ваше слово — закон.\n\n"
+    "Последствия: Участник, который не выполнил действие, не заплатил цену слова и после этого "
+    "не взломал свою иллюзию (не разобрался, что его остановило) — исключается из проекта. Беспощадно."
+)
 CHALLENGE_STAGES_TEXT = (
     "Этапы челленджа:\n\n"
     "1. Установочная неделя цели: формулируешь цель и уточняешь личные данные.\n"
@@ -270,15 +290,20 @@ def format_goal_view(goal: Goal) -> str:
     )
 
 
-def format_planned_steps_view(steps: Sequence[PlannedStep], *, focus_step_id: str | None = None) -> str:
+def format_planned_steps_view(
+    steps: Sequence[PlannedStep], *, focus_step_id: str | None = None,
+    word_price_rub: int | None = None,
+) -> str:
     progress_percent = calculate_progress_percent(steps)
     lines = [f"Прогресс: {progress_percent}%"]
+    amount = f"{word_price_rub:,}".replace(",", " ") if word_price_rub is not None else None
+    lines.append(f"Цена слова: {amount} ₽" if amount is not None else "Цена слова: не указана")
 
     sorted_steps = sorted(steps, key=lambda item: item.step_number)
     if sorted_steps:
         lines.extend(_format_step_lines(sorted_steps, focus_step_id=focus_step_id))
 
-    if len(lines) == 1:
+    else:
         lines.append("Шаги пока не заполнены.")
 
     return "\n".join(lines)
