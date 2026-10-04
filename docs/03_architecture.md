@@ -436,3 +436,14 @@ AboutService handles private participant/captain profiles. Participants.about_me
 is the business source of truth; SQLite stores only edit mode and flow binding.
 Each textual answer saves immediately. Google Sheets writes only the description
 cell, preserving unrelated metadata and formulas. No weekly deadline applies.
+
+## Runtime Dispatch Error Diagnostics
+
+Unexpected dispatch errors include a closed safe reason/hint taxonomy and the
+deepest application module/function/line available from traceback metadata.
+Do not include raw exception arguments, updates, user text, locals or absolute
+paths. Missing-draft errors use an explicit reopening hint; other KeyError
+cases identify missing expected data without guessing the absent field.
+Persist the sanitized notification text to the service journal before sending
+it to the error bot, including when delivery succeeds. Delivery failures log
+only safe metadata without exception traceback/context chains.

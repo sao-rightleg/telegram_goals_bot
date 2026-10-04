@@ -1,0 +1,5 @@
+# Unexpected Runtime Error Diagnostics
+
+Extend app.errors with a closed safe taxonomy for unexpected exceptions. Recognize missing-draft KeyError by fixed application message prefixes without forwarding arguments. Other KeyError cases report missing data, never guess a field name. Unexpected exceptions use a technical-failure fallback. Extract only the deepest app.* traceback module/function/line; never serialize exception values, source lines, locals, update or absolute paths. Add this explanation and location only to generic runtime dispatch diagnostics, retaining existing ActionDiagnosticError explanations and Telegram transport categories.
+
+Log the already sanitized notification text in _notify_polling_error before sending. Preserve runner offset/error handling and all business flows. Verify real adapter-raised KeyError provenance, privacy of arbitrary exception values, missing draft vs unknown data classification, successful/failed notification logging, existing runtime continuation and full suite. No user-data mutation or speculative business fix.

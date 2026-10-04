@@ -22,7 +22,10 @@ from app.bot.dispatch import TelegramUpdateDispatcher
 from app.bot.notification_dispatch import NotificationBotUpdateDispatcher
 from app.bot.rupor_dispatch import RuporUpdateDispatcher
 from app.config import ConfigurationError, Settings, load_settings
-from app.errors import ActionDiagnosticError, action_diagnostic_explanation
+from app.errors import (
+    ActionDiagnosticError, action_diagnostic_explanation,
+    application_error_location, unexpected_error_diagnostics,
+)
 from app.reports.delivery import ReportDeliveryService
 from app.reports.pdf import LocalPdfRenderer
 from app.reports.service import ReportService
@@ -1340,6 +1343,7 @@ def _notify_polling_error(
         update_id=update_id,
         consecutive_failures=consecutive_failures,
     )
+    logger.error("%s", text)
     try:
         router.send(
             category=NotificationCategory.TECHNICAL_ERROR,
@@ -1348,7 +1352,7 @@ def _notify_polling_error(
         )
         return True
     except Exception as notify_error:
-        logger.exception(
+        logger.error(
             "failed to notify polling error",
             extra={
                 "event": event,
@@ -1392,19 +1396,30 @@ def _polling_error_text(
                 "hint=check_telegram_connection_and_bot_token",
             )
         )
+    elif event.endswith("dispatch_failed"):
+        reason, hint, _explanation = unexpected_error_diagnostics(error)
+        parts.extend((f"reason={reason}", f"hint={hint}",
+                      f"source={application_error_location(error)}"))
     if update_id is not None:
         parts.append(f"update_id={update_id}")
     if consecutive_failures is not None:
         parts.append(f"consecutive_failures={consecutive_failures}")
     text = " ".join(parts)
+    explanation = _polling_error_explanation(event, error)
+    return f"{text}\n{explanation}" if explanation else text
+
+
+def _polling_error_explanation(event: str, error: Exception) -> str:
     if isinstance(error, ActionDiagnosticError):
-        text = f"{text}\n{action_diagnostic_explanation(error)}"
-    elif event in {"telegram_callback_ack_failed", "telegram_get_updates_failed"}:
-        text = (
-            f"{text}\nПричина: Telegram API не ответил на служебный запрос. "
+        return action_diagnostic_explanation(error)
+    if event in {"telegram_callback_ack_failed", "telegram_get_updates_failed"}:
+        return (
+            "Причина: Telegram API не ответил на служебный запрос. "
             "Что проверить: доступность Telegram и токен соответствующего бота."
         )
-    return text
+    if event.endswith("dispatch_failed"):
+        return unexpected_error_diagnostics(error)[2]
+    return ""
 
 
 def _notify_runtime_recovery(router: NotificationRouter, *, event: str) -> bool:

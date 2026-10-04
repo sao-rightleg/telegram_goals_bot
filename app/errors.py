@@ -106,3 +106,43 @@ def action_diagnostic_explanation(error: ActionDiagnosticError) -> str:
     action, reason, _hint, _legacy_message, cause = _DIAGNOSTICS[error.kind]
     check = _OPERATOR_CHECKS[(action, reason)]
     return f"Причина: {cause}. Что проверить: {check}."
+
+
+def unexpected_error_diagnostics(error: Exception) -> tuple[str, str, str]:
+    """Classify unexpected failures without disclosing exception arguments."""
+    if isinstance(error, KeyError):
+        value = error.args[0] if error.args else None
+        draft_prefixes = (
+            "Active step report draft not found", "Active weekly report draft not found",
+            "Active captain manual report draft not found", "Active insight draft not found",
+        )
+        if isinstance(value, str) and value.startswith(draft_prefixes):
+            return (
+                "active_draft_missing", "reopen_current_form_from_menu",
+                "Причина: не найден активный черновик для этой кнопки. "
+                "Что проверить: откройте нужную форму заново из меню; "
+                "кнопка могла остаться от предыдущего диалога.",
+            )
+        return (
+            "missing_expected_data", "check_handler_location_and_required_data",
+            "Причина: обработчик не нашёл ожидаемое поле или запись. "
+            "Что проверить: место сбоя в source и необходимые данные этого сценария. "
+            "По одному типу KeyError конкретное отсутствующее поле определить нельзя.",
+        )
+    return (
+        "unexpected_handler_failure", "inspect_handler_location_and_provider_status",
+        "Причина: непредусмотренный технический сбой обработки запроса. "
+        "Что проверить: место сбоя в source, тип ошибки и доступность внешних сервисов.",
+    )
+
+
+def application_error_location(error: Exception) -> str:
+    """Return only app code provenance, without paths, locals or exception text."""
+    source = "unavailable"
+    traceback = error.__traceback__
+    while traceback is not None:
+        module = traceback.tb_frame.f_globals.get("__name__", "")
+        if isinstance(module, str) and module.startswith("app."):
+            source = f"{module}.{traceback.tb_frame.f_code.co_name}:{traceback.tb_lineno}"
+        traceback = traceback.tb_next
+    return source
