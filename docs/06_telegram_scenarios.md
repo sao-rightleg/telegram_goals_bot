@@ -711,3 +711,23 @@ User message:
 Resolved product decisions are recorded in `docs/02_open_questions.md`.
 
 Tracker/admin/Sitnikov interactive menus are not defined in MVP scenarios yet; current MVP covers participant and captain user scenarios plus passive report delivery.
+
+## About Me
+
+Participant and captain menus include `О себе`. Only the owner can read or
+change this description in a private chat after consent.
+
+- Empty profile: `Описание пока не заполнено.` and `Заполнить`.
+- Prompt: `Расскажите о себе: чем занимаетесь сейчас; чем занимались раньше;
+  какие у вас ключевые компетенции; чем можете помочь команде.`
+- Filled profile: display the entire description and `Дополнить`, `Редактировать`.
+- `Дополнить`: next text adds a new paragraph.
+- `Редактировать`: next text replaces the entire description.
+- `Отмена`: display unchanged saved description.
+- Each answer saves immediately: `Описание сохранено.`
+- Empty/oversized input: retry; maximum complete description is 12,000 characters.
+- Storage failure: safe retry message, sanitized admin error; editing state remains.
+- Stored text is sent without HTML parsing; long profiles use several messages.
+
+There is no weekly deadline. Registration, goals, steps, focus and price rules
+are unchanged. Text only; other participants cannot view profiles through this menu.

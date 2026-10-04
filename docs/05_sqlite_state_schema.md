@@ -105,6 +105,8 @@ Stores current active flow per Telegram user.
 
 Columns:
 - `telegram_id`
+- `flow_id` (nullable context binding for the about flow)
+- `context_data` (nullable JSON with about operation hashes)
 - `participant_id`
 - `role`
 - `flow`
@@ -119,6 +121,7 @@ Columns:
 - `expires_at`
 
 Suggested `flow` values:
+- `participant_about`
 - `consent`
 - `registration`
 - `goal_setup`
@@ -432,3 +435,14 @@ duplicate participant profiles or business content from Google Sheets.
 - Whether stale drafts should be auto-cleared or resumed first.
 - Exact scheduler implementation and persistence strategy.
 - Whether `error_events` is enough or critical errors should also be mirrored to Google Sheets.
+
+## Participant About State
+
+`participant_about` uses `replace`, `append`, and `view` steps. The nullable
+`flow_id` column binds pending input to the current business flow. No profile
+text is stored in SQLite. Startup rebuilds the legacy dialog table transactionally
+when needed, preserving its rows and adding nullable flow context.
+
+About edit context records SHA-256 base/result hashes before Sheets writes.
+Retries recognize an already persisted result and do not append it twice.
+A changed base requires reopening the editor rather than overwriting a newer text.

@@ -279,6 +279,7 @@ def test_live_schema_validation_allows_extra_columns() -> None:
                 "last_stage_updated_at",
                 "created_at",
                 "updated_at",
+                "about_me",
                 "manual_extra_column",
             ]
         ]

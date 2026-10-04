@@ -162,6 +162,7 @@ SCHEMA_STATEMENTS = [
                 'weekly_report',
                 'insight',
                 'captain_manual_report',
+                'participant_about',
                 'view_goal',
                 'view_steps',
                 'view_progress',
@@ -180,6 +181,8 @@ SCHEMA_STATEMENTS = [
         started_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         expires_at TEXT,
+        flow_id TEXT,
+        context_data TEXT,
         FOREIGN KEY (draft_id) REFERENCES draft_sessions(draft_id) ON DELETE SET NULL
     )
     """,
@@ -539,7 +542,7 @@ def _migrate_dialog_states_flow_constraint(connection: sqlite3.Connection) -> No
     required_flows = (
         "consent", "registration", "goal_setup", "steps_setup", "weekly_report", "insight",
         "captain_manual_report", "view_goal", "view_steps", "view_progress",
-        "view_team", "idle",
+        "view_team", "idle", "participant_about",
     )
     if all(f"'{flow}'" in schema_sql for flow in required_flows):
         return

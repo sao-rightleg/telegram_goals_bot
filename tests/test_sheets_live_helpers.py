@@ -77,7 +77,15 @@ class FakeSheetsService:
             index = start_row + offset - 1
             while len(rows) <= index:
                 rows.append([])
-            rows[index] = list(row)
+            import re
+            cell = re.search(r"!([A-Z]+)[0-9]+", range)
+            column = 0
+            for char in cell.group(1) if cell else "A":
+                column = column * 26 + ord(char) - ord("A") + 1
+            column -= 1
+            while len(rows[index]) < column + len(row):
+                rows[index].append("")
+            rows[index][column:column + len(row)] = row
         self.updated.append((range, values))
         return _Executable({"updatedRows": len(values)})
 
@@ -144,6 +152,7 @@ def minimal_live_sheets(**overrides: list[list[object]]) -> dict[str, list[list[
                 "last_stage_updated_at",
                 "created_at",
                 "updated_at",
+                "about_me",
             ],
             [
                 "test-live-2026",

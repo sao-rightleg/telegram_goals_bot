@@ -157,6 +157,11 @@ Rules:
 
 Stores all people who can interact with the bot.
 
+`about_me` is optional free text (up to 12,000 characters): current occupation,
+previous experience, key competencies, and ways to help the team. The bot
+updates only this cell with RAW input for the authenticated flow-scoped
+participant. Empty values represent profiles that have not been filled yet.
+
 Columns:
 - `flow_id`
 - `participant_id`
@@ -183,6 +188,7 @@ Columns:
 - `last_stage_updated_at`
 - `created_at`
 - `updated_at`
+- `about_me`
 
 Allowed `role` values:
 - `participant`

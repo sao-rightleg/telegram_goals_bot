@@ -1,0 +1,5 @@
+# Participant about text
+
+Use optional `Participants.about_me` in the flow business spreadsheet, bound by `flow_id + participant_id`. Reuse existing dialog_states with flow `participant_about`, step `replace|append|view`, participant_id and a nullable flow_id containing the bound flow ID. Store no personal draft text in SQLite. Nullable context_data stores base/result SHA-256 hashes; persist the expected result hash before Sheets writes and recognize successful writes on retries. Reject changed bases to avoid overwriting a concurrent profile edit. Route callbacks `about:replace|append|cancel` and active text through ParticipantFlowService into a small AboutService. Require matching private Telegram chat, active participant/captain and consent on every operation. Persist one RAW cell only; preserve other participant fields/formulas. No deadlines, captain team reader, voice collection, or deployment in this change.
+
+Verify service flows, real dispatcher routing, scope/consent/privacy, stale callbacks, length, Sheets failures, fake/live adapter parity, migration idempotency, and full existing suite. Review code/security/tests before completion.

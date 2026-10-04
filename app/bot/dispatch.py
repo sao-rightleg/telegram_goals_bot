@@ -177,6 +177,10 @@ class TelegramUpdateDispatcher:
                 now=now,
                 telegram_message_id=message.message_id,
             )
+        if state.flow == "participant_about":
+            return self.participant_service.handle_about_text(
+                user, message.text or "", occurred_at=now.isoformat()
+            )
         if state.flow == "registration":
             return self.participant_service.handle_registration_text(
                 user,
@@ -278,6 +282,10 @@ class TelegramUpdateDispatcher:
                 week_number=week_number,
                 step_id=step_id,
                 occurred_at=now.isoformat(),
+            )
+        if data in {"about:replace", "about:append", "about:cancel"}:
+            return self.participant_service.handle_about_action(
+                user, data.split(":")[1], occurred_at=now.isoformat()
             )
         if data.startswith(MENU_CALLBACK_PREFIX):
             return self._dispatch_menu_callback(user, data, now=now)

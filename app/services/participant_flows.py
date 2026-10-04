@@ -1051,6 +1051,17 @@ class ParticipantFlowService:
             and is_working_week(datetime.fromisoformat(occurred_at))
         )
 
+    def _about_service(self):
+        from app.services.participant_about import AboutService
+        return AboutService(self.sheets, self.dialog_states, self.main_bot,
+                            self.notification_router, self._participant_for_current_flow)
+
+    def handle_about_action(self, user, action: str, *, occurred_at: str) -> FlowResponse:
+        return self._about_service().handle(user, action, occurred_at=occurred_at)
+
+    def handle_about_text(self, user, text: str, *, occurred_at: str) -> FlowResponse:
+        return self._about_service().handle(user, "text", text=text, occurred_at=occurred_at)
+
     def handle_menu_action(
         self,
         user: TelegramUserContext,
@@ -1058,6 +1069,8 @@ class ParticipantFlowService:
         *,
         occurred_at: str,
     ) -> FlowResponse:
+        if action == MenuAction.VIEW_ABOUT:
+            return self.handle_about_action(user, "view", occurred_at=occurred_at)
         participant = self.sheets.find_participant_by_telegram_id(user.telegram_id)
         if participant is None:
             return self._handle_unknown_user(user, occurred_at=occurred_at)

@@ -22,6 +22,8 @@ class DialogState:
     selected_step_ids: str | None = None
     draft_id: str | None = None
     expires_at: str | None = None
+    flow_id: str | None = None
+    context_data: str | None = None
 
 
 class DialogStateRepository:
@@ -45,9 +47,11 @@ class DialogStateRepository:
                     draft_id,
                     started_at,
                     updated_at,
-                    expires_at
+                    expires_at,
+                    flow_id,
+                    context_data
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(telegram_id) DO UPDATE SET
                     participant_id = excluded.participant_id,
                     role = excluded.role,
@@ -60,7 +64,9 @@ class DialogStateRepository:
                     draft_id = excluded.draft_id,
                     started_at = excluded.started_at,
                     updated_at = excluded.updated_at,
-                    expires_at = excluded.expires_at
+                    expires_at = excluded.expires_at,
+                    flow_id = excluded.flow_id,
+                    context_data = excluded.context_data
                 """,
                 (
                     state.telegram_id,
@@ -76,6 +82,8 @@ class DialogStateRepository:
                     state.started_at,
                     state.updated_at,
                     state.expires_at,
+                    state.flow_id,
+                    state.context_data,
                 ),
             )
 
@@ -96,7 +104,9 @@ class DialogStateRepository:
                     draft_id,
                     started_at,
                     updated_at,
-                    expires_at
+                    expires_at,
+                    flow_id,
+                    context_data
                 FROM dialog_states
                 WHERE telegram_id = ?
                 """,

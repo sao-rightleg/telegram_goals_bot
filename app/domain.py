@@ -41,3 +41,6 @@ def planned_steps_percent(statuses: list[object] | tuple[object, ...]) -> int:
 def planned_steps_bar(statuses: list[object] | tuple[object, ...]) -> str:
     symbols = [PLANNED_STEP_SYMBOLS.get(str(status or "").strip().lower(), "⬜") for status in statuses]
     return "".join((symbols + ["⬜"] * PLANNED_STEP_COUNT)[:PLANNED_STEP_COUNT])
+
+
+MAX_ABOUT_LENGTH = 12000

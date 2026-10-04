@@ -11,7 +11,7 @@ from googleapiclient.discovery import build
 REQUIRED_HEADERS = {
     "WordPrices": ("flow_id", "participant_id", "word_price_rub", "created_at", "updated_at"),
     "Participants": (
-        "bot_started_at", "consent_status", "flow_id",
+        "bot_started_at", "consent_status", "flow_id", "about_me",
         "last_stage_updated_at", "onboarding_completed_at", "participant_stage",
     ),
     "Teams": ("flow_id", "captain_telegram_id"),

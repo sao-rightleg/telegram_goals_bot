@@ -71,6 +71,7 @@ PDF reports are generated and stored locally before sending.
 Participant can:
 - start bot
 - give consent
+- view, fill, append to, and replace own optional about description
 - view goal
 - view planned steps
 - view progress

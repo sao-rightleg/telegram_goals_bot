@@ -42,6 +42,7 @@ def test_participant_menu_contains_approved_buttons_only() -> None:
 
     assert [item.label for item in menu] == PARTICIPANT_MENU_LABELS
     assert [item.action for item in menu] == [
+        MenuAction.VIEW_ABOUT,
         MenuAction.VIEW_GOAL,
         MenuAction.VIEW_STEPS,
         MenuAction.VIEW_PROGRESS,

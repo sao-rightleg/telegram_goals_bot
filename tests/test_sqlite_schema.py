@@ -122,7 +122,7 @@ def test_init_migrates_legacy_dialog_flow_constraint_for_registration(tmp_path: 
 
     assert preserved == (
         1001, "P001", "participant", "idle", "menu", 3, "blue", "P002",
-        '["S001"]', "draft-before", "before-start", "before-update", "before-expiry",
+        '["S001"]', "draft-before", "before-start", "before-update", "before-expiry", None, None,
     )
     initialize_schema(db_path)
     with sqlite3.connect(db_path) as connection:

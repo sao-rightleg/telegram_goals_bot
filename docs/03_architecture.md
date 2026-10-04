@@ -429,3 +429,10 @@ It accepts and confirms broadcast text, while Main bot performs participant deli
 because participants have already initiated Main bot. The audience is limited to
 active consenting rows with `role = participant` and a valid Telegram ID. RUPOR
 cannot read goals, reports, steps, or insights.
+
+## Participant About Description
+
+AboutService handles private participant/captain profiles. Participants.about_me
+is the business source of truth; SQLite stores only edit mode and flow binding.
+Each textual answer saves immediately. Google Sheets writes only the description
+cell, preserving unrelated metadata and formulas. No weekly deadline applies.

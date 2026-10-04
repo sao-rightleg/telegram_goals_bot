@@ -9,7 +9,7 @@ from threading import RLock
 from time import sleep
 from typing import Protocol
 
-from app.domain import validate_word_price_row
+from app.domain import MAX_ABOUT_LENGTH, validate_word_price_row
 
 
 SheetRow = dict[str, object]
@@ -39,6 +39,9 @@ class SheetsGateway(Protocol):
 
     def save_word_price(self, row: SheetRow) -> None:
         """Save a declaration once; retries preserve the original amount."""
+
+    def update_participant_about(self, flow_id: str, participant_id: str, text: str) -> None:
+        """Replace only the flow-scoped participant description."""
 
     def list_participants(self) -> list[SheetRow]:
         """Return all participant rows for scheduler selection."""
@@ -276,6 +279,7 @@ REQUIRED_SHEET_COLUMNS: dict[str, frozenset[str]] = {
             "consent_given_at",
             "consent_status",
             "bot_started_at",
+            "about_me",
             "onboarding_completed_at",
             "last_stage_updated_at",
             "created_at",
@@ -410,6 +414,25 @@ class GoogleSheetsGateway:
         with _GOOGLE_REQUEST_LOCK:
             if self.find_word_price(str(row["flow_id"]), str(row["participant_id"])) is None:
                 self._append_row("WordPrices", row)
+
+    def update_participant_about(self, flow_id: str, participant_id: str, text: str) -> None:
+        _validate_about(flow_id, participant_id, text)
+        with _GOOGLE_REQUEST_LOCK:
+            headers, rows = self._table("Participants")
+            indexes = {key: _header_index(headers, key) for key in
+                       ("flow_id", "participant_id", "about_me")}
+            for offset, row in enumerate(rows, start=2):
+                padded = _pad_row(row, len(headers))
+                if (padded[indexes["flow_id"]] == flow_id
+                        and padded[indexes["participant_id"]] == participant_id):
+                    column = _column_name(indexes["about_me"] + 1)
+                    _execute(self.service.spreadsheets().values().update(
+                        spreadsheetId=self.spreadsheet_id,
+                        range=f"'Participants'!{column}{offset}", valueInputOption="RAW",
+                        body={"values": [[text]]},
+                    ), retry_safe=True)
+                    return
+        raise KeyError("Participant not found in flow")
 
     def list_participants(self) -> list[SheetRow]:
         return self._list_rows("Participants")
@@ -1015,6 +1038,14 @@ class FakeSheetsGateway:
             if self.find_word_price(str(row["flow_id"]), str(row["participant_id"])) is None:
                 self._word_prices.append(dict(row))
 
+    def update_participant_about(self, flow_id: str, participant_id: str, text: str) -> None:
+        _validate_about(flow_id, participant_id, text)
+        for row in self._participants:
+            if row.get("flow_id") == flow_id and row.get("participant_id") == participant_id:
+                row["about_me"] = text
+                return
+        raise KeyError("Participant not found in flow")
+
     def list_participants(self) -> list[SheetRow]:
         return [dict(row) for row in self._participants]
 
@@ -1466,7 +1497,8 @@ def _sheet_range(sheet_name: str) -> str:
 
 def _row_from_values(headers: Sequence[str], row: Sequence[object]) -> SheetRow:
     padded = _pad_row(row, len(headers))
-    data = {header: _coerce_cell(padded[index]) for index, header in enumerate(headers)}
+    data = {header: padded[index] if header == "about_me" else _coerce_cell(padded[index])
+            for index, header in enumerate(headers)}
     _add_read_aliases(data)
     return data
 
@@ -1597,3 +1629,16 @@ def _fake_row_exists(
             return True
         raise GoogleSheetsError("Business row stable ID conflicts with existing scope")
     return False
+
+
+def _validate_about(flow_id: str, participant_id: str, text: str) -> None:
+    if not flow_id or not participant_id or not text.strip() or len(text) > MAX_ABOUT_LENGTH:
+        raise ValueError("Invalid participant description or scope")
+
+
+def _column_name(number: int) -> str:
+    result = ""
+    while number:
+        number, remainder = divmod(number - 1, 26)
+        result = chr(65 + remainder) + result
+    return result

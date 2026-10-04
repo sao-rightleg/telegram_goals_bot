@@ -8,6 +8,7 @@ from app.services.participant_models import MenuItem
 
 
 class MenuAction(str, Enum):
+    VIEW_ABOUT = "view_about"
     VIEW_GOAL = "view_goal"
     VIEW_STEPS = "view_steps"
     VIEW_PROGRESS = "view_progress"
@@ -66,6 +67,7 @@ WEEKLY_REPORT_METRIC_CALLBACK_PREFIX = "weekly:metric:"
 
 
 PARTICIPANT_MENU_ITEMS = (
+    MenuItem(MenuAction.VIEW_ABOUT, "О себе"),
     MenuItem(MenuAction.VIEW_GOAL, "🎯 Моя цель"),
     MenuItem(MenuAction.VIEW_STEPS, "📍 Мои шаги"),
     MenuItem(MenuAction.VIEW_PROGRESS, "📊 Мой прогресс"),

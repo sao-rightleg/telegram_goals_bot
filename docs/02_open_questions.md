@@ -296,3 +296,14 @@ If external Codex/Claude skills are imported later:
 - Store declarations in a separate `WordPrices` tab in the flow's business spreadsheet.
 - Bind each declaration to `Participants` by `flow_id + participant_id`.
 - Use one row per participant per flow; retries must not create duplicates.
+
+## 18. Participant About Description
+
+- Participant and captain menus include `О себе` for their own optional profile.
+- The description covers current occupation, past experience, key competencies,
+  and ways to help the team.
+- `Дополнить` appends a paragraph; `Редактировать` replaces the entire text.
+- One textual answer saves immediately; cancellation preserves the saved text.
+- Store up to 12,000 characters in the flow-scoped `Participants.about_me` cell.
+- Require consent and a private chat; no weekly deadline applies.
+- The profile button does not grant access to another participant's description.
