@@ -99,6 +99,7 @@ notifications, Telegram reports, and PDF reports and can use all captain menu
 actions. Captains use the same goal, eight-step, and weekly-focus flows as participants.
 
 Captain has additional responsibilities:
+- can view own-team consenting active participants' full about descriptions in expandable blocks through `Моя команда` in a private chat
 - receives notifications about silent participants in own team
 - manually adds reports for participants in own team
 - receives PDF report for own team

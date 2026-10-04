@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from html import escape
 import re
 
 from app.bot.clients import BotClient, TelegramInlineButton
@@ -35,7 +36,6 @@ from app.bot.messages import (
     WEEKLY_REPORT_BLUE_STEP_REQUIRED_TEXT,
     WEEKLY_REPORT_GREEN_STEP_REQUIRED_TEXT,
     build_weekly_report_status_buttons,
-    format_captain_team_member_line,
 )
 from app.scheduler.calendar import current_challenge_week_number, is_weekly_report_open, is_working_week
 from app.services.notifications import NotificationCategory, NotificationRouter
@@ -54,15 +54,20 @@ class CaptainService:
     drafts: WeeklyReportDraftRepository | None = None
 
     def show_team(self, user: TelegramUserContext, *, occurred_at: str) -> FlowResponse:
-        if user.chat_id != str(user.telegram_id):
-            return self._send_response(user, text=CAPTAIN_PRIVATE_CHAT_ONLY_TEXT)
-        context = self._resolve_captain(user, occurred_at=occurred_at)
+        context = self._resolve_team_data_captain(user, occurred_at=occurred_at)
         if isinstance(context, FlowResponse):
             return context
-        _captain, _captain_id, team_id = context
-
-        team_members = self.sheets.list_participants_by_team(team_id)
-        return self._send_response(user, text=_format_team_view(team_members))
+        captain, _captain_id, team_id = context
+        members = _eligible_team_participants(
+            self.sheets.list_participants_by_team(team_id),
+            flow_id=_string_value(captain.get("flow_id")),
+        )
+        if not members:
+            return self._send_response(user, text=CAPTAIN_NO_TEAM_MEMBERS_TEXT)
+        messages = _team_about_messages(members)
+        for text in messages:
+            self.main_bot.send_message(chat_id=user.chat_id, text=text, parse_mode="HTML")
+        return FlowResponse(chat_id=user.chat_id, text="\n\n".join(messages), parse_mode="HTML")
 
     def show_team_progress(self, user: TelegramUserContext, *, now: datetime) -> FlowResponse:
         captain_context = self._resolve_team_data_captain(user, occurred_at=_occurred_at(now))
@@ -639,15 +644,58 @@ class CaptainService:
         return response
 
 
-def _format_team_view(team_members: list[SheetRow]) -> str:
-    if not team_members:
-        return CAPTAIN_NO_TEAM_MEMBERS_TEXT
+TEAM_ABOUT_MESSAGE_LIMIT = 3900
+TEAM_ABOUT_TEXT_CHUNK_LIMIT = 2300
+TEAM_ABOUT_NAME_LIMIT = 200
 
-    sorted_members = sorted(team_members, key=_team_member_sort_key)
-    return "\n".join(
-        [CAPTAIN_TEAM_TITLE_TEXT]
-        + [format_captain_team_member_line(member) for member in sorted_members]
-    )
+
+def _team_about_messages(members: list[SheetRow]) -> list[str]:
+    messages: list[str] = []
+    current = CAPTAIN_TEAM_TITLE_TEXT
+    for member in sorted(members, key=_team_member_sort_key):
+        name = _display_name(member)
+        if len(name) > TEAM_ABOUT_NAME_LIMIT:
+            name = name[:TEAM_ABOUT_NAME_LIMIT - 1] + "…"
+        name = escape(name, quote=False)
+        raw_text = str(member.get("about_me") or "")
+        parts = _escaped_about_chunks(raw_text) if raw_text.strip() else []
+        cards = [f"<b>{name}</b>\nО себе пока не заполнено"] if not parts else [
+            f"<b>{name}{' — продолжение' if index else ''}</b>\n"
+            f"<blockquote expandable>{part}</blockquote>"
+            for index, part in enumerate(parts)
+        ]
+        for card in cards:
+            candidate = current + "\n\n" + card if current else card
+            if _telegram_text_units(candidate) > TEAM_ABOUT_MESSAGE_LIMIT:
+                messages.append(current)
+                current = card
+            else:
+                current = candidate
+    if current:
+        messages.append(current)
+    return messages
+
+
+def _escaped_about_chunks(text: str) -> list[str]:
+    chunks: list[str] = []
+    current: list[str] = []
+    units = 0
+    for char in text:
+        escaped = escape(char, quote=False)
+        cost = _telegram_text_units(escaped)
+        if units + cost > TEAM_ABOUT_TEXT_CHUNK_LIMIT:
+            chunks.append("".join(current))
+            current = []
+            units = 0
+        current.append(escaped)
+        units += cost
+    if current:
+        chunks.append("".join(current))
+    return chunks
+
+
+def _telegram_text_units(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2
 
 
 def _team_steps_by_participant(

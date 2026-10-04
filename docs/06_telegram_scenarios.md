@@ -581,13 +581,18 @@ Rules:
 Trigger:
 - `👥 Моя команда`
 
-Bot shows:
-- team name
-- participant list
-- current week status
-- progress percent
+Bot shows a name-sorted list of active consenting participants and captains
+from the captain's own team and flow. Each name has the complete saved
+`Participants.about_me` text in an expandable HTML blockquote. An empty profile
+shows `О себе пока не заполнено`. Escape names and descriptions as user text.
 
-Keep it short and limited to captain's own team.
+Long descriptions continue in additional expandable blocks with the same name
+and `— продолжение`; large lists span several messages. Do not truncate profile
+text. Each message is self-contained valid HTML within Telegram limits.
+
+Require a private chat, consent, active captain status and a current active team
+assignment. Read current descriptions on every click without modifying them.
+Progress, goals, planned steps and word prices retain their separate buttons.
 
 ## Captain Manual Report
 

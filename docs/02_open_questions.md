@@ -307,3 +307,11 @@ If external Codex/Claude skills are imported later:
 - Store up to 12,000 characters in the flow-scoped `Participants.about_me` cell.
 - Require consent and a private chat; no weekly deadline applies.
 - The profile button does not grant access to another participant's description.
+
+## 19. Captain Team About View
+
+- Existing `Моя команда` displays names and expandable complete about descriptions.
+- Scope is active consenting participants/captains in the authorized team and flow.
+- Only active assigned captains in private chats can open this view.
+- Empty profiles have a placeholder; long descriptions continue without truncation.
+- Profile owners still edit through their own `О себе` button.
