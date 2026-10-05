@@ -6,6 +6,8 @@ Reports show weekly progress for captains, trackers, admin, and Alexander Sitnik
 
 Reports must be concise, role-aware, readable, and generated from stored Google Sheets business data.
 
+Captains are also team participants. Include every captain assigned to the team in participant sections, submission counts, status distributions, and progress statistics exactly once. This applies to Telegram summaries, team PDFs, tracker reports, and global summaries. Dropped captains follow the same exclusion from active statistics as other dropped participants.
+
 ## MVP Report Types
 
 MVP includes:

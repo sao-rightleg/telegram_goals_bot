@@ -1,7 +1,12 @@
+from pathlib import Path
+
 import pytest
+from pypdf import PdfReader
 
 from app.reports.aggregation import build_all_teams_report
 from app.reports.formatting import format_captain_summary_text
+from app.reports.pdf import LocalPdfRenderer
+from app.storage.paths import StoragePathPolicy
 from app.sheets.gateway import FakeSheetsGateway
 
 
@@ -13,13 +18,13 @@ def test_aggregation_builds_team_report_from_final_sheets_rows() -> None:
     anna = team.participants[0]
 
     assert report.week_number == 5
-    assert report.total_active_count == 2
+    assert report.total_active_count == 3
     assert team.team_name == "Команда А"
     assert team.captain_name == "Ирина Капитан"
-    assert team.active_count == 2
+    assert team.active_count == 3
     assert team.dropped_count == 1
-    assert team.status_distribution == {"green": 1, "blue": 1, "red": 0, "gray": 0}
-    assert team.weekly_victory_percent == 75
+    assert team.status_distribution == {"green": 1, "blue": 1, "red": 0, "gray": 1}
+    assert team.weekly_victory_percent == 50
     assert anna.full_name == "Анна Иванова"
     assert anna.status == "🟩"
     assert anna.progress_bar == "🟩🟦⬜⬜⬜⬜⬜⬜"
@@ -35,6 +40,9 @@ def test_aggregation_lists_both_explicit_team_captains_primary_first() -> None:
     gateway = _gateway()
     gateway._participants.append(  # noqa: SLF001 - focused fake-gateway fixture
         _participant("C002", "Антон Второй", "active", role="captain")
+    )
+    gateway._weekly_reports.append(  # noqa: SLF001 - focused fake-gateway fixture
+        _weekly_report("WR_C002", "C002", "gray", "⬛", 0)
     )
     gateway._team_captains.extend([  # noqa: SLF001 - focused fake-gateway fixture
         {
@@ -64,10 +72,10 @@ def test_weekly_victory_percent_excludes_dropped_participants() -> None:
 
     team = build_all_teams_report(gateway, week_number=5).teams[0]
 
-    assert team.active_count == 2
+    assert team.active_count == 3
     assert team.dropped_count == 1
-    assert team.weekly_victory_percent == 50
-    assert team.status_distribution == {"green": 1, "blue": 0, "red": 1, "gray": 0}
+    assert team.weekly_victory_percent == 33
+    assert team.status_distribution == {"green": 1, "blue": 0, "red": 1, "gray": 1}
 
 
 def test_telegram_submission_metrics_are_derived_from_final_sheet_reports() -> None:
@@ -81,8 +89,8 @@ def test_telegram_submission_metrics_are_derived_from_final_sheet_reports() -> N
     team = build_all_teams_report(gateway, week_number=5).teams[0]
     text = format_captain_summary_text(team)
 
-    assert "✅ Сдали: 1 из 2 — 50%" in text
-    assert "❌ Не сдали: 1 из 2 — 50%" in text
+    assert "✅ Сдали: 1 из 3 — 33,3%" in text
+    assert "❌ Не сдали: 2 из 3 — 66,7%" in text
     assert "Пётр Смирнов" in text
     assert "Ольга Соколова" not in text.split("Не сдали:", 1)[1].split("Результаты недели", 1)[0]
 
@@ -114,7 +122,7 @@ def test_insights_do_not_change_progress_or_status() -> None:
     assert participant.insights == ("Большой инсайт",)
     assert participant.status == "🟥"
     assert participant.progress_percent == 0
-    assert team.weekly_victory_percent == 50
+    assert team.weekly_victory_percent == 33
 
 
 def test_deleted_audio_path_is_not_opened_during_aggregation() -> None:
@@ -180,12 +188,75 @@ def test_unknown_final_status_code_is_rejected() -> None:
         build_all_teams_report(_gateway(weekly_reports=reports), week_number=5)
 
 
+def test_captain_only_team_counts_submitted_and_missing_reports(tmp_path: Path) -> None:
+    gateway = FakeSheetsGateway(
+        teams=[{"team_id": "T001", "team_name": "AMG PRO MAX", "captain_id": "C001"}],
+        participants=[
+            _participant("C001", "Анастасия", "active", role="captain"),
+            _participant("C002", "Максим", "active", role="captain"),
+        ],
+        weekly_reports=[
+            _weekly_report("WR001", "C001", "green", "🟩", 1),
+            _weekly_report("WR002", "C002", "gray", "⬛", 0),
+        ],
+    )
+
+    report = build_all_teams_report(gateway, week_number=5)
+    team = report.teams[0]
+
+    assert report.total_active_count == team.active_count == 2
+    assert [section.participant_id for section in team.participants] == ["C001", "C002"]
+    assert team.participants[0].report_text == "Провела встречу."
+    assert team.status_distribution == {"green": 1, "blue": 0, "red": 0, "gray": 1}
+    assert team.weekly_victory_percent == 50
+    text = format_captain_summary_text(team)
+    assert "✅ Сдали: 1 из 2 — 50%" in text
+    assert "❌ Не сдали: 1 из 2 — 50%" in text
+    assert "Максим" in text
+
+    rendered = LocalPdfRenderer(StoragePathPolicy(pdf_root=tmp_path)).render_team_report(team)
+    pdf_text = "\n".join(page.extract_text() or "" for page in PdfReader(rendered.file_path).pages)
+    assert "Анастасия" in pdf_text
+    assert "Максим" in pdf_text
+    assert "Провела встречу." in pdf_text
+
+
+def test_dropped_captain_remains_visible_without_changing_active_statistics() -> None:
+    gateway = FakeSheetsGateway(
+        teams=[{"team_id": "T001", "captain_id": "C001"}],
+        participants=[
+            _participant("P001", "Участник", "active"),
+            _participant("C001", "Капитан", "dropped", role="captain"),
+        ],
+        weekly_reports=[_weekly_report("WR001", "P001", "green", "🟩", 1)],
+    )
+
+    team = build_all_teams_report(gateway, week_number=5).teams[0]
+
+    assert team.active_count == 1
+    assert team.dropped_count == 1
+    assert team.weekly_victory_percent == 100
+    captain = next(section for section in team.participants if section.participant_id == "C001")
+    assert captain.is_dropped
+
+
+def test_active_captain_without_final_report_is_rejected() -> None:
+    gateway = FakeSheetsGateway(
+        teams=[{"team_id": "T001", "captain_id": "C001"}],
+        participants=[_participant("C001", "Капитан", "active", role="captain")],
+    )
+
+    with pytest.raises(ValueError, match="Missing final weekly report"):
+        build_all_teams_report(gateway, week_number=5)
+
+
 def _gateway(
     *,
     weekly_reports: list[dict[str, object]] | None = None,
     weekly_focus: list[dict[str, object]] | None = None,
     insights: list[dict[str, object]] | None = None,
 ) -> FakeSheetsGateway:
+    captain_report = _weekly_report("WR_C001", "C001", "gray", "⬛", 0)
     return FakeSheetsGateway(
         teams=[
             {"team_id": "T001", "team_name": "Команда А", "captain_id": "C001"},
@@ -207,12 +278,12 @@ def _gateway(
             _step("S003", "P001", "G001", 3, "Подписать договор", "open"),
             _step("S004", "P002", "G002", 1, "Подготовить тезисы", "open"),
         ],
-        weekly_reports=weekly_reports
-        if weekly_reports is not None
-        else [
-            _weekly_report("WR001", "P001", "green", "🟩", 1),
-            _weekly_report("WR002", "P002", "blue", "🟦", 0.5),
-        ],
+        weekly_reports=[captain_report, *(
+            weekly_reports if weekly_reports is not None else [
+                _weekly_report("WR001", "P001", "green", "🟩", 1),
+                _weekly_report("WR002", "P002", "blue", "🟦", 0.5),
+            ]
+        )],
         weekly_report_steps=[
             {"weekly_report_step_id": "WRS001", "weekly_report_id": "WR001", "step_id": "S001"},
             {"weekly_report_step_id": "WRS002", "weekly_report_id": "WR002", "step_id": "S004"},

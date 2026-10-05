@@ -233,9 +233,13 @@ def _gateway(*, weekly_reports: list[dict[str, object]] | None = None) -> FakeSh
         planned_steps=[
             {"step_id": "S001", "participant_id": "P001", "goal_id": "G001", "step_number": 1, "step_title": "Шаг", "step_status": "closed"},
         ],
-        weekly_reports=weekly_reports
-        if weekly_reports is not None
-        else [
+        weekly_reports=[{
+            "weekly_report_id": "WR_C001", "participant_id": "C001",
+            "team_id": "T001", "week_number": 5, "status_code": "gray",
+            "status_symbol": "⬛", "status_score": 0,
+        }, *(weekly_reports
+            if weekly_reports is not None
+            else [
             {
                 "weekly_report_id": "WR001",
                 "participant_id": "P001",
@@ -248,7 +252,7 @@ def _gateway(*, weekly_reports: list[dict[str, object]] | None = None) -> FakeSh
                 "report_text": "Текст отчёта",
                 "transcription_text": "Расшифровка",
             }
-        ],
+        ])],
     )
 
 

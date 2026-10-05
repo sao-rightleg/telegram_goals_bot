@@ -245,6 +245,8 @@ def _gateway(*, trackers: list[dict[str, object]] | None = None) -> FakeSheetsGa
             _step("S002", "P002", "G002", 1, "Подготовить тезисы", "partial"),
         ],
         weekly_reports=[
+            _weekly_report("WR_C001", "C001", "T001", "", "gray", "⬛", 0, ""),
+            _weekly_report("WR_C002", "C002", "T002", "", "gray", "⬛", 0, ""),
             _weekly_report("WR001", "P001", "T001", "G001", "green", "🟩", 1, "Провела встречу."),
             _weekly_report("WR002", "P002", "T002", "G002", "blue", "🟦", 0.5, "Подготовил тезисы."),
         ],

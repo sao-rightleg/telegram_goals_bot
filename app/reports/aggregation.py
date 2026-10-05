@@ -103,7 +103,6 @@ def _build_team_report(
             insights=insights_by_participant.get(str(participant.get("participant_id")), []),
         )
         for participant in participants
-        if participant.get("role") != "captain"
     )
     active_sections = [section for section in participant_sections if not section.is_dropped]
     status_distribution = {code: 0 for code in STATUS_CODES}
