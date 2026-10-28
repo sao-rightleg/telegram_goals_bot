@@ -52,6 +52,7 @@ jobs:
       TEST_VPS_SSH_KEY: ${{ secrets.TEST_VPS_SSH_KEY }}
       TEST_VPS_APP_DIR: ${{ secrets.TEST_VPS_APP_DIR }}
       TEST_VPS_SERVICE_NAME: ${{ secrets.TEST_VPS_SERVICE_NAME }}
+      SITNIKOV_TELEGRAM_ID: ${{ secrets.SITNIKOV_TELEGRAM_ID }}
       RUPOR_TELEGRAM_BOT_TOKEN: ${{ secrets.RUPOR_TELEGRAM_BOT_TOKEN }}
       RUPOR_ALLOWED_TELEGRAM_IDS: ${{ secrets.RUPOR_ALLOWED_TELEGRAM_IDS }}
     steps:
@@ -108,6 +109,28 @@ jobs:
           scp -i ~/.ssh/deploy_key -P "${TEST_VPS_PORT:-22}" \
             "/tmp/telegram-goals-bot-test-${DEPLOY_SHA}.tgz" \
             "$TEST_VPS_USER@$TEST_VPS_HOST:/tmp/telegram-goals-bot-test-${DEPLOY_SHA}.tgz"
+          if [[ -n "$SITNIKOV_TELEGRAM_ID" ]]; then
+            trap 'rm -f /tmp/coach-test-config.json' EXIT
+            umask 077
+            python - <<'PYCOACH'
+          import json
+          import os
+          import re
+          from pathlib import Path
+          coach_id = os.environ["SITNIKOV_TELEGRAM_ID"]
+          if not re.fullmatch(r"[1-9][0-9]{0,18}", coach_id):
+              raise SystemExit("Invalid coach Telegram ID")
+          Path("/tmp/coach-test-config.json").write_text(
+              json.dumps({"sitnikov_telegram_id": coach_id}), encoding="utf-8"
+          )
+          PYCOACH
+            ssh -i ~/.ssh/deploy_key -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_USER@$TEST_VPS_HOST" \
+              "install -d -m 700 '$TEST_VPS_APP_DIR/shared/deploy-config'"
+            scp -i ~/.ssh/deploy_key -P "${TEST_VPS_PORT:-22}" \
+              /tmp/coach-test-config.json \
+              "$TEST_VPS_USER@$TEST_VPS_HOST:$TEST_VPS_APP_DIR/shared/deploy-config/coach-${DEPLOY_SHA}.json"
+            rm -f /tmp/coach-test-config.json
+          fi
           if [[ -n "$RUPOR_TELEGRAM_BOT_TOKEN" ]]; then
             trap 'rm -f /tmp/rupor-test-config.json' EXIT
             umask 077
@@ -127,8 +150,12 @@ jobs:
           fi
       - name: Install test release and restart test service
         run: |
+          COACH_CONFIG_REQUESTED=false
+          if [[ -n "$SITNIKOV_TELEGRAM_ID" ]]; then
+            COACH_CONFIG_REQUESTED=true
+          fi
           ssh -i ~/.ssh/deploy_key -p "${TEST_VPS_PORT:-22}" "$TEST_VPS_USER@$TEST_VPS_HOST" \
-            "TEST_APP_DIR='$TEST_VPS_APP_DIR' TEST_SERVICE_NAME='$TEST_VPS_SERVICE_NAME' DEPLOY_SHA='$DEPLOY_SHA' bash -s" <<'REMOTE'
+            "TEST_APP_DIR='$TEST_VPS_APP_DIR' TEST_SERVICE_NAME='$TEST_VPS_SERVICE_NAME' DEPLOY_SHA='$DEPLOY_SHA' COACH_CONFIG_REQUESTED='$COACH_CONFIG_REQUESTED' bash -s" <<'REMOTE'
           set -euo pipefail
 
           test "$TEST_APP_DIR" = "/opt/telegram_goals_bot_test"
@@ -141,7 +168,8 @@ jobs:
           tar -xzf "/tmp/telegram-goals-bot-test-$DEPLOY_SHA.tgz" -C "$RELEASE_DIR"
 
           RUPOR_CONFIG_PATH="/tmp/rupor-test-config-$DEPLOY_SHA.json"
-          trap 'rm -f "$RUPOR_CONFIG_PATH"' EXIT
+          COACH_CONFIG_PATH="$TEST_APP_DIR/shared/deploy-config/coach-$DEPLOY_SHA.json"
+          trap 'rm -f "$RUPOR_CONFIG_PATH" "$COACH_CONFIG_PATH"' EXIT
           if test -f "$RUPOR_CONFIG_PATH"; then
             python3 "$RELEASE_DIR/scripts/upsert_rupor_env.py" \
               "$TEST_APP_DIR/shared/.env" "$RUPOR_CONFIG_PATH"
@@ -163,6 +191,17 @@ jobs:
             "$TEST_APP_DIR/shared/backups/sqlite" \
             "$TEST_APP_DIR/shared/backups/google_sheets_exports" \
             "$TEST_APP_DIR/shared/backups/pdf"
+
+          if test "$COACH_CONFIG_REQUESTED" = true; then
+            test -f "$COACH_CONFIG_PATH"
+            test ! -L "$COACH_CONFIG_PATH"
+            test "$(stat -c %u "$COACH_CONFIG_PATH")" = "$(id -u)"
+            test "$(stat -c %a "$TEST_APP_DIR/shared/deploy-config")" = 700
+            test "$(stat -c %u "$TEST_APP_DIR/shared/deploy-config")" = "$(id -u)"
+            python3 "$RELEASE_DIR/scripts/upsert_coach_env.py" \
+              "$TEST_APP_DIR/shared/.env" "$COACH_CONFIG_PATH"
+            rm -f "$COACH_CONFIG_PATH"
+          fi
 
           set -a
           . "$TEST_APP_DIR/shared/.env"

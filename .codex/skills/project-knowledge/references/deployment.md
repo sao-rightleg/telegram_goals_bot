@@ -153,3 +153,23 @@ Rollback procedure:
 - Audio: no mandatory backup; original audio is deleted one month after recording.
 - Failed voice attempts delete the just-downloaded local audio file when processing fails after download.
 - PDF: no mandatory separate backup; PDF is stored locally for 6 months after challenge end.
+
+## Optional Global Coach Recipient in Test Deploys
+
+The `Deploy Test` workflow accepts the optional `SITNIKOV_TELEGRAM_ID` secret from
+GitHub environment `test` (Settings → Environments → test → Environment secrets).
+Obtain the value from the authorized coach's Telegram user ID. The workflow
+transfers it in a protected temporary JSON file inside the deploy-owned mode-0700
+`shared/deploy-config` directory, consumes it only when explicitly supplied for
+that workflow run, checks file/directory ownership and rejects symlinks, and runs
+`scripts/upsert_coach_env.py` after release tests, before loading and validating
+runtime configuration. Values must be positive decimal IDs of at most 19 digits.
+The helper atomically replaces only `SITNIKOV_TELEGRAM_ID`, preserving unrelated
+configuration and file ownership, and sets mode 0600. Temporary files are cleaned
+up. An absent secret preserves the existing server setting. Removing a previously
+applied secret does not restore the former ID; rollback requires setting the
+previous authorized ID and deploying again. Application role rows with role
+`sitnikov` take precedence over this configured fallback recipient.
+
+The coach must start the Notification bot to allow Telegram delivery. A separate
+captain assignment may remain in place. The production workflow is unchanged.

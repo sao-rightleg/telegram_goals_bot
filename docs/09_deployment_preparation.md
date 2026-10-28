@@ -213,3 +213,18 @@ Passing test-live does not approve production.
 3. Restart `VPS_SERVICE_NAME` through GitHub Actions or emergency SSH.
 4. Verify service status and logs.
 5. Record rollback reason and failed SHA.
+
+## Настройка получателя всех отчётов в текущем тестовом окружении
+
+1. В GitHub откройте Settings → Environments → test → Add environment secret.
+2. Имя секрета: `SITNIKOV_TELEGRAM_ID`. Значение — Telegram ID назначенного коуча
+   (для Александра Ситникова: `429360776`).
+3. После согласования выкладки запустите Actions → Deploy Test → Run workflow,
+   выбрав ветку и commit с поддержкой этой настройки, режим `deploy`.
+4. Коуч должен запустить бота уведомлений. Капитанство в отдельной команде можно
+   сохранить: эта настройка добавляет глобального получателя отчётов.
+
+Без секрета существующее значение на сервере сохраняется. Удаление секрета не
+отменяет ранее применённый ID: для возврата укажите прежний ID и повторите деплой.
+Если в Participants уже есть запись с ролью `sitnikov`, она имеет приоритет над
+этой настройкой. Рабочий production workflow этой доработкой не изменяется.
